@@ -1,0 +1,40 @@
+{
+  "name": "portfin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:seed": "node --experimental-vm-modules prisma/seed.js",
+    "db:reset": "prisma migrate reset --force",
+    "db:studio": "prisma studio",
+    "db:setup": "prisma db push && node --experimental-vm-modules prisma/seed.js",
+    "postinstall": "prisma generate",
+    "update-prices": "node prisma/updatePrices.js"
+  },
+  "prisma": {
+    "seed": "node --experimental-vm-modules prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "csv-parse": "^6.2.1",
+    "lucide-react": "^0.511.0",
+    "next": "16.2.3",
+    "prisma": "^6.19.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "xlsx": "^0.18.5",
+    "yahoo-finance2": "^3.14.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.3",
+    "tailwindcss": "^4"
+  },
+  "type": "module"
+}
