@@ -22,7 +22,7 @@ export async function POST(request) {
     });
 
     // Separate MF vs stock
-    const mfInstrs    = instruments.filter(i => i.assetType === 'MF');
+    const mfInstrs = instruments.filter(i => i.assetType === 'MF');
     const stockInstrs = instruments.filter(i => i.assetType === 'STOCK');
 
     // For stocks/ETFs: use stored price first
@@ -35,7 +35,7 @@ export async function POST(request) {
       try {
         const res = await fetch('https://portal.amfiindia.com/spages/NAVAll.txt', {
           signal: AbortSignal.timeout(15000),
-          next: { revalidate: 3600 },
+          cache: 'no-store',
         });
         if (res.ok) {
           const text = await res.text();
@@ -68,7 +68,7 @@ export async function POST(request) {
               await prisma.instrument.update({
                 where: { id: inst.id },
                 data: { price: nav, priceUpdatedAt: new Date() },
-              }).catch(() => {});
+              }).catch(() => { });
             }
           }
         }
