@@ -51,11 +51,11 @@ const pcol = v => v >= 0 ? 'var(--green2)' : 'var(--red2)';
 function ReturnBar({ val, max }) {
   const w = Math.min(100, (Math.abs(val) / (max || 1)) * 100);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <div style={{ width: 56, height: 3, background: 'var(--bg3)', borderRadius: 2, flexShrink: 0 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div style={{ width: 48, height: 3, background: 'var(--bg3)', borderRadius: 2, flexShrink: 0 }}>
         <div style={{ height: '100%', width: w + '%', background: pcol(val), borderRadius: 2 }} />
       </div>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: pcol(val) }}>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: pcol(val) }}>
         {pct(val)}
       </span>
     </div>
@@ -74,20 +74,21 @@ function TaxBadge({ days }) {
   );
 }
 
-// ── Column header helpers ─────────────────────────────────────────────────────
-const COL = '24px 1fr 88px 40px 88px 88px 96px 72px 140px 56px';
+// ── 12-column grid ────────────────────────────────────────────────────────────
+// chevron | fund name | category | # | units | cmp | invested | value | gain | cagr | return% | hold
+const COL = '20px 1fr 80px 32px 72px 72px 80px 80px 88px 64px 130px 50px';
 
 function HeaderRow() {
-  const cols = ['', 'FUND NAME', 'CATEGORY', '#', 'INVESTED', 'VALUE', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
+  const cols = ['', 'FUND NAME', 'CAT', '#', 'UNITS', 'CMP', 'INVESTED', 'VALUE', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
   return (
     <div style={{
-      display: 'grid', gridTemplateColumns: COL, padding: '0 8px',
+      display: 'grid', gridTemplateColumns: COL, padding: '0 6px',
       background: 'var(--bg3)', borderBottom: '1px solid var(--border)',
     }}>
       {cols.map((c, i) => (
         <div key={i} style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--text3)',
-          padding: '8px 6px', textAlign: i > 2 ? 'right' : 'left', whiteSpace: 'nowrap',
+          fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--text3)',
+          padding: '7px 5px', textAlign: i > 2 ? 'right' : 'left', whiteSpace: 'nowrap',
         }}>{c}</div>
       ))}
     </div>
@@ -271,8 +272,8 @@ export default function MFView() {
   function toggle(sym)    { setExpanded(e => ({ ...e, [sym]: !e[sym] })); }
 
   function exportCSV() {
-    const rows2 = [['Fund','Category','Lots','Avg NAV','Units','CMP','Invested','Value','Gain','Return%','CAGR','Holding']];
-    rows.forEach(h => rows2.push([h.symbol, h.sector||'', h.lots.length, fmt(h.avgBuy,2), fmt(h.qty,3), fmt(h.cmp,2), fmt(h.invested,0), fmt(h.marketValue,0), fmt(h.gain,0), fmt(h.returnPct,2)+'%', fmt(h.cagr,2)+'%', holdStr(h.holdingDays)]));
+    const rows2 = [['Fund','Category','Lots','Units','CMP','Avg NAV','Invested','Value','Gain','Return%','CAGR','Holding']];
+    rows.forEach(h => rows2.push([h.symbol, h.sector||'', h.lots.length, fmt(h.qty,3), fmt(h.cmp,2), fmt(h.avgBuy,2), fmt(h.invested,0), fmt(h.marketValue,0), fmt(h.gain,0), fmt(h.returnPct,2)+'%', fmt(h.cagr,2)+'%', holdStr(h.holdingDays)]));
     const a = document.createElement('a'); a.href = 'data:text/csv,'+encodeURIComponent(rows2.map(r=>r.join(',')).join('\n')); a.download = 'mf.csv'; a.click();
   }
 
@@ -333,33 +334,55 @@ export default function MFView() {
                 onClick={() => toggle(h.symbol)}
                 style={{
                   display:'grid', gridTemplateColumns: COL,
-                  padding:'0 8px', cursor:'pointer', alignItems:'center',
+                  padding:'0 6px', cursor:'pointer', alignItems:'center',
                   background: open ? 'rgba(59,130,246,0.07)' : 'transparent',
                   transition:'background 0.15s',
                 }}
                 onMouseEnter={e => { if (!open) e.currentTarget.style.background='rgba(255,255,255,0.025)'; }}
                 onMouseLeave={e => { if (!open) e.currentTarget.style.background='transparent'; }}
               >
-                <div style={{ textAlign:'center', color:'var(--text3)', fontSize:9, padding:'0 2px' }}>{open?'▼':'►'}</div>
+                {/* Chevron */}
+                <div style={{ textAlign:'center', color:'var(--text3)', fontSize:8, padding:'0 2px' }}>{open?'▼':'►'}</div>
 
-                <div style={{ padding:'10px 6px', minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={h.name||h.symbol}>{h.symbol}</div>
-                  {h.name && h.name!==h.symbol && <div style={{ fontSize:10, color:'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.name}</div>}
+                {/* Fund name */}
+                <div style={{ padding:'9px 5px', minWidth:0 }}>
+                  <div style={{ fontSize:12, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={h.name||h.symbol}>{h.symbol}</div>
+                  {h.name && h.name!==h.symbol && <div style={{ fontSize:9, color:'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.name}</div>}
                 </div>
 
-                <div style={{ padding:'10px 6px' }}>
-                  <span style={{ fontSize:10, fontWeight:600, padding:'2px 6px', borderRadius:4, whiteSpace:'nowrap',
+                {/* Category badge */}
+                <div style={{ padding:'9px 5px' }}>
+                  <span style={{ fontSize:9, fontWeight:600, padding:'2px 5px', borderRadius:4, whiteSpace:'nowrap',
                     background:`${sectorColor(h.sector||'Other')}20`, color:sectorColor(h.sector||'Other'),
                     border:`1px solid ${sectorColor(h.sector||'Other')}40` }}>{h.sector||'Other'}</span>
                 </div>
 
-                <div style={{ padding:'10px 6px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12, color:'var(--text2)' }}>{h.lots.length}</div>
-                <div style={{ padding:'10px 6px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12 }}>{fmtCr(h.invested)}</div>
-                <div style={{ padding:'10px 6px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:13, fontWeight:700 }}>{fmtCr(h.marketValue)}</div>
-                <div style={{ padding:'10px 6px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12, fontWeight:600, color:colorPnl(h.gain) }}>{fmtCr(h.gain)}</div>
-                <div style={{ padding:'10px 6px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700, color:pcol(h.cagr) }}>{pct(h.cagr)}</div>
-                <div style={{ padding:'10px 6px' }}><ReturnBar val={h.returnPct} max={maxRet} /></div>
-                <div style={{ padding:'10px 6px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text2)' }}>{holdStr(h.holdingDays)}</div>
+                {/* # lots */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text2)' }}>{h.lots.length}</div>
+
+                {/* Units */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text2)' }}>{fmt(h.qty, 2)}</div>
+
+                {/* CMP / NAV */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11 }}>₹{fmt(h.cmp, 1)}</div>
+
+                {/* Invested */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11 }}>{fmtCr(h.invested)}</div>
+
+                {/* Value */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700 }}>{fmtCr(h.marketValue)}</div>
+
+                {/* Gain */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:600, color:colorPnl(h.gain) }}>{fmtCr(h.gain)}</div>
+
+                {/* CAGR */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:700, color:pcol(h.cagr) }}>{pct(h.cagr)}</div>
+
+                {/* Return bar */}
+                <div style={{ padding:'9px 5px' }}><ReturnBar val={h.returnPct} max={maxRet} /></div>
+
+                {/* Holding */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:10, color:'var(--text2)' }}>{holdStr(h.holdingDays)}</div>
               </div>
               {open && <DetailPanel h={h} />}
             </div>
