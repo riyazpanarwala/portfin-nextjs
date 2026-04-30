@@ -15,13 +15,15 @@ const NAV = [
       { id: 'waterfall',  icon: '◬', label: 'Wealth Waterfall' },
       { id: 'action',     icon: '⚡', label: 'Action Signal' },
       { id: 'snapshots',  icon: '📸', label: 'Snapshot History' },
+      { id: 'vs-nifty',   icon: '📊', label: 'vs Nifty 50', badge: 'NEW' },
     ]
   },
   {
     group: 'Tools',
     items: [
       { id: 'rebalancer', icon: '⊞', label: 'Rebalancer' },
-      { id: 'trade',      icon: '+', label: 'Add Trade' },
+      { id: 'ai-advisor', icon: '🤖', label: 'AI Advisor', badge: 'AI' },
+      { id: 'trade',      icon: '+',  label: 'Add Trade' },
     ]
   }
 ];
@@ -79,7 +81,23 @@ export default function Sidebar({ collapsed, onToggle }) {
                 style={{ marginBottom: '2px', justifyContent: collapsed ? 'center' : 'flex-start' }}
               >
                 <span style={{ fontSize: '15px', minWidth: '18px', textAlign: 'center' }}>{item.icon}</span>
-                {!collapsed && <span>{item.label}</span>}
+                {!collapsed && (
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                )}
+                {!collapsed && item.badge && (
+                  <span style={{
+                    fontSize: '9px', fontWeight: '700', padding: '2px 5px',
+                    borderRadius: '4px', letterSpacing: '0.04em',
+                    background: item.badge === 'AI'
+                      ? 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3))'
+                      : 'rgba(16,185,129,0.2)',
+                    color: item.badge === 'AI' ? 'var(--accent2)' : 'var(--green2)',
+                    border: item.badge === 'AI'
+                      ? '1px solid rgba(59,130,246,0.4)'
+                      : '1px solid rgba(16,185,129,0.35)',
+                    flexShrink: 0,
+                  }}>{item.badge}</span>
+                )}
               </div>
             ))}
           </div>

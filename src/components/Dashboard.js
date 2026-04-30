@@ -11,6 +11,8 @@ import StocksView from '@/components/views/StocksView';
 import AnalyticsView from '@/components/views/AnalyticsView';
 import GoalView from '@/components/views/GoalView';
 import RebalancerView from '@/components/views/RebalancerView';
+import AIAdvisorView from '@/components/views/AIAdvisorView';
+import PortfolioVsNiftyView from '@/components/views/PortfolioVsNiftyView';
 import { TradeForm } from '@/components/views/TradeForm';
 import { TimelineView, WaterfallView, ActionView, SnapshotView } from '@/components/views/OtherViews';
 
@@ -25,6 +27,8 @@ const VIEW_TITLES = {
   action:     'Action Signal',
   snapshots:  'Snapshot History',
   rebalancer: 'Portfolio Rebalancer',
+  'vs-nifty': 'Portfolio vs Nifty 50',
+  'ai-advisor': 'AI Portfolio Advisor',
   trade:      'Add Trade',
 };
 
@@ -45,9 +49,26 @@ export default function Dashboard() {
           background: 'rgba(11,15,26,0.8)', backdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
         }}>
-          <h1 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)', letterSpacing: '-0.02em' }}>
-            {VIEW_TITLES[activeView] || 'Dashboard'}
-          </h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)', letterSpacing: '-0.02em' }}>
+              {VIEW_TITLES[activeView] || 'Dashboard'}
+            </h1>
+            {activeView === 'ai-advisor' && (
+              <span style={{
+                fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '5px',
+                background: 'linear-gradient(135deg, rgba(59,130,246,0.25), rgba(139,92,246,0.2))',
+                border: '1px solid rgba(59,130,246,0.4)', color: 'var(--accent2)',
+                letterSpacing: '0.04em',
+              }}>POWERED BY OLLAMA</span>
+            )}
+            {activeView === 'vs-nifty' && (
+              <span style={{
+                fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '5px',
+                background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.35)',
+                color: 'var(--green2)', letterSpacing: '0.04em',
+              }}>BENCHMARK COMPARISON</span>
+            )}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {loading && <Spinner />}
             <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
@@ -59,7 +80,7 @@ export default function Dashboard() {
         <main style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
           {error ? <ErrorState message={error} onRetry={refreshData} /> :
            loading ? <LoadingState /> :
-           trades.length === 0 && activeView !== 'trade' ? <EmptyState /> :
+           trades.length === 0 && activeView !== 'trade' && activeView !== 'ai-advisor' ? <EmptyState /> :
            <ViewRenderer view={activeView} />}
         </main>
       </div>
@@ -70,18 +91,20 @@ export default function Dashboard() {
 
 function ViewRenderer({ view }) {
   switch (view) {
-    case 'overview':   return <OverviewView />;
-    case 'mf':         return <MFView />;
-    case 'stocks':     return <StocksView />;
-    case 'analytics':  return <AnalyticsView />;
-    case 'timeline':   return <TimelineView />;
-    case 'goal':       return <GoalView />;
-    case 'waterfall':  return <WaterfallView />;
-    case 'action':     return <ActionView />;
-    case 'snapshots':  return <SnapshotView />;
-    case 'rebalancer': return <RebalancerView />;
-    case 'trade':      return <TradeForm />;
-    default:           return <OverviewView />;
+    case 'overview':    return <OverviewView />;
+    case 'mf':          return <MFView />;
+    case 'stocks':      return <StocksView />;
+    case 'analytics':   return <AnalyticsView />;
+    case 'timeline':    return <TimelineView />;
+    case 'goal':        return <GoalView />;
+    case 'waterfall':   return <WaterfallView />;
+    case 'action':      return <ActionView />;
+    case 'snapshots':   return <SnapshotView />;
+    case 'rebalancer':  return <RebalancerView />;
+    case 'vs-nifty':    return <PortfolioVsNiftyView />;
+    case 'ai-advisor':  return <AIAdvisorView />;
+    case 'trade':       return <TradeForm />;
+    default:            return <OverviewView />;
   }
 }
 
