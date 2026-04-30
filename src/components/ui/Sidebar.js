@@ -1,29 +1,47 @@
 'use client';
 
+import {
+  Bot,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Gauge,
+  Goal,
+  History,
+  LayoutDashboard,
+  LineChart,
+  PieChart,
+  Plus,
+  Scale,
+  Sparkles,
+  TrendingUp,
+  WalletCards,
+  Waves,
+} from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 
 const NAV = [
   {
     group: 'Views',
     items: [
-      { id: 'overview',   icon: '◈', label: 'Overview' },
-      { id: 'mf',         icon: '◎', label: 'Mutual Funds' },
-      { id: 'stocks',     icon: '◐', label: 'Equity Stocks' },
-      { id: 'analytics',  icon: '◉', label: 'Analytics' },
-      { id: 'timeline',   icon: '◫', label: 'Timeline' },
-      { id: 'goal',       icon: '◎', label: 'Goal Planner' },
-      { id: 'waterfall',  icon: '◬', label: 'Wealth Waterfall' },
-      { id: 'action',     icon: '⚡', label: 'Action Signal' },
-      { id: 'snapshots',  icon: '📸', label: 'Snapshot History' },
-      { id: 'vs-nifty',   icon: '📊', label: 'vs Nifty 50', badge: 'NEW' },
+      { id: 'overview',   icon: LayoutDashboard, label: 'Overview' },
+      { id: 'mf',         icon: PieChart, label: 'Mutual Funds' },
+      { id: 'stocks',     icon: TrendingUp, label: 'Equity Stocks' },
+      { id: 'analytics',  icon: Gauge, label: 'Analytics' },
+      { id: 'timeline',   icon: History, label: 'Timeline' },
+      { id: 'goal',       icon: Goal, label: 'Goal Planner' },
+      { id: 'waterfall',  icon: Waves, label: 'Wealth Waterfall' },
+      { id: 'action',     icon: Sparkles, label: 'Action Signal' },
+      { id: 'snapshots',  icon: Camera, label: 'Snapshot History' },
+      { id: 'vs-nifty',   icon: LineChart, label: 'vs Nifty 50', badge: 'NEW' },
     ]
   },
   {
     group: 'Tools',
     items: [
-      { id: 'rebalancer', icon: '⊞', label: 'Rebalancer' },
-      { id: 'ai-advisor', icon: '🤖', label: 'AI Advisor', badge: 'AI' },
-      { id: 'trade',      icon: '+',  label: 'Add Trade' },
+      { id: 'rebalancer', icon: Scale, label: 'Rebalancer' },
+      { id: 'ai-advisor', icon: Bot, label: 'AI Advisor', badge: 'AI' },
+      { id: 'trade',      icon: Plus,  label: 'Add Trade' },
     ]
   }
 ];
@@ -32,18 +50,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   const { activeView, setActiveView, stats } = usePortfolio();
 
   return (
-    <aside style={{
-      width: collapsed ? '60px' : '220px',
-      minWidth: collapsed ? '60px' : '220px',
-      background: 'var(--bg2)',
-      borderRight: '1px solid var(--border)',
-      display: 'flex',
-      flexDirection: 'column',
-      transition: 'width 0.3s ease',
-      overflow: 'hidden',
-      position: 'relative',
-      zIndex: 10,
-    }}>
+    <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
       {/* Logo */}
       <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -53,7 +60,7 @@ export default function Sidebar({ collapsed, onToggle }) {
             borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '16px', fontWeight: '800', color: '#fff',
             fontFamily: 'var(--font-display)',
-          }}>P</div>
+          }}><WalletCards size={17} /></div>
           {!collapsed && (
             <div>
               <div style={{ fontSize: '16px', fontWeight: '700', letterSpacing: '0.05em', color: 'var(--text)' }}>PORTFIN</div>
@@ -72,7 +79,9 @@ export default function Sidebar({ collapsed, onToggle }) {
                 {section.group}
               </div>
             )}
-            {section.items.map(item => (
+            {section.items.map(item => {
+              const Icon = item.icon;
+              return (
               <div
                 key={item.id}
                 className={`nav-item ${activeView === item.id ? 'active' : ''}`}
@@ -80,7 +89,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                 title={collapsed ? item.label : undefined}
                 style={{ marginBottom: '2px', justifyContent: collapsed ? 'center' : 'flex-start' }}
               >
-                <span style={{ fontSize: '15px', minWidth: '18px', textAlign: 'center' }}>{item.icon}</span>
+                <Icon size={16} style={{ minWidth: '18px' }} />
                 {!collapsed && (
                   <span style={{ flex: 1 }}>{item.label}</span>
                 )}
@@ -99,7 +108,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                   }}>{item.badge}</span>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         ))}
       </nav>
@@ -109,10 +118,10 @@ export default function Sidebar({ collapsed, onToggle }) {
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
             <span className="live-dot" />
-            <span style={{ fontSize: '10px', color: 'var(--text3)' }}>LIVE • NSE/BSE</span>
+            <span style={{ fontSize: '10px', color: 'var(--text3)' }}>LIVE - NSE/BSE</span>
           </div>
           <div style={{ fontSize: '11px', color: 'var(--text2)' }}>
-            {stats.fundCount} Funds · {stats.stockCount} Stocks
+            {stats.fundCount} Funds - {stats.stockCount} Stocks
           </div>
         </div>
       )}
@@ -120,16 +129,10 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* Toggle button */}
       <button
         onClick={onToggle}
-        style={{
-          position: 'absolute', right: '-12px', top: '50%', transform: 'translateY(-50%)',
-          width: '24px', height: '24px', borderRadius: '50%',
-          background: 'var(--bg3)', border: '1px solid var(--border)',
-          color: 'var(--text2)', cursor: 'pointer', fontSize: '11px',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 20,
-        }}
+        className="sidebar-toggle"
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        {collapsed ? '›' : '‹'}
+        {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
     </aside>
   );

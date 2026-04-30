@@ -47,7 +47,7 @@ export default function OverviewView() {
       </div>
 
       {/* 3-col row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+      <div className="grid-3" style={{ gap: '14px', marginBottom: '20px' }}>
         {/* MF vs Stocks */}
         <div className="glass" style={{ padding: '18px' }}>
           <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>MF vs Stocks Allocation</div>
@@ -102,7 +102,7 @@ export default function OverviewView() {
 
       {/* Top performers */}
       {(topMF.length > 0 || topSt.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+        <div className="grid-2" style={{ gap: '14px', marginBottom: '20px' }}>
           {topMF.length > 0 && <TopList title="Top MF Performers" items={topMF} />}
           {topSt.length > 0 && <TopList title="Top Stock Gainers"  items={topSt} />}
         </div>

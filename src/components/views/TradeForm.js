@@ -82,7 +82,7 @@ export function TradeForm() {
 
   return (
     <div className="fade-up">
-      <div style={{ display: 'grid', gridTemplateColumns: '460px 1fr', gap: '16px', alignItems: 'start' }}>
+      <div className="grid-form-main" style={{ gap: '16px', alignItems: 'start' }}>
 
         {/* ── Form ── */}
         <div className="glass" style={{ padding: '24px' }}>

@@ -1,15 +1,13 @@
 'use client';
 
+import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 
 export default function ToastContainer() {
   const { toasts } = usePortfolio();
 
   return (
-    <div style={{
-      position: 'fixed', bottom: '24px', right: '24px',
-      display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 1000,
-    }}>
+    <div className="toast-stack">
       {toasts.map(t => (
         <div key={t.id} className="toast" style={{
           background: 'var(--bg2)',
@@ -20,7 +18,7 @@ export default function ToastContainer() {
           display: 'flex', alignItems: 'center', gap: '8px',
           minWidth: '240px',
         }}>
-          <span>{t.type === 'green' ? '✅' : t.type === 'red' ? '❌' : 'ℹ️'}</span>
+          {t.type === 'green' ? <CheckCircle2 size={16} color="var(--green2)" /> : t.type === 'red' ? <AlertCircle size={16} color="var(--red2)" /> : <Info size={16} color="var(--accent2)" />}
           {t.msg}
         </div>
       ))}

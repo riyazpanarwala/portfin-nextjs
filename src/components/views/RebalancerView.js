@@ -36,7 +36,7 @@ export default function RebalancerView() {
 
   return (
     <div className="fade-up">
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '16px' }}>
+      <div className="grid-sidebar-main" style={{ gap: '16px' }}>
         {/* Left: target allocation */}
         <div className="glass" style={{ padding: '18px', height: 'fit-content' }}>
           <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Target Allocation</div>

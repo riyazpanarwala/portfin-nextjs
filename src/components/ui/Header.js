@@ -1,5 +1,6 @@
 'use client';
 
+import { RefreshCw, UserRound } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmtPct, colorPnl } from '@/lib/store';
 
@@ -8,12 +9,8 @@ export default function Header({ onRefreshPrices }) {
   const dateStr = new Date().toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' });
 
   return (
-    <header style={{
-      background: 'var(--bg2)', borderBottom: '1px solid var(--border)',
-      padding: '0 24px', height: '56px', display: 'flex', alignItems: 'center',
-      gap: '24px', position: 'sticky', top: 0, zIndex: 50, flexShrink: 0,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flex: 1, overflow: 'hidden' }}>
+    <header className="top-header">
+      <div className="top-metrics">
         <MetricPill label="Total Value"    value={fmtCr(stats.totalValue)} />
         <Sep />
         <MetricPill label="Overall P&L"   value={fmtCr(stats.totalGain)} sub={fmtPct(stats.totalReturnPct, true)} color={colorPnl(stats.totalGain)} />
@@ -26,14 +23,16 @@ export default function Header({ onRefreshPrices }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto', flexShrink: 0 }}>
         {onRefreshPrices && (
           <button onClick={onRefreshPrices} className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: '11px' }} title="Refresh live prices">
-            ↺ Prices
+            <RefreshCw size={14} /> Prices
           </button>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
           <span className="live-dot" />
           <span style={{ fontSize: '10px', color: 'var(--text3)' }}>LIVE</span>
         </div>
-        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: '#fff', cursor: 'pointer' }}>R</div>
+        <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer' }}>
+          <UserRound size={15} />
+        </div>
       </div>
     </header>
   );

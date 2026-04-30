@@ -2,7 +2,7 @@ import './globals.css';
 import { PortfolioProvider } from '@/context/PortfolioContext';
 
 export const metadata = {
-  title: 'PortFin — Personal Portfolio Dashboard',
+  title: 'PortFin - Personal Portfolio Dashboard',
   description: 'Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, and tax insights.',
 };
 

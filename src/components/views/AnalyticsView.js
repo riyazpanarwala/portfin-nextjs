@@ -62,7 +62,7 @@ export default function AnalyticsView() {
       </div>
 
       {/* 2-col: benchmark + tax */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+      <div className="grid-2" style={{ gap: '14px', marginBottom: '16px' }}>
         {/* Benchmark */}
         <div className="glass" style={{ padding: '18px' }}>
           <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Benchmark Comparison</div>
@@ -126,7 +126,7 @@ export default function AnalyticsView() {
       </div>
 
       {/* Monthly flow + holding distribution */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+      <div className="grid-2" style={{ gap: '14px', marginBottom: '16px' }}>
         <div className="glass" style={{ padding: '18px' }}>
           <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>Monthly MF Investment Flow</div>
           {flowBars.length > 0

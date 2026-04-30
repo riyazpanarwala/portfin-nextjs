@@ -28,7 +28,7 @@ export default function GoalView() {
 
   return (
     <div className="fade-up">
-      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: '16px' }}>
+      <div className="grid-sidebar-main" style={{ gap: '16px' }}>
         {/* Controls */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div className="glass" style={{ padding: '18px' }}>
