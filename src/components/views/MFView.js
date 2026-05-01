@@ -182,7 +182,7 @@ function DetailPanel({ h, priceMeta }) {
                     const inv  = l.qty * l.price;
                     const gain = l.qty * h.cmp - inv;
                     const ret  = inv > 0 ? gain / inv * 100 : 0;
-                    const days = Math.round((Date.now() - new Date(l.date)) / 864e5);
+                    const days = Math.round((new Date() - new Date(l.date)) / 864e5);
                     const xi   = calcLotXIRR(l, h.cmp);
                     return (
                       <tr key={i}>
