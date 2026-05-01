@@ -412,7 +412,15 @@ export function WaterfallChart({ steps }) {
           tooltip: {
             callbacks: {
               label: ctx => {
-                const [base, top] = ctx.parsed._custom ?? [0, ctx.parsed.y];
+						const custom = ctx.parsed._custom;
+
+						const base = Array.isArray(custom)
+						  ? custom[0]
+						  : custom?.start ?? 0;
+
+						const top = Array.isArray(custom)
+						  ? custom[1]
+						  : custom?.end ?? ctx.parsed.y;
                 const val = top - base;
                 return ` ₹${(Math.abs(val) / 100000).toFixed(2)}L`;
               },
