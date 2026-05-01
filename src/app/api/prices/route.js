@@ -1,20 +1,40 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import YahooFinance from 'yahoo-finance2';
 
 export const dynamic = 'force-dynamic';
 
+const yahooFinance = new YahooFinance();
+const PRICE_STALE_MS = 6 * 60 * 60 * 1000;
+
+function yahooSymbol(symbol, exchange) {
+  return exchange === 'BSE' ? `${symbol}.BO` : `${symbol}.NS`;
+}
+
+function isFresh(updatedAt) {
+  return updatedAt && Date.now() - new Date(updatedAt).getTime() < PRICE_STALE_MS;
+}
+
+async function saveInstrumentPrice(inst, price) {
+  await prisma.instrument.update({
+    where: { id: inst.id },
+    data: { price, priceUpdatedAt: new Date() },
+  }).catch(() => {});
+}
+
 /**
- * POST /api/prices   { symbols: string[], assetTypes?: Record<string,string> }
- * 1. For MF instruments: search AMFI NAVAll.txt via schemeCode stored in instrument
- * 2. For STOCK: return latest price stored in instruments.price
+ * POST /api/prices   { symbols: string[], force?: boolean, cacheOnly?: boolean }
+ * 1. For STOCK/ETF instruments: refresh from Yahoo Finance when stale
+ * 2. For MF instruments: search AMFI NAVAll.txt
  * 3. Fallback: last recorded trade price from DB
  */
 export async function POST(request) {
   try {
-    const { symbols } = await request.json();
+    const { symbols, force = false, cacheOnly = false } = await request.json();
     if (!Array.isArray(symbols) || !symbols.length) return NextResponse.json({ prices: {} });
 
     const prices = {};
+    const meta = {};
 
     // Load all instruments for these symbols
     const instruments = await prisma.instrument.findMany({
@@ -25,13 +45,49 @@ export async function POST(request) {
     const mfInstrs = instruments.filter(i => i.assetType === 'MF');
     const stockInstrs = instruments.filter(i => i.assetType === 'STOCK');
 
-    // For stocks/ETFs: use stored price first
+    // For stocks/ETFs: refresh stale prices from Yahoo Finance, otherwise use cache
     for (const inst of stockInstrs) {
-      if (inst.price) prices[inst.symbol] = parseFloat(inst.price);
+      const cachedPrice = inst.price ? parseFloat(inst.price) : null;
+      if (cacheOnly && cachedPrice) {
+        prices[inst.symbol] = cachedPrice;
+        meta[inst.symbol] = { source: 'cache', updatedAt: inst.priceUpdatedAt };
+        continue;
+      }
+
+      if (!force && cachedPrice && isFresh(inst.priceUpdatedAt)) {
+        prices[inst.symbol] = cachedPrice;
+        meta[inst.symbol] = { source: 'cache', updatedAt: inst.priceUpdatedAt };
+        continue;
+      }
+
+      try {
+        const quote = await yahooFinance.quote(yahooSymbol(inst.symbol, inst.exchange), {}, { timeout: 10000 });
+        const livePrice = quote?.regularMarketPrice ?? quote?.postMarketPrice ?? quote?.previousClose ?? null;
+        if (livePrice && livePrice > 0) {
+          prices[inst.symbol] = livePrice;
+          meta[inst.symbol] = { source: 'yahoo', updatedAt: new Date().toISOString() };
+          await saveInstrumentPrice(inst, livePrice);
+          continue;
+        }
+      } catch (e) {
+        console.warn(`Yahoo fetch failed for ${inst.symbol}:`, e.message);
+      }
+
+      if (cachedPrice) {
+        prices[inst.symbol] = cachedPrice;
+        meta[inst.symbol] = { source: 'cache-fallback', updatedAt: inst.priceUpdatedAt };
+      }
     }
 
-    // For MFs: fetch live NAV from AMFI
-    if (mfInstrs.length > 0) {
+    // For MFs: use cached NAV on page load; fetch live NAV only on explicit refresh
+    if (cacheOnly) {
+      for (const inst of mfInstrs) {
+        if (inst.price) {
+          prices[inst.symbol] = parseFloat(inst.price);
+          meta[inst.symbol] = { source: 'cache', updatedAt: inst.priceUpdatedAt };
+        }
+      }
+    } else if (mfInstrs.length > 0) {
       try {
         const res = await fetch('https://portal.amfiindia.com/spages/NAVAll.txt', {
           signal: AbortSignal.timeout(15000),
@@ -64,11 +120,8 @@ export async function POST(request) {
             }
             if (nav) {
               prices[inst.symbol] = nav;
-              // Persist the refreshed price
-              await prisma.instrument.update({
-                where: { id: inst.id },
-                data: { price: nav, priceUpdatedAt: new Date() },
-              }).catch(() => { });
+              meta[inst.symbol] = { source: 'amfi', updatedAt: new Date().toISOString() };
+              await saveInstrumentPrice(inst, nav);
             }
           }
         }
@@ -85,10 +138,13 @@ export async function POST(request) {
         orderBy: { tradeDate: 'desc' },
         select: { price: true },
       });
-      if (lastTrade) prices[sym] = parseFloat(lastTrade.price);
+      if (lastTrade) {
+        prices[sym] = parseFloat(lastTrade.price);
+        meta[sym] = { source: 'last-trade', updatedAt: null };
+      }
     }
 
-    return NextResponse.json({ prices });
+    return NextResponse.json({ prices, meta });
   } catch (e) {
     console.error('POST /api/prices:', e);
     return NextResponse.json({ prices: {} });
@@ -108,7 +164,11 @@ export async function PATCH(request) {
       data: { price: parseFloat(price), priceUpdatedAt: new Date() },
     });
 
-    return NextResponse.json({ success: true, updated: updated.count });
+    return NextResponse.json({
+      success: true,
+      updated: updated.count,
+      meta: { [symbol.toUpperCase()]: { source: 'manual', updatedAt: new Date().toISOString() } },
+    });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

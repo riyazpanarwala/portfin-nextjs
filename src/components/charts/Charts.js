@@ -7,13 +7,11 @@ export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = 
   const ir = r * innerRadius;
   const total = data.reduce((s, d) => s + d.value, 0);
 
-  let angle = -Math.PI / 2;
-  const slices = data.map(d => {
-    const start = angle;
+  const slices = data.reduce((acc, d) => {
+    const start = acc.length ? acc[acc.length - 1].end : -Math.PI / 2;
     const sweep = (d.value / total) * 2 * Math.PI;
-    angle += sweep;
-    return { ...d, start, sweep, end: angle };
-  });
+    return [...acc, { ...d, start, sweep, end: start + sweep }];
+  }, []);
 
   function arc(cx, cy, rx, ry, startAngle, endAngle) {
     const x1 = cx + rx * Math.cos(startAngle);
@@ -169,6 +167,124 @@ export function HBar({ value, max, color, label, sub }) {
       <div style={{ height: '5px', background: 'var(--bg3)', borderRadius: '3px', overflow: 'hidden' }}>
         <div style={{ height: '100%', width: pct + '%', background: color, borderRadius: '3px', transition: 'width 0.6s ease' }} />
       </div>
+    </div>
+  );
+}
+
+export function HoldingPerformanceChart({ lots, cmp, width = 620, height = 190 }) {
+  if (!lots || lots.length === 0 || !cmp) {
+    return <div style={{ color: 'var(--text3)', fontSize: 12 }}>No chart data</div>;
+  }
+
+  const monthly = {};
+  [...lots]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .forEach(lot => {
+      const month = lot.date.slice(0, 7);
+      if (!monthly[month]) monthly[month] = { month, qty: 0, invested: 0 };
+      monthly[month].qty += lot.qty;
+      monthly[month].invested += lot.qty * lot.price;
+    });
+
+  const points = Object.values(monthly)
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .reduce((acc, row) => {
+      const prev = acc[acc.length - 1] || { qty: 0, invested: 0 };
+      const qty = prev.qty + row.qty;
+      const invested = prev.invested + row.invested;
+      return [
+        ...acc,
+        {
+        qty,
+        month: row.month,
+        invested,
+        markedValue: qty * cmp,
+        gain: qty * cmp - invested,
+        },
+      ];
+    }, []);
+
+  const chartPoints = points.length < 2
+    ? [{ ...points[0], month: 'Start', markedValue: points[0].invested, gain: 0 }, ...points]
+    : points;
+
+  const pad = { top: 22, right: 48, bottom: 34, left: 54 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const values = chartPoints.flatMap(p => [p.invested, p.markedValue]);
+  const max = Math.max(...values) * 1.08 || 1;
+  const min = Math.min(0, ...values) * 0.95;
+  const range = max - min || 1;
+
+  function toX(i) {
+    return pad.left + (i / Math.max(chartPoints.length - 1, 1)) * chartW;
+  }
+
+  function toY(v) {
+    return pad.top + ((max - v) / range) * chartH;
+  }
+
+  function lineFor(key) {
+    return chartPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(p[key])}`).join(' ');
+  }
+
+  const valueLine = lineFor('markedValue');
+  const investedLine = lineFor('invested');
+  const last = chartPoints[chartPoints.length - 1];
+  const labels = chartPoints.filter((_, i) => i === 0 || i === chartPoints.length - 1 || i % Math.ceil(chartPoints.length / 5) === 0);
+
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ minWidth: 420, overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="holdingValueGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {[0, 0.25, 0.5, 0.75, 1].map((level, i) => {
+          const y = pad.top + level * chartH;
+          return (
+            <line key={i} x1={pad.left} x2={pad.left + chartW} y1={y} y2={y}
+              stroke="rgba(45,64,96,0.45)" strokeWidth="1" strokeDasharray="4,4" />
+          );
+        })}
+
+        <path
+          d={`${valueLine} L ${toX(chartPoints.length - 1)} ${pad.top + chartH} L ${toX(0)} ${pad.top + chartH} Z`}
+          fill="url(#holdingValueGrad)"
+        />
+        <path d={investedLine} fill="none" stroke="var(--text3)" strokeWidth="1.6" strokeDasharray="5,4" />
+        <path d={valueLine} fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+
+        {chartPoints.map((p, i) => (
+          <circle key={i} cx={toX(i)} cy={toY(p.markedValue)} r={i === chartPoints.length - 1 ? 4 : 2.5}
+            fill="var(--accent2)" stroke="var(--bg)" strokeWidth="1.5" />
+        ))}
+
+        {labels.map((p, i) => {
+          const idx = chartPoints.indexOf(p);
+          return (
+            <text key={i} x={toX(idx)} y={height - 10} textAnchor="middle" fill="var(--text3)" fontSize="9">
+              {p.month}
+            </text>
+          );
+        })}
+
+        <text x={pad.left} y={12} fill="var(--accent2)" fontSize="10" fontWeight="700">Current marked value</text>
+        <line x1={pad.left + 126} y1={9} x2={pad.left + 146} y2={9} stroke="var(--text3)" strokeWidth="1.6" strokeDasharray="5,4" />
+        <text x={pad.left + 152} y={12} fill="var(--text3)" fontSize="10" fontWeight="700">Invested</text>
+
+        <text x={pad.left + chartW + 6} y={toY(last.markedValue) + 4}
+          fill="var(--accent2)" fontSize="10" fontFamily="var(--font-mono)" fontWeight="700">
+          {(last.markedValue / 100000).toFixed(1)}L
+        </text>
+        <text x={pad.left + chartW + 6} y={toY(last.invested) + 4}
+          fill="var(--text3)" fontSize="10" fontFamily="var(--font-mono)" fontWeight="700">
+          {(last.invested / 100000).toFixed(1)}L
+        </text>
+      </svg>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, colorPnl, sectorColor } from '@/lib/store';
+import { HoldingPerformanceChart } from '@/components/charts/Charts';
 
 // ── XIRR (Newton-Raphson) ─────────────────────────────────────────────────────
 function computeXIRR(cashflows) {
@@ -96,9 +97,10 @@ function HeaderRow() {
 }
 
 // ── Expanded detail ───────────────────────────────────────────────────────────
-function DetailPanel({ h }) {
+function DetailPanel({ h, priceMeta }) {
   const [tab, setTab] = useState('lots');
   const xirr = useMemo(() => calcFundXIRR(h.lots, h.cmp), [h.symbol, h.cmp]);
+  const meta = priceMeta?.[h.symbol];
 
   const monthly = useMemo(() => {
     const map = {};
@@ -138,6 +140,18 @@ function DetailPanel({ h }) {
             {xirr != null ? pct(xirr) : '—'}
           </span>{' '}
           <span style={{ color: 'var(--text3)' }}>p.a.</span>
+          {meta && (
+            <span style={{ marginLeft: 10, color: 'var(--text3)', fontSize: 11 }}>
+              Price: {meta.source}{meta.updatedAt ? ` - ${new Date(meta.updatedAt).toLocaleString('en-IN')}` : ''}
+            </span>
+          )}
+        </div>
+
+        <div style={{ background: 'rgba(59,130,246,0.04)', border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 8 }}>
+            Investment Path vs Current NAV
+          </div>
+          <HoldingPerformanceChart lots={h.lots} cmp={h.cmp} />
         </div>
 
         {/* Tabs */}
@@ -241,7 +255,7 @@ const SORTS = [
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function MFView() {
-  const { mfHoldings, stats, setActiveView } = usePortfolio();
+  const { mfHoldings, stats, setActiveView, priceMeta } = usePortfolio();
   const [sort, setSort]         = useState({ key: 'returnPct', dir: -1 });
   const [category, setCategory] = useState('All');
   const [expanded, setExpanded] = useState({});
@@ -384,7 +398,7 @@ export default function MFView() {
                 {/* Holding */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:10, color:'var(--text2)' }}>{holdStr(h.holdingDays)}</div>
               </div>
-              {open && <DetailPanel h={h} />}
+              {open && <DetailPanel h={h} priceMeta={priceMeta} />}
             </div>
           );
         })}

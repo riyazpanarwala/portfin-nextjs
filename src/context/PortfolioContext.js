@@ -10,6 +10,7 @@ export function PortfolioProvider({ children }) {
   const [trades, setTrades]               = useState([]);
   const [portfolioId, setPortfolioId]     = useState(null);
   const [currentPrices, setCurrentPrices] = useState({});
+  const [priceMeta, setPriceMeta]         = useState({});
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState(null);
   const [activeView, setActiveView]       = useState('overview');
@@ -50,9 +51,13 @@ export function PortfolioProvider({ children }) {
         const prRes = await fetch('/api/prices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols }),
+          body: JSON.stringify({ symbols, cacheOnly: true }),
         });
-        if (prRes.ok) setCurrentPrices((await prRes.json()).prices || {});
+        if (prRes.ok) {
+          const priceData = await prRes.json();
+          setCurrentPrices(priceData.prices || {});
+          setPriceMeta(priceData.meta || {});
+        }
       }
     } catch (err) {
       setError(err.message);
@@ -88,9 +93,13 @@ export function PortfolioProvider({ children }) {
         const pr = await fetch('/api/prices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols: [newTrade.symbol] }),
+          body: JSON.stringify({ symbols: [newTrade.symbol], cacheOnly: true }),
         });
-        if (pr.ok) { const prData = await pr.json(); setCurrentPrices(p => ({ ...p, ...prData.prices })); }
+        if (pr.ok) {
+          const prData = await pr.json();
+          setCurrentPrices(p => ({ ...p, ...prData.prices }));
+          setPriceMeta(p => ({ ...p, ...(prData.meta || {}) }));
+        }
       }
       toast('Trade recorded ✓', 'green');
     } catch (err) {
@@ -146,6 +155,8 @@ export function PortfolioProvider({ children }) {
       });
       if (!res.ok) throw new Error('Price update failed');
       setCurrentPrices(p => ({ ...p, [symbol]: parseFloat(price) }));
+      const data = await res.json();
+      setPriceMeta(p => ({ ...p, ...(data.meta || {}) }));
       toast(`${symbol} price updated ✓`, 'green');
     } catch (err) {
       toast(err.message, 'red');
@@ -160,10 +171,12 @@ export function PortfolioProvider({ children }) {
       const res = await fetch('/api/prices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols }),
+        body: JSON.stringify({ symbols, force: true }),
       });
       if (res.ok) {
-        setCurrentPrices((await res.json()).prices || {});
+        const priceData = await res.json();
+        setCurrentPrices(priceData.prices || {});
+        setPriceMeta(priceData.meta || {});
         toast('Prices refreshed ✓', 'green');
       }
     } catch (err) { toast(err.message, 'red'); }
@@ -179,7 +192,7 @@ export function PortfolioProvider({ children }) {
   return (
     <PortfolioCtx.Provider value={{
       trades, holdings, stats, mfHoldings, stHoldings,
-      monthlyFlow, taxData, currentPrices,
+      monthlyFlow, taxData, currentPrices, priceMeta,
       portfolioId, loading, error,
       activeView, setActiveView,
       addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,
