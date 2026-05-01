@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, colorPnl, sectorColor } from '@/lib/store';
 
@@ -72,12 +72,92 @@ function TaxBadge({ days }) {
   );
 }
 
+// ── Inline Price Editor ───────────────────────────────────────────────────────
+function PriceCell({ symbol, cmp, onSaved }) {
+  const { updatePrice } = usePortfolio();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal]         = useState('');
+  const [saving, setSaving]   = useState(false);
+  const inputRef              = useRef(null);
+
+  function startEdit(e) {
+    e.stopPropagation();
+    setVal(fmt(cmp, 2));
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 50);
+  }
+
+  async function save(e) {
+    e.stopPropagation();
+    const price = parseFloat(val);
+    if (!price || price <= 0) { setEditing(false); return; }
+    setSaving(true);
+    await updatePrice(symbol, price);
+    setSaving(false);
+    setEditing(false);
+    onSaved && onSaved(price);
+  }
+
+  function onKey(e) {
+    e.stopPropagation();
+    if (e.key === 'Enter') save(e);
+    if (e.key === 'Escape') setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:4, padding:'2px 0' }} onClick={e => e.stopPropagation()}>
+        <span style={{ fontSize:11, color:'var(--text3)' }}>₹</span>
+        <input
+          ref={inputRef}
+          type="number"
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={onKey}
+          onBlur={save}
+          style={{
+            width:72, padding:'2px 4px', fontSize:11,
+            fontFamily:'var(--font-mono)', textAlign:'right',
+            background:'var(--bg3)', border:'1px solid var(--accent)',
+            borderRadius:4, color:'var(--text)',
+          }}
+        />
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{ background:'var(--accent)', border:'none', borderRadius:3, color:'#fff', cursor:'pointer', padding:'2px 5px', fontSize:10, fontWeight:700 }}
+        >
+          {saving ? '…' : '✓'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:4, justifyContent:'flex-end', padding:'9px 5px' }}>
+      <span style={{ fontFamily:'var(--font-mono)', fontSize:11 }}>₹{fmt(cmp, 1)}</span>
+      <button
+        onClick={startEdit}
+        title={`Edit CMP for ${symbol}`}
+        style={{
+          background:'transparent', border:'1px solid var(--border)', borderRadius:3,
+          color:'var(--text3)', cursor:'pointer', padding:'1px 4px',
+          fontSize:9, lineHeight:1, opacity:0.6, transition:'all 0.15s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.opacity='1'; e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent2)'; }}
+        onMouseLeave={e => { e.currentTarget.style.opacity='0.6'; e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.color='var(--text3)'; }}
+      >
+        ✎
+      </button>
+    </div>
+  );
+}
+
 // ── 12-column grid ────────────────────────────────────────────────────────────
-// chevron | symbol | sector | # | qty | cmp | invested | value | gain | cagr | return% | hold
-const COL = '20px 1fr 120px 32px 72px 72px 80px 80px 88px 64px 130px 50px';
+const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 88px 64px 130px 50px';
 
 function HeaderRow() {
-  const cols = ['', 'STOCK', 'SECTOR', '#', 'QTY', 'CMP', 'INVESTED', 'VALUE', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
+  const cols = ['', 'STOCK', 'SECTOR', '#', 'QTY', 'CMP ✎', 'INVESTED', 'VALUE', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
   return (
     <div style={{
       display:'grid', gridTemplateColumns: COL, padding:'0 6px',
@@ -85,7 +165,7 @@ function HeaderRow() {
     }}>
       {cols.map((c, i) => (
         <div key={i} style={{
-          fontSize:9, fontWeight:700, letterSpacing:'0.07em', color:'var(--text3)',
+          fontSize:9, fontWeight:700, letterSpacing:'0.07em', color: i === 5 ? 'var(--accent2)' : 'var(--text3)',
           padding:'7px 5px', textAlign: i > 2 ? 'right' : 'left', whiteSpace:'nowrap',
         }}>{c}</div>
       ))}
@@ -325,6 +405,12 @@ export default function StocksView() {
         </div>
       </div>
 
+      {/* Price edit hint */}
+      <div style={{ fontSize:11, color:'var(--text3)', display:'flex', alignItems:'center', gap:6, paddingLeft:2 }}>
+        <span style={{ color:'var(--accent2)', fontWeight:600 }}>✎</span>
+        Click the edit icon next to any CMP to update an individual stock price · Click row to expand lot details
+      </div>
+
       {/* Table */}
       <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, overflow:'hidden' }}>
         <HeaderRow />
@@ -362,8 +448,10 @@ export default function StocksView() {
                 {/* Qty */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text2)' }}>{fmt(h.qty, 0)}</div>
 
-                {/* CMP */}
-                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11 }}>₹{fmt(h.cmp, 1)}</div>
+                {/* CMP — inline editable */}
+                <div onClick={e => e.stopPropagation()}>
+                  <PriceCell symbol={h.symbol} cmp={h.cmp} />
+                </div>
 
                 {/* Invested */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11 }}>{fmtCr(h.invested)}</div>

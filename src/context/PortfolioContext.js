@@ -136,6 +136,22 @@ export function PortfolioProvider({ children }) {
     }
   }
 
+  // ── Update single symbol price ────────────────────────────────────────────
+  async function updatePrice(symbol, price) {
+    try {
+      const res = await fetch('/api/prices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, price }),
+      });
+      if (!res.ok) throw new Error('Price update failed');
+      setCurrentPrices(p => ({ ...p, [symbol]: parseFloat(price) }));
+      toast(`${symbol} price updated ✓`, 'green');
+    } catch (err) {
+      toast(err.message, 'red');
+    }
+  }
+
   // ── Update prices manually ────────────────────────────────────────────────
   async function refreshPrices() {
     const symbols = [...new Set(trades.map(t => t.symbol))];
@@ -166,7 +182,7 @@ export function PortfolioProvider({ children }) {
       monthlyFlow, taxData, currentPrices,
       portfolioId, loading, error,
       activeView, setActiveView,
-      addTrade, deleteTrade, saveSnapshot, refreshPrices,
+      addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,
       refreshData: loadData, toasts, toast,
     }}>
       {children}
