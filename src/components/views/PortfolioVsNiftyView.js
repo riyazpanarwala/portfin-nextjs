@@ -3,9 +3,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
+import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
 
 // ── Nifty 50 historical monthly close (Jan 2020 – Apr 2026) ──────────────────
-// Source: NSE India historical data (approximate monthly closes)
 const NIFTY_HISTORY = {
   '2020-01': 12282, '2020-02': 11633, '2020-03': 8598,  '2020-04': 9860,
   '2020-05': 9580,  '2020-06': 10302, '2020-07': 11073, '2020-08': 11388,
@@ -28,195 +28,41 @@ const NIFTY_HISTORY = {
   '2026-01': 27502, '2026-02': 26843, '2026-03': 27920, '2026-04': 23500,
 };
 
-// Get Nifty value for a given month, filling forward if missing
 function getNiftyForMonth(month) {
   if (NIFTY_HISTORY[month]) return NIFTY_HISTORY[month];
-  // Find nearest prior month
   const months = Object.keys(NIFTY_HISTORY).sort();
-  const prior = months.filter(m => m <= month).pop();
+  const prior  = months.filter(m => m <= month).pop();
   return prior ? NIFTY_HISTORY[prior] : null;
 }
 
-// ── Compute rebased series (both starting at 100) ────────────────────────────
 function rebaseToIndex(series, baseValue) {
   return series.map(d => ({ ...d, indexed: baseValue > 0 ? (d.value / baseValue) * 100 : 100 }));
 }
 
-// ── Chart SVG ─────────────────────────────────────────────────────────────────
-function ComparisonChart({ portfolioSeries, niftySeries, width = 700, height = 260 }) {
-  if (!portfolioSeries.length || !niftySeries.length) return null;
-
-  const pad = { top: 24, right: 60, bottom: 36, left: 52 };
-  const W = width - pad.left - pad.right;
-  const H = height - pad.top - pad.bottom;
-
-  const allVals = [
-    ...portfolioSeries.map(d => d.indexed),
-    ...niftySeries.map(d => d.indexed),
-  ];
-  const minV = Math.min(...allVals) * 0.97;
-  const maxV = Math.max(...allVals) * 1.03;
-  const range = maxV - minV || 1;
-
-  const allMonths = [...new Set([
-    ...portfolioSeries.map(d => d.month),
-    ...niftySeries.map(d => d.month),
-  ])].sort();
-
-  function toX(month) {
-    const idx = allMonths.indexOf(month);
-    return pad.left + (idx / Math.max(allMonths.length - 1, 1)) * W;
-  }
-  function toY(val) {
-    return pad.top + ((maxV - val) / range) * H;
-  }
-
-  const pLine = portfolioSeries.map((d, i) =>
-    `${i === 0 ? 'M' : 'L'} ${toX(d.month)} ${toY(d.indexed)}`
-  ).join(' ');
-  const nLine = niftySeries.map((d, i) =>
-    `${i === 0 ? 'M' : 'L'} ${toX(d.month)} ${toY(d.indexed)}`
-  ).join(' ');
-
-  const pArea = pLine +
-    ` L ${toX(portfolioSeries[portfolioSeries.length - 1].month)} ${pad.top + H}` +
-    ` L ${toX(portfolioSeries[0].month)} ${pad.top + H} Z`;
-
-  // Y grid lines
-  const gridVals = [];
-  const step = Math.ceil((maxV - minV) / 5 / 10) * 10;
-  for (let v = Math.ceil(minV / step) * step; v <= maxV; v += step) {
-    gridVals.push(v);
-  }
-
-  // X labels — every 6 months
-  const xLabels = allMonths.filter((m, i) => i % 6 === 0 || i === allMonths.length - 1);
-
-  const lastP = portfolioSeries[portfolioSeries.length - 1];
-  const lastN = niftySeries[niftySeries.length - 1];
-  const portfolioAhead = lastP && lastN && lastP.indexed > lastN.indexed;
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
-      <defs>
-        <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.35" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.02" />
-        </linearGradient>
-        <clipPath id="chartClip">
-          <rect x={pad.left} y={pad.top} width={W} height={H} />
-        </clipPath>
-      </defs>
-
-      {/* Grid lines */}
-      {gridVals.map((v, i) => (
-        <g key={i}>
-          <line
-            x1={pad.left} y1={toY(v)} x2={pad.left + W} y2={toY(v)}
-            stroke="rgba(45,64,96,0.5)" strokeWidth="1" strokeDasharray="4,4"
-          />
-          <text x={pad.left - 6} y={toY(v) + 4} textAnchor="end"
-            fill="var(--text3)" fontSize="9" fontFamily="var(--font-mono)">
-            {v.toFixed(0)}
-          </text>
-        </g>
-      ))}
-
-      {/* Baseline at 100 */}
-      {minV <= 100 && maxV >= 100 && (
-        <line
-          x1={pad.left} y1={toY(100)} x2={pad.left + W} y2={toY(100)}
-          stroke="rgba(148,169,196,0.4)" strokeWidth="1.5" strokeDasharray="6,3"
-        />
-      )}
-
-      {/* Portfolio area */}
-      <path d={pArea} fill="url(#pGrad)" clipPath="url(#chartClip)" />
-
-      {/* Nifty line */}
-      <path d={nLine} fill="none" stroke="var(--yellow)" strokeWidth="2"
-        strokeLinecap="round" strokeDasharray="6,3" clipPath="url(#chartClip)" />
-
-      {/* Portfolio line */}
-      <path d={pLine} fill="none" stroke="var(--accent)" strokeWidth="2.5"
-        strokeLinecap="round" clipPath="url(#chartClip)" />
-
-      {/* End dots */}
-      {lastP && (
-        <circle cx={toX(lastP.month)} cy={toY(lastP.indexed)} r="4"
-          fill="var(--accent)" stroke="var(--bg)" strokeWidth="2" />
-      )}
-      {lastN && (
-        <circle cx={toX(lastN.month)} cy={toY(lastN.indexed)} r="4"
-          fill="var(--yellow)" stroke="var(--bg)" strokeWidth="2" />
-      )}
-
-      {/* End value labels */}
-      {lastP && (
-        <text x={pad.left + W + 6} y={toY(lastP.indexed) + 4}
-          fill="var(--accent2)" fontSize="10" fontFamily="var(--font-mono)" fontWeight="700">
-          {lastP.indexed.toFixed(1)}
-        </text>
-      )}
-      {lastN && (
-        <text x={pad.left + W + 6} y={toY(lastN.indexed) + 4}
-          fill="var(--yellow)" fontSize="10" fontFamily="var(--font-mono)" fontWeight="700">
-          {lastN.indexed.toFixed(1)}
-        </text>
-      )}
-
-      {/* X axis labels */}
-      {xLabels.map((m, i) => (
-        <text key={i} x={toX(m)} y={pad.top + H + 20}
-          textAnchor="middle" fill="var(--text3)" fontSize="9">
-          {m.slice(0, 7)}
-        </text>
-      ))}
-
-      {/* Legend */}
-      <rect x={pad.left} y={8} width="10" height="3" rx="1" fill="var(--accent)" />
-      <text x={pad.left + 14} y={14} fill="var(--text2)" fontSize="10" fontWeight="600">Your Portfolio</text>
-      <line x1={pad.left + 100} y1={10} x2={pad.left + 114} y2={10}
-        stroke="var(--yellow)" strokeWidth="2" strokeDasharray="5,3" />
-      <text x={pad.left + 118} y={14} fill="var(--text2)" fontSize="10" fontWeight="600">Nifty 50</text>
-      <text x={pad.left + 172} y={14} fill="var(--text3)" fontSize="9">(rebased to 100)</text>
-    </svg>
-  );
-}
-
 // ── Rolling return comparison ─────────────────────────────────────────────────
 function RollingReturns({ portfolioSeries, niftySeries }) {
-  const periods = [
-    { label: '6M', months: 6 },
-    { label: '1Y', months: 12 },
-    { label: '2Y', months: 24 },
-    { label: '3Y', months: 36 },
-  ];
-
-  const pMap = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
-  const nMap = Object.fromEntries(niftySeries.map(d => [d.month, d.value]));
+  const periods   = [{ label: '6M', months: 6 }, { label: '1Y', months: 12 }, { label: '2Y', months: 24 }, { label: '3Y', months: 36 }];
+  const pMap      = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
+  const nMap      = Object.fromEntries(niftySeries.map(d => [d.month, d.value]));
   const allMonths = portfolioSeries.map(d => d.month).sort();
   const lastMonth = allMonths[allMonths.length - 1];
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
       {periods.map(({ label, months }) => {
-        const targetIdx = allMonths.length - 1;
-        const fromIdx   = targetIdx - months;
+        const fromIdx = allMonths.length - 1 - months;
         if (fromIdx < 0) return (
           <div key={label} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
             <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text3)' }}>{label}</div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>Insufficient data</div>
           </div>
         );
-
         const fromMonth = allMonths[fromIdx];
         const pStart = pMap[fromMonth], pEnd = pMap[lastMonth];
         const nStart = nMap[fromMonth], nEnd = nMap[lastMonth];
         const pRet   = pStart > 0 ? ((pEnd / pStart) - 1) * 100 : null;
         const nRet   = nStart > 0 ? ((nEnd / nStart) - 1) * 100 : null;
         const alpha  = pRet != null && nRet != null ? pRet - nRet : null;
-
         return (
           <div key={label} style={{
             background: 'var(--bg3)', borderRadius: '8px', padding: '14px',
@@ -256,15 +102,10 @@ function RollingReturns({ portfolioSeries, niftySeries }) {
 // ── Hypothetical growth table ─────────────────────────────────────────────────
 function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
   if (!portfolioSeries.length) return null;
-
-  const baseP     = portfolioSeries[0]?.value || 1;
-  const baseN     = niftySeries[0]?.value || 1;
-  const baseAmt   = totalInvested || 100000;
-
-  const milestones = portfolioSeries.filter((_, i) =>
-    i === 0 || i % 6 === 0 || i === portfolioSeries.length - 1
-  );
-
+  const baseP   = portfolioSeries[0]?.value || 1;
+  const baseN   = niftySeries[0]?.value    || 1;
+  const baseAmt = totalInvested || 100000;
+  const milestones = portfolioSeries.filter((_, i) => i === 0 || i % 6 === 0 || i === portfolioSeries.length - 1);
   return (
     <div style={{ overflowX: 'auto' }}>
       <table>
@@ -280,19 +121,15 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
         </thead>
         <tbody>
           {milestones.map((d, i) => {
-            const niftyD = niftySeries.find(n => n.month === d.month) || niftySeries[i] || niftySeries[niftySeries.length - 1];
+            const niftyD   = niftySeries.find(n => n.month === d.month) || niftySeries[niftySeries.length - 1];
             const portVal  = baseAmt * (d.value / baseP);
             const niftyVal = baseAmt * (niftyD.value / baseN);
             const alpha    = portVal - niftyVal;
             return (
               <tr key={i}>
                 <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.month}</td>
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: '600' }}>
-                  {(d.value / baseP * 100).toFixed(1)}
-                </td>
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--yellow)', fontWeight: '600' }}>
-                  {(niftyD.value / baseN * 100).toFixed(1)}
-                </td>
+                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: '600' }}>{(d.value / baseP * 100).toFixed(1)}</td>
+                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--yellow)',  fontWeight: '600' }}>{(niftyD.value / baseN * 100).toFixed(1)}</td>
                 <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(portVal)}</td>
                 <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtCr(niftyVal)}</td>
                 <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: colorPnl(alpha) }}>
@@ -309,10 +146,10 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
 
 // ── Main View ─────────────────────────────────────────────────────────────────
 export default function PortfolioVsNiftyView() {
-  const { portfolioId, stats, trades } = usePortfolio();
+  const { portfolioId, stats } = usePortfolio();
   const [snapshots, setSnapshots] = useState([]);
   const [loading, setLoading]     = useState(true);
-  const [mode, setMode]           = useState('indexed'); // indexed | absolute
+  const [mode, setMode]           = useState('indexed');
 
   useEffect(() => {
     if (!portfolioId) return;
@@ -324,50 +161,38 @@ export default function PortfolioVsNiftyView() {
       .finally(() => setLoading(false));
   }, [portfolioId]);
 
-  // Portfolio series from snapshots
   const portfolioSeries = useMemo(() => {
     if (!snapshots.length) return [];
     return snapshots.map(s => ({
-      month: s.snapshotAt.slice(0, 7),
-      value: parseFloat(s.totalValue),
-      invested: parseFloat(s.totalInvested),
-      gain: parseFloat(s.totalGain),
+      month:     s.snapshotAt.slice(0, 7),
+      value:     parseFloat(s.totalValue),
+      invested:  parseFloat(s.totalInvested),
+      gain:      parseFloat(s.totalGain),
       returnPct: parseFloat(s.totalReturnPct),
-      date: s.snapshotAt,
+      date:      s.snapshotAt,
     }));
   }, [snapshots]);
 
-  // Nifty series aligned to portfolio months
-  const niftySeries = useMemo(() => {
-    if (!portfolioSeries.length) return [];
-    return portfolioSeries.map(d => ({
-      month: d.month,
-      value: getNiftyForMonth(d.month) || 0,
-    })).filter(d => d.value > 0);
-  }, [portfolioSeries]);
+  const niftySeries = useMemo(() =>
+    portfolioSeries.map(d => ({ month: d.month, value: getNiftyForMonth(d.month) || 0 })).filter(d => d.value > 0),
+  [portfolioSeries]);
 
-  // Rebased series (both start at 100)
   const rebasedPortfolio = useMemo(() => {
     if (!portfolioSeries.length) return [];
-    const base = portfolioSeries[0].value;
-    return rebaseToIndex(portfolioSeries, base);
+    return rebaseToIndex(portfolioSeries, portfolioSeries[0].value);
   }, [portfolioSeries]);
 
   const rebasedNifty = useMemo(() => {
     if (!niftySeries.length) return [];
-    const base = niftySeries[0].value;
-    return rebaseToIndex(niftySeries, base);
+    return rebaseToIndex(niftySeries, niftySeries[0].value);
   }, [niftySeries]);
 
-  // Stats
   const lastP  = rebasedPortfolio[rebasedPortfolio.length - 1];
   const lastN  = rebasedNifty[rebasedNifty.length - 1];
   const alpha  = lastP && lastN ? lastP.indexed - lastN.indexed : null;
   const pTotal = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
   const nTotal = lastN ? ((lastN.indexed / 100) - 1) * 100 : 0;
-
-  // Earliest snapshot for context
-  const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
+  const firstSnapshotDate  = snapshots[0]?.snapshotAt?.slice(0, 10);
   const latestSnapshotDate = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
 
   if (loading) return (
@@ -382,11 +207,8 @@ export default function PortfolioVsNiftyView() {
     <div className="fade-up">
       <div className="glass" style={{ padding: '40px', textAlign: 'center' }}>
         <div style={{ fontSize: '40px', marginBottom: '12px' }}>📈</div>
-        <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text)', marginBottom: '8px' }}>
-          Not enough snapshot data yet
-        </div>
+        <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text)', marginBottom: '8px' }}>Not enough snapshot data yet</div>
         <div style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '420px', margin: '0 auto', marginBottom: '20px' }}>
-          This view compares your portfolio value over time against Nifty 50.
           You need at least 2 saved snapshots to draw a comparison chart.
         </div>
         <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '20px' }}>
@@ -401,7 +223,6 @@ export default function PortfolioVsNiftyView() {
         }}>
           <div style={{ fontWeight: '700', color: 'var(--accent2)', marginBottom: '6px' }}>💡 Pro tip</div>
           Save a snapshot weekly or monthly to build a rich comparison history.
-          The more data points, the more useful the chart becomes.
         </div>
       </div>
     </div>
@@ -413,36 +234,11 @@ export default function PortfolioVsNiftyView() {
       {/* Header stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
         {[
-          {
-            label: 'Portfolio Return',
-            value: `${pTotal >= 0 ? '+' : ''}${fmt(pTotal, 1)}%`,
-            color: colorPnl(pTotal),
-            sub: `Since ${firstSnapshotDate}`,
-          },
-          {
-            label: 'Nifty 50 Return',
-            value: `${nTotal >= 0 ? '+' : ''}${fmt(nTotal, 1)}%`,
-            color: colorPnl(nTotal),
-            sub: 'Same period',
-          },
-          {
-            label: 'Alpha Generated',
-            value: alpha != null ? `${alpha >= 0 ? '+' : ''}${fmt(alpha, 1)} pts` : '—',
-            color: alpha != null ? colorPnl(alpha) : 'var(--text2)',
-            sub: alpha != null && alpha > 0 ? '🏆 Beating index' : alpha != null ? '📉 Trailing index' : '—',
-          },
-          {
-            label: 'Portfolio CAGR',
-            value: fmtPct(stats.overallCagr, true),
-            color: 'var(--green2)',
-            sub: 'Annualised',
-          },
-          {
-            label: 'Data Points',
-            value: snapshots.length,
-            color: 'var(--accent2)',
-            sub: `${firstSnapshotDate} → ${latestSnapshotDate}`,
-          },
+          { label: 'Portfolio Return', value: `${pTotal >= 0 ? '+' : ''}${fmt(pTotal, 1)}%`,   color: colorPnl(pTotal), sub: `Since ${firstSnapshotDate}` },
+          { label: 'Nifty 50 Return',  value: `${nTotal >= 0 ? '+' : ''}${fmt(nTotal, 1)}%`,   color: colorPnl(nTotal), sub: 'Same period' },
+          { label: 'Alpha Generated',  value: alpha != null ? `${alpha >= 0 ? '+' : ''}${fmt(alpha, 1)} pts` : '—', color: alpha != null ? colorPnl(alpha) : 'var(--text2)', sub: alpha != null && alpha > 0 ? '🏆 Beating index' : '📉 Trailing index' },
+          { label: 'Portfolio CAGR',   value: fmtPct(stats.overallCagr, true),                 color: 'var(--green2)', sub: 'Annualised' },
+          { label: 'Data Points',      value: snapshots.length,                                 color: 'var(--accent2)', sub: `${firstSnapshotDate} → ${latestSnapshotDate}` },
         ].map((m, i) => (
           <div key={i} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px' }}>
             <div style={{ fontSize: '9px', color: 'var(--text3)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>{m.label}</div>
@@ -452,13 +248,11 @@ export default function PortfolioVsNiftyView() {
         ))}
       </div>
 
-      {/* Alpha / lag badge */}
+      {/* Alpha badge */}
       {alpha != null && (
         <div style={{
           padding: '12px 18px', borderRadius: '10px',
-          background: alpha > 0
-            ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))'
-            : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))',
+          background: alpha > 0 ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))' : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))',
           border: `1px solid ${alpha > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
@@ -488,22 +282,18 @@ export default function PortfolioVsNiftyView() {
           <div style={{ display: 'flex', gap: '6px' }}>
             {[['indexed', 'Indexed'], ['absolute', 'Absolute']].map(([v, l]) => (
               <button key={v} onClick={() => setMode(v)} style={{
-                padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
-                cursor: 'pointer', transition: 'all 0.15s',
+                padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer',
                 background: mode === v ? 'rgba(59,130,246,0.2)' : 'transparent',
                 border: `1px solid ${mode === v ? 'var(--accent)' : 'var(--border)'}`,
-                color: mode === v ? 'var(--accent2)' : 'var(--text3)',
+                color:   mode === v ? 'var(--accent2)' : 'var(--text3)',
               }}>{l}</button>
             ))}
           </div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
-          {mode === 'indexed' ? (
-            <ComparisonChart portfolioSeries={rebasedPortfolio} niftySeries={rebasedNifty} />
-          ) : (
-            <AbsoluteChart portfolioSeries={portfolioSeries} niftySeries={niftySeries} />
-          )}
-        </div>
+        {mode === 'indexed'
+          ? <ComparisonChart portfolioSeries={rebasedPortfolio} niftySeries={rebasedNifty} />
+          : <AbsoluteChart   portfolioSeries={portfolioSeries} />
+        }
       </div>
 
       {/* Rolling returns */}
@@ -525,18 +315,13 @@ export default function PortfolioVsNiftyView() {
             · What would the same capital look like in Nifty 50?
           </span>
         </div>
-        <HypotheticalTable
-          portfolioSeries={portfolioSeries}
-          niftySeries={niftySeries}
-          totalInvested={stats.totalInvested}
-        />
+        <HypotheticalTable portfolioSeries={portfolioSeries} niftySeries={niftySeries} totalInvested={stats.totalInvested} />
       </div>
 
       {/* Methodology note */}
       <div style={{
         padding: '12px 16px', borderRadius: '8px', fontSize: '11px', color: 'var(--text3)',
-        background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)',
-        lineHeight: '1.7',
+        background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', lineHeight: '1.7',
       }}>
         <strong style={{ color: 'var(--text2)' }}>Methodology:</strong> Portfolio values are from your saved snapshots.
         Nifty 50 data uses approximate end-of-month closes. Both series are rebased to 100 at your first snapshot date for fair comparison.
@@ -544,63 +329,5 @@ export default function PortfolioVsNiftyView() {
         Save more snapshots regularly for better granularity.
       </div>
     </div>
-  );
-}
-
-// ── Absolute value chart ──────────────────────────────────────────────────────
-function AbsoluteChart({ portfolioSeries, niftySeries }) {
-  if (!portfolioSeries.length) return null;
-
-  const width = 700, height = 260;
-  const pad = { top: 24, right: 60, bottom: 36, left: 60 };
-  const W = width - pad.left - pad.right;
-  const H = height - pad.top - pad.bottom;
-
-  const allVals = portfolioSeries.map(d => d.value);
-  const maxV = Math.max(...allVals) * 1.05;
-  const minV = Math.min(...allVals) * 0.95;
-  const range = maxV - minV || 1;
-
-  function toX(i, len) { return pad.left + (i / Math.max(len - 1, 1)) * W; }
-  function toY(v) { return pad.top + ((maxV - v) / range) * H; }
-
-  const line = portfolioSeries.map((d, i) =>
-    `${i === 0 ? 'M' : 'L'} ${toX(i, portfolioSeries.length)} ${toY(d.value)}`
-  ).join(' ');
-  const area = line +
-    ` L ${toX(portfolioSeries.length - 1, portfolioSeries.length)} ${pad.top + H}` +
-    ` L ${toX(0, portfolioSeries.length)} ${pad.top + H} Z`;
-
-  const investedLine = portfolioSeries.map((d, i) =>
-    `${i === 0 ? 'M' : 'L'} ${toX(i, portfolioSeries.length)} ${toY(d.invested)}`
-  ).join(' ');
-
-  const xLabels = portfolioSeries.filter((_, i) => i % Math.max(1, Math.floor(portfolioSeries.length / 8)) === 0);
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ overflow: 'visible' }}>
-      <defs>
-        <linearGradient id="absGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill="url(#absGrad)" />
-      <path d={investedLine} fill="none" stroke="var(--text3)" strokeWidth="1.5" strokeDasharray="5,3" />
-      <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" />
-      {xLabels.map((d, i) => {
-        const idx = portfolioSeries.indexOf(d);
-        return (
-          <text key={i} x={toX(idx, portfolioSeries.length)} y={pad.top + H + 20}
-            textAnchor="middle" fill="var(--text3)" fontSize="9">{d.month}</text>
-        );
-      })}
-      {/* Legend */}
-      <rect x={pad.left} y={8} width="10" height="3" rx="1" fill="var(--accent)" />
-      <text x={pad.left + 14} y={14} fill="var(--text2)" fontSize="10" fontWeight="600">Portfolio Value</text>
-      <line x1={pad.left + 110} y1={10} x2={pad.left + 124} y2={10}
-        stroke="var(--text3)" strokeWidth="1.5" strokeDasharray="5,3" />
-      <text x={pad.left + 128} y={14} fill="var(--text2)" fontSize="10" fontWeight="600">Total Invested</text>
-    </svg>
   );
 }

@@ -1,54 +1,102 @@
 'use client';
 
-// ─── Donut / Pie chart (pure SVG, no library) ──────────────────────────────
+import { useEffect, useRef, useMemo } from 'react';
 
+// ─── Chart.js loader (lazy, singleton) ────────────────────────────────────────
+let _chartjs = null;
+async function getChartJS() {
+  if (_chartjs) return _chartjs;
+  const { Chart, registerables } = await import('chart.js');
+  Chart.register(...registerables);
+  // Global defaults matching the dark theme
+  Chart.defaults.color = '#5c7a9a';
+  Chart.defaults.borderColor = 'rgba(45,64,96,0.5)';
+  Chart.defaults.font.family = "'JetBrains Mono', monospace";
+  Chart.defaults.font.size = 10;
+  _chartjs = Chart;
+  return _chartjs;
+}
+
+// ─── useChart hook ─────────────────────────────────────────────────────────────
+function useChart(buildConfig, deps) {
+  const canvasRef = useRef(null);
+  const chartRef  = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getChartJS().then(Chart => {
+      if (cancelled || !canvasRef.current) return;
+      if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
+      const config = buildConfig(Chart);
+      if (!config) return;
+      chartRef.current = new Chart(canvasRef.current, config);
+    });
+    return () => {
+      cancelled = true;
+      if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return canvasRef;
+}
+
+// ─── Donut / Pie chart ─────────────────────────────────────────────────────────
 export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = true }) {
-  const r = size / 2;
-  const ir = r * innerRadius;
-  const total = data.reduce((s, d) => s + d.value, 0);
-
-  const slices = data.reduce((acc, d) => {
-    const start = acc.length ? acc[acc.length - 1].end : -Math.PI / 2;
-    const sweep = (d.value / total) * 2 * Math.PI;
-    return [...acc, { ...d, start, sweep, end: start + sweep }];
-  }, []);
-
-  function arc(cx, cy, rx, ry, startAngle, endAngle) {
-    const x1 = cx + rx * Math.cos(startAngle);
-    const y1 = cy + ry * Math.sin(startAngle);
-    const x2 = cx + rx * Math.cos(endAngle);
-    const y2 = cy + ry * Math.sin(endAngle);
-    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
-    return `M ${x1} ${y1} A ${rx} ${ry} 0 ${largeArc} 1 ${x2} ${y2}`;
-  }
+  const canvasRef = useChart(() => {
+    if (!data || !data.length) return null;
+    return {
+      type: 'doughnut',
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          data:            data.map(d => d.value),
+          backgroundColor: data.map(d => d.color),
+          borderColor:     data.map(d => d.color),
+          borderWidth:     2,
+          hoverOffset:     6,
+        }],
+      },
+      options: {
+        cutout:     `${innerRadius * 100}%`,
+        responsive: false,
+        animation:  { duration: 600 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const d = data[ctx.dataIndex];
+                return ` ${d.label}: ${d.pct ? d.pct.toFixed(1) + '%' : ''}`;
+              },
+            },
+          },
+        },
+      },
+    };
+  }, [JSON.stringify(data)]);
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
-      <svg width={size} height={size} style={{ flexShrink: 0 }}>
-        {slices.map((s, i) => {
-          const path = arc(r, r, r - 8, r - 8, s.start, s.end) +
-            ` L ${r + (r - 8) * Math.cos(s.end) * innerRadius / ((r-8)/r)} ${r + (r - 8) * Math.sin(s.end) * innerRadius / ((r-8)/r)}` +
-            arc(r, r, ir, ir, s.end, s.start).replace('M', ' L') + ' Z';
-          const outerPath = arc(r, r, r - 4, r - 4, s.start, s.end);
-          const innerPath = arc(r, r, ir, ir, s.end, s.start);
-          const fullPath = outerPath + ` L ${r + ir * Math.cos(s.end)} ${r + ir * Math.sin(s.end)} ` + innerPath + ' Z';
-          return <path key={i} d={fullPath} fill={s.color} opacity="0.9" />;
-        })}
-        {/* Inner text */}
-        <text x={r} y={r - 6} textAnchor="middle" fill="var(--text)" fontSize="13" fontWeight="700" fontFamily="var(--font-mono)">
-          {data.length}
-        </text>
-        <text x={r} y={r + 10} textAnchor="middle" fill="var(--text3)" fontSize="9">
-          ASSETS
-        </text>
-      </svg>
+      <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+        <canvas ref={canvasRef} width={size} height={size} />
+        {/* Centre label */}
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          textAlign: 'center', pointerEvents: 'none',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{data.length}</div>
+          <div style={{ fontSize: 9, color: 'var(--text3)' }}>ASSETS</div>
+        </div>
+      </div>
       {showLegend && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {data.map((d, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: d.color, flexShrink: 0 }} />
-              <span style={{ fontSize: '12px', color: 'var(--text2)', flex: 1 }}>{d.label}</span>
-              <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: '600' }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: d.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: 'var(--text2)', flex: 1 }}>{d.label}</span>
+              <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
                 {d.pct ? d.pct.toFixed(1) + '%' : ''}
               </span>
             </div>
@@ -59,103 +107,116 @@ export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = 
   );
 }
 
-// ─── Sparkline ────────────────────────────────────────────────────────────────
+// ─── Sparkline ─────────────────────────────────────────────────────────────────
+export function Sparkline({ data, width = 120, height = 36, color = '#3b82f6' }) {
+  const canvasRef = useChart(() => {
+    if (!data || data.length < 2) return null;
+    const positive = data[data.length - 1] >= data[0];
+    const lineColor = color === 'var(--accent)' ? '#3b82f6' : color;
+    return {
+      type: 'line',
+      data: {
+        labels:   data.map((_, i) => i),
+        datasets: [{
+          data,
+          borderColor:     lineColor,
+          borderWidth:     1.5,
+          fill:            true,
+          backgroundColor: lineColor + '33',
+          tension:         0.4,
+          pointRadius:     0,
+          pointHoverRadius:0,
+        }],
+      },
+      options: {
+        responsive: false,
+        animation:  false,
+        plugins:    { legend: { display: false }, tooltip: { enabled: false } },
+        scales:     { x: { display: false }, y: { display: false } },
+        elements:   { line: { borderCapStyle: 'round' } },
+      },
+    };
+  }, [JSON.stringify(data), color]);
 
-export function Sparkline({ data, width = 120, height = 36, color = 'var(--accent)', fill = true }) {
-  if (!data || data.length < 2) return null;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => ({
-    x: (i / (data.length - 1)) * width,
-    y: height - ((v - min) / range) * (height - 4) - 2,
-  }));
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-  const area = line + ` L ${pts[pts.length - 1].x} ${height} L 0 ${height} Z`;
-
-  return (
-    <svg width={width} height={height}>
-      {fill && (
-        <defs>
-          <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={color} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-      )}
-      {fill && <path d={area} fill="url(#sg)" />}
-      <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
+  return <canvas ref={canvasRef} width={width} height={height} style={{ display: 'block' }} />;
 }
 
-// ─── Bar chart ────────────────────────────────────────────────────────────────
+// ─── Bar chart ─────────────────────────────────────────────────────────────────
+export function BarChart({ data, width = 300, height = 120, color = '#3b82f6' }) {
+  const canvasRef = useChart(() => {
+    if (!data || !data.length) return null;
+    return {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          data:            data.map(d => d.value),
+          backgroundColor: data.map(d => d.color || color + 'cc'),
+          borderColor:     data.map(d => d.color || color),
+          borderWidth:     1,
+          borderRadius:    3,
+        }],
+      },
+      options: {
+        responsive: false,
+        animation:  { duration: 600 },
+        plugins:    { legend: { display: false }, tooltip: {
+          callbacks: { label: ctx => ` ₹${(ctx.parsed.y / 100000).toFixed(1)}L` },
+        }},
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
+            font: { size: 9 },
+            callback: v => `₹${(v/100000).toFixed(0)}L`,
+          }},
+        },
+      },
+    };
+  }, [JSON.stringify(data), color]);
 
-export function BarChart({ data, width = 300, height = 120, color = 'var(--accent)' }) {
-  if (!data || !data.length) return null;
-  const max = Math.max(...data.map(d => d.value));
-  const barW = Math.max(4, (width / data.length) - 3);
-
-  return (
-    <svg width={width} height={height} style={{ overflow: 'visible' }}>
-      {data.map((d, i) => {
-        const bh = max > 0 ? ((d.value / max) * (height - 20)) : 0;
-        const x = i * (width / data.length) + (width / data.length - barW) / 2;
-        const y = height - bh - 16;
-        return (
-          <g key={i}>
-            <rect x={x} y={y} width={barW} height={bh} rx="2" fill={d.color || color} opacity="0.8" />
-            {data.length <= 12 && (
-              <text x={x + barW / 2} y={height - 2} textAnchor="middle" fill="var(--text3)" fontSize="9">
-                {d.label}
-              </text>
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
+  return <canvas ref={canvasRef} width={width} height={height} style={{ display: 'block' }} />;
 }
 
-// ─── Line chart ───────────────────────────────────────────────────────────────
+// ─── Line chart ────────────────────────────────────────────────────────────────
+export function LineChart({ data, width = 300, height = 120, color = '#3b82f6', xKey = 'x', yKey = 'y' }) {
+  const canvasRef = useChart(() => {
+    if (!data || data.length < 2) return null;
+    return {
+      type: 'line',
+      data: {
+        labels: data.map(d => d[xKey]),
+        datasets: [{
+          data:            data.map(d => d[yKey]),
+          borderColor:     color,
+          borderWidth:     2,
+          fill:            true,
+          backgroundColor: color + '22',
+          tension:         0.4,
+          pointRadius:     3,
+          pointBackgroundColor: color,
+          pointBorderColor: 'var(--bg)',
+          pointBorderWidth: 1.5,
+        }],
+      },
+      options: {
+        responsive: false,
+        animation:  { duration: 600 },
+        plugins:    { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
+            font: { size: 9 },
+            callback: v => `₹${(v/100000).toFixed(0)}L`,
+          }},
+        },
+      },
+    };
+  }, [JSON.stringify(data), color, xKey, yKey]);
 
-export function LineChart({ data, width = 300, height = 120, color = 'var(--accent)', xKey = 'x', yKey = 'y' }) {
-  if (!data || data.length < 2) return null;
-  const vals = data.map(d => d[yKey]);
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const range = max - min || 1;
-  const pad = 20;
-
-  const pts = data.map((d, i) => ({
-    x: pad + (i / (data.length - 1)) * (width - pad * 2),
-    y: pad + ((max - d[yKey]) / range) * (height - pad * 2),
-    label: d[xKey],
-    value: d[yKey],
-  }));
-
-  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-  const area = line + ` L ${pts[pts.length - 1].x} ${height - pad} L ${pts[0].x} ${height - pad} Z`;
-
-  return (
-    <svg width={width} height={height} style={{ overflow: 'visible' }}>
-      <defs>
-        <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill="url(#lg)" />
-      <path d={line} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      {pts.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r="3" fill={color} />
-      ))}
-    </svg>
-  );
+  return <canvas ref={canvasRef} width={width} height={height} style={{ display: 'block' }} />;
 }
 
-// ─── Horizontal bar ───────────────────────────────────────────────────────────
-
+// ─── Horizontal bar ────────────────────────────────────────────────────────────
 export function HBar({ value, max, color, label, sub }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
@@ -171,120 +232,420 @@ export function HBar({ value, max, color, label, sub }) {
   );
 }
 
-export function HoldingPerformanceChart({ lots, cmp, width = 620, height = 190 }) {
-  if (!lots || lots.length === 0 || !cmp) {
-    return <div style={{ color: 'var(--text3)', fontSize: 12 }}>No chart data</div>;
-  }
+// ─── Cumulative flow chart (Timeline) ──────────────────────────────────────────
+export function CumChart({ data }) {
+  const canvasRef = useChart(() => {
+    if (!data || data.length < 2) return null;
+    return {
+      type: 'line',
+      data: {
+        labels: data.map(d => d.month),
+        datasets: [{
+          label:           'Cumulative Invested',
+          data:            data.map(d => d.cum),
+          borderColor:     '#3b82f6',
+          borderWidth:     2,
+          fill:            true,
+          backgroundColor: 'rgba(59,130,246,0.15)',
+          tension:         0.4,
+          pointRadius:     0,
+          pointHoverRadius:4,
+          pointBackgroundColor: '#60a5fa',
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 500 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: ctx => ` ₹${(ctx.parsed.y / 100000).toFixed(2)}L` },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } },
+          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
+            font: { size: 9 },
+            callback: v => `₹${(v/100000).toFixed(1)}L`,
+          }},
+        },
+      },
+    };
+  }, [JSON.stringify(data)]);
 
-  const monthly = {};
-  [...lots]
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .forEach(lot => {
-      const month = lot.date.slice(0, 7);
-      if (!monthly[month]) monthly[month] = { month, qty: 0, invested: 0 };
-      monthly[month].qty += lot.qty;
-      monthly[month].invested += lot.qty * lot.price;
+  if (!data || data.length < 2) return <div style={{ color: 'var(--text3)', fontSize: 12 }}>Not enough data</div>;
+  return <div style={{ height: 120, position: 'relative' }}><canvas ref={canvasRef} /></div>;
+}
+
+// ─── Holding Performance Chart (MF / Stocks detail panel) ─────────────────────
+export function HoldingPerformanceChart({ lots, cmp }) {
+  const canvasRef = useChart(() => {
+    if (!lots || lots.length === 0 || !cmp) return null;
+
+    // Build cumulative monthly series
+    const monthly = {};
+    [...lots].sort((a, b) => a.date.localeCompare(b.date)).forEach(lot => {
+      const m = lot.date.slice(0, 7);
+      if (!monthly[m]) monthly[m] = { qty: 0, invested: 0 };
+      monthly[m].qty      += lot.qty;
+      monthly[m].invested += lot.qty * lot.price;
     });
 
-  const points = Object.values(monthly)
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .reduce((acc, row) => {
-      const prev = acc[acc.length - 1] || { qty: 0, invested: 0 };
-      const qty = prev.qty + row.qty;
-      const invested = prev.invested + row.invested;
-      return [
-        ...acc,
-        {
-        qty,
-        month: row.month,
-        invested,
-        markedValue: qty * cmp,
-        gain: qty * cmp - invested,
+    let cumQty = 0, cumInv = 0;
+    const points = Object.entries(monthly).sort().map(([month, row]) => {
+      cumQty += row.qty; cumInv += row.invested;
+      return { month, invested: cumInv, value: cumQty * cmp };
+    });
+
+    if (points.length < 1) return null;
+    // Prepend a zero-baseline point
+    const series = [{ month: 'Start', invested: 0, value: 0 }, ...points];
+
+    return {
+      type: 'line',
+      data: {
+        labels: series.map(p => p.month),
+        datasets: [
+          {
+            label:           'Market Value',
+            data:            series.map(p => p.value),
+            borderColor:     '#3b82f6',
+            borderWidth:     2.5,
+            fill:            true,
+            backgroundColor: 'rgba(59,130,246,0.12)',
+            tension:         0.4,
+            pointRadius:     (ctx) => ctx.dataIndex === series.length - 1 ? 5 : 2,
+            pointBackgroundColor: '#60a5fa',
+            pointBorderColor: '#0b0f1a',
+            pointBorderWidth: 1.5,
+          },
+          {
+            label:           'Invested',
+            data:            series.map(p => p.invested),
+            borderColor:     'rgba(148,169,196,0.6)',
+            borderWidth:     1.5,
+            borderDash:      [5, 4],
+            fill:            false,
+            tension:         0.4,
+            pointRadius:     0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'start',
+            labels: { font: { size: 10 }, color: '#94a9c4', boxWidth: 12, padding: 12 },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ₹${(ctx.parsed.y / 100000).toFixed(2)}L`,
+            },
+          },
         },
-      ];
-    }, []);
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } },
+          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
+            font: { size: 9 },
+            callback: v => `₹${(v/100000).toFixed(1)}L`,
+          }},
+        },
+      },
+    };
+  }, [JSON.stringify(lots), cmp]);
 
-  const chartPoints = points.length < 2
-    ? [{ ...points[0], month: 'Start', markedValue: points[0].invested, gain: 0 }, ...points]
-    : points;
+  if (!lots || !lots.length || !cmp) return <div style={{ color: 'var(--text3)', fontSize: 12 }}>No chart data</div>;
+  return <div style={{ height: 190, position: 'relative' }}><canvas ref={canvasRef} /></div>;
+}
 
-  const pad = { top: 22, right: 48, bottom: 34, left: 54 };
-  const chartW = width - pad.left - pad.right;
-  const chartH = height - pad.top - pad.bottom;
-  const values = chartPoints.flatMap(p => [p.invested, p.markedValue]);
-  const max = Math.max(...values) * 1.08 || 1;
-  const min = Math.min(0, ...values) * 0.95;
-  const range = max - min || 1;
+// ─── Waterfall chart (WaterfallView) ──────────────────────────────────────────
+export function WaterfallChart({ steps }) {
+  const canvasRef = useChart(() => {
+    if (!steps || !steps.length) return null;
 
-  function toX(i) {
-    return pad.left + (i / Math.max(chartPoints.length - 1, 1)) * chartW;
-  }
+    const labels = steps.map(s => s.label);
+    const resolveColor = (cssVar) => {
+      const map = {
+        'var(--teal)':   '#14b8a6',
+        'var(--purple)': '#8b5cf6',
+        'var(--green2)': '#34d399',
+        'var(--red2)':   '#f87171',
+        'var(--accent2)':'#60a5fa',
+      };
+      return map[cssVar] || '#60a5fa';
+    };
 
-  function toY(v) {
-    return pad.top + ((max - v) / range) * chartH;
-  }
+    // Build floating bar data: [base, top]
+    let running = 0;
+    const floatData = steps.map(s => {
+      if (s.isTotal) return { base: 0, top: s.value, color: resolveColor(s.color) };
+      const base = running;
+      running += s.value;
+      return { base, top: running, color: resolveColor(s.color) };
+    });
 
-  function lineFor(key) {
-    return chartPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(p[key])}`).join(' ');
-  }
+    return {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          data:            floatData.map(d => [d.base, d.top]),
+          backgroundColor: floatData.map(d => d.color + 'cc'),
+          borderColor:     floatData.map(d => d.color),
+          borderWidth:     1,
+          borderRadius:    4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 600 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const [base, top] = ctx.parsed._custom ?? [0, ctx.parsed.y];
+                const val = top - base;
+                return ` ₹${(Math.abs(val) / 100000).toFixed(2)}L`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
+            font: { size: 9 },
+            callback: v => `₹${(v / 100000).toFixed(0)}L`,
+          }},
+        },
+      },
+    };
+  }, [JSON.stringify(steps)]);
 
-  const valueLine = lineFor('markedValue');
-  const investedLine = lineFor('invested');
-  const last = chartPoints[chartPoints.length - 1];
-  const labels = chartPoints.filter((_, i) => i === 0 || i === chartPoints.length - 1 || i % Math.ceil(chartPoints.length / 5) === 0);
+  if (!steps || !steps.length) return null;
+  return <div style={{ height: 220, position: 'relative' }}><canvas ref={canvasRef} /></div>;
+}
 
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ minWidth: 420, overflow: 'visible' }}>
-        <defs>
-          <linearGradient id="holdingValueGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
+// ─── Wealth projection chart (GoalView) ───────────────────────────────────────
+export function WealthProjectionChart({ data, stepData, goal }) {
+  const canvasRef = useChart(() => {
+    if (!data || data.length < 2) return null;
+    return {
+      type: 'line',
+      data: {
+        labels: data.map(d => `Y${d.year}`),
+        datasets: [
+          {
+            label:           'Flat SIP',
+            data:            data.map(d => d.corpus),
+            borderColor:     '#3b82f6',
+            borderWidth:     2,
+            fill:            true,
+            backgroundColor: 'rgba(59,130,246,0.12)',
+            tension:         0.4,
+            pointRadius:     0,
+          },
+          {
+            label:           'Step-Up SIP',
+            data:            stepData.map(d => d.corpus),
+            borderColor:     '#34d399',
+            borderWidth:     2,
+            fill:            false,
+            tension:         0.4,
+            pointRadius:     0,
+          },
+          {
+            label:           'Total Invested',
+            data:            data.map(d => d.invested),
+            borderColor:     'rgba(148,169,196,0.55)',
+            borderWidth:     1.5,
+            borderDash:      [5, 4],
+            fill:            false,
+            tension:         0.4,
+            pointRadius:     0,
+          },
+          {
+            label:           'Goal',
+            data:            data.map(() => goal),
+            borderColor:     '#f87171',
+            borderWidth:     1.5,
+            borderDash:      [6, 4],
+            fill:            false,
+            pointRadius:     0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 500 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'start',
+            labels: { font: { size: 10 }, color: '#94a9c4', boxWidth: 12, padding: 12 },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ₹${(ctx.parsed.y / 10000000).toFixed(2)}Cr`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 9 } } },
+          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
+            font: { size: 9 },
+            callback: v => v >= 1e7 ? `₹${(v/1e7).toFixed(1)}Cr` : `₹${(v/1e5).toFixed(0)}L`,
+          }},
+        },
+      },
+    };
+  }, [JSON.stringify(data), JSON.stringify(stepData), goal]);
 
-        {[0, 0.25, 0.5, 0.75, 1].map((level, i) => {
-          const y = pad.top + level * chartH;
-          return (
-            <line key={i} x1={pad.left} x2={pad.left + chartW} y1={y} y2={y}
-              stroke="rgba(45,64,96,0.45)" strokeWidth="1" strokeDasharray="4,4" />
-          );
-        })}
+  return <div style={{ height: 220, position: 'relative' }}><canvas ref={canvasRef} /></div>;
+}
 
-        <path
-          d={`${valueLine} L ${toX(chartPoints.length - 1)} ${pad.top + chartH} L ${toX(0)} ${pad.top + chartH} Z`}
-          fill="url(#holdingValueGrad)"
-        />
-        <path d={investedLine} fill="none" stroke="var(--text3)" strokeWidth="1.6" strokeDasharray="5,4" />
-        <path d={valueLine} fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+// ─── Portfolio vs Nifty comparison chart ──────────────────────────────────────
+export function ComparisonChart({ portfolioSeries, niftySeries }) {
+  const canvasRef = useChart(() => {
+    if (!portfolioSeries.length || !niftySeries.length) return null;
+    return {
+      type: 'line',
+      data: {
+        labels: portfolioSeries.map(d => d.month),
+        datasets: [
+          {
+            label:           'Your Portfolio',
+            data:            portfolioSeries.map(d => d.indexed),
+            borderColor:     '#3b82f6',
+            borderWidth:     2.5,
+            fill:            true,
+            backgroundColor: 'rgba(59,130,246,0.1)',
+            tension:         0.4,
+            pointRadius:     (ctx) => ctx.dataIndex === portfolioSeries.length - 1 ? 5 : 0,
+            pointBackgroundColor: '#60a5fa',
+            pointBorderColor: '#0b0f1a',
+            pointBorderWidth: 1.5,
+          },
+          {
+            label:           'Nifty 50',
+            data:            niftySeries.map(d => d.indexed),
+            borderColor:     '#f59e0b',
+            borderWidth:     2,
+            borderDash:      [6, 3],
+            fill:            false,
+            tension:         0.4,
+            pointRadius:     (ctx) => ctx.dataIndex === niftySeries.length - 1 ? 5 : 0,
+            pointBackgroundColor: '#f59e0b',
+            pointBorderColor: '#0b0f1a',
+            pointBorderWidth: 1.5,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 500 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'start',
+            labels: { font: { size: 10 }, color: '#94a9c4', boxWidth: 12, padding: 12 },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 9 } } },
+          y: {
+            grid: { color: 'rgba(45,64,96,0.4)' },
+            ticks: { font: { size: 9 }, callback: v => v.toFixed(0) },
+          },
+        },
+      },
+    };
+  }, [JSON.stringify(portfolioSeries), JSON.stringify(niftySeries)]);
 
-        {chartPoints.map((p, i) => (
-          <circle key={i} cx={toX(i)} cy={toY(p.markedValue)} r={i === chartPoints.length - 1 ? 4 : 2.5}
-            fill="var(--accent2)" stroke="var(--bg)" strokeWidth="1.5" />
-        ))}
+  if (!portfolioSeries.length) return null;
+  return <div style={{ height: 260, position: 'relative' }}><canvas ref={canvasRef} /></div>;
+}
 
-        {labels.map((p, i) => {
-          const idx = chartPoints.indexOf(p);
-          return (
-            <text key={i} x={toX(idx)} y={height - 10} textAnchor="middle" fill="var(--text3)" fontSize="9">
-              {p.month}
-            </text>
-          );
-        })}
+// ─── Absolute portfolio value chart (vs-nifty view) ───────────────────────────
+export function AbsoluteChart({ portfolioSeries }) {
+  const canvasRef = useChart(() => {
+    if (!portfolioSeries.length) return null;
+    return {
+      type: 'line',
+      data: {
+        labels: portfolioSeries.map(d => d.month),
+        datasets: [
+          {
+            label:           'Portfolio Value',
+            data:            portfolioSeries.map(d => d.value),
+            borderColor:     '#3b82f6',
+            borderWidth:     2.5,
+            fill:            true,
+            backgroundColor: 'rgba(59,130,246,0.12)',
+            tension:         0.4,
+            pointRadius:     0,
+            pointHoverRadius:4,
+          },
+          {
+            label:           'Total Invested',
+            data:            portfolioSeries.map(d => d.invested),
+            borderColor:     'rgba(148,169,196,0.55)',
+            borderWidth:     1.5,
+            borderDash:      [5, 3],
+            fill:            false,
+            tension:         0.4,
+            pointRadius:     0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 500 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'start',
+            labels: { font: { size: 10 }, color: '#94a9c4', boxWidth: 12, padding: 12 },
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ₹${(ctx.parsed.y/100000).toFixed(2)}L`,
+            },
+          },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { size: 9 } } },
+          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
+            font: { size: 9 },
+            callback: v => `₹${(v/100000).toFixed(0)}L`,
+          }},
+        },
+      },
+    };
+  }, [JSON.stringify(portfolioSeries)]);
 
-        <text x={pad.left} y={12} fill="var(--accent2)" fontSize="10" fontWeight="700">Current marked value</text>
-        <line x1={pad.left + 126} y1={9} x2={pad.left + 146} y2={9} stroke="var(--text3)" strokeWidth="1.6" strokeDasharray="5,4" />
-        <text x={pad.left + 152} y={12} fill="var(--text3)" fontSize="10" fontWeight="700">Invested</text>
-
-        <text x={pad.left + chartW + 6} y={toY(last.markedValue) + 4}
-          fill="var(--accent2)" fontSize="10" fontFamily="var(--font-mono)" fontWeight="700">
-          {(last.markedValue / 100000).toFixed(1)}L
-        </text>
-        <text x={pad.left + chartW + 6} y={toY(last.invested) + 4}
-          fill="var(--text3)" fontSize="10" fontFamily="var(--font-mono)" fontWeight="700">
-          {(last.invested / 100000).toFixed(1)}L
-        </text>
-      </svg>
-    </div>
-  );
+  if (!portfolioSeries.length) return null;
+  return <div style={{ height: 260, position: 'relative' }}><canvas ref={canvasRef} /></div>;
 }

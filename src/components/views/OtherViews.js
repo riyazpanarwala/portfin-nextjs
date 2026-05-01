@@ -4,6 +4,7 @@ export { TradeForm } from '@/components/views/TradeForm';
 import { useState, useEffect } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, fmtPct, colorPnl, sectorColor, buildMonthlyFlow } from '@/lib/store';
+import { CumChart, WaterfallChart } from '@/components/charts/Charts';
 
 // ─── Timeline View ────────────────────────────────────────────────────────────
 
@@ -77,31 +78,6 @@ export function TimelineView() {
   );
 }
 
-function CumChart({ data }) {
-  if (!data || data.length < 2) return <div style={{ color: 'var(--text3)', fontSize: '12px' }}>Not enough data</div>;
-  const w = 600, h = 120, pad = 24;
-  const max = Math.max(...data.map(d => d.cum));
-  function toY(v) { return pad + ((max - v) / (max || 1)) * (h - pad * 2); }
-  function toX(i) { return pad + (i / (data.length - 1)) * (w - pad * 2); }
-  const line = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(d.cum)}`).join(' ');
-  const area = line + ` L ${toX(data.length - 1)} ${h - pad} L ${toX(0)} ${h - pad} Z`;
-  return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`}>
-      <defs>
-        <linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.3" />
-          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill="url(#cumGrad)" />
-      <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" />
-      {data.filter((_, i) => i % Math.max(1, Math.ceil(data.length / 8)) === 0).map((d, i) => (
-        <text key={i} x={toX(data.indexOf(d))} y={h - 4} textAnchor="middle" fill="var(--text3)" fontSize="8">{d.month}</text>
-      ))}
-    </svg>
-  );
-}
-
 function MonthlyHeatmap({ data }) {
   if (!data || !data.length) return <div style={{ color: 'var(--text3)', fontSize: '12px' }}>No data</div>;
   const max = Math.max(...data.map(d => d.amount));
@@ -149,11 +125,11 @@ export function WaterfallView() {
   const stGain = stats.stValue - stats.stInvested;
 
   const steps = [
-    { label: 'MF Invested',   value: stats.mfInvested, color: 'var(--teal)',   pct: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0 },
-    { label: 'Stock Invested',value: stats.stInvested, color: 'var(--purple)', pct: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0 },
-    { label: 'MF Gains',      value: mfGain,           color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0 },
-    { label: 'Stock Gains',   value: stGain,            color: stGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0 },
-    { label: 'Total Portfolio',value: stats.totalValue, color: 'var(--accent2)', isTotal: true },
+    { label: 'MF Invested',    value: stats.mfInvested, color: 'var(--teal)',    pct: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0 },
+    { label: 'Stock Invested', value: stats.stInvested, color: 'var(--purple)',  pct: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0 },
+    { label: 'MF Gains',       value: mfGain,           color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0 },
+    { label: 'Stock Gains',    value: stGain,            color: stGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0 },
+    { label: 'Total Portfolio',value: stats.totalValue,  color: 'var(--accent2)', isTotal: true },
   ];
 
   return (
@@ -163,7 +139,7 @@ export function WaterfallView() {
         <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '18px' }}>
           How your capital transformed into current portfolio value
         </div>
-        <WaterfallSVG steps={steps} total={stats.totalValue} />
+        <WaterfallChart steps={steps} />
       </div>
 
       <div className="glass" style={{ overflow: 'hidden' }}>
@@ -188,201 +164,6 @@ export function WaterfallView() {
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-function WaterfallSVG({ steps, total }) {
-  const w = 600, h = 200, pad = 40;
-  const cols = steps.length;
-  const colW = (w - pad * 2) / cols;
-  const maxVal = total || 1;
-  let runningTop = 0;
-
-  const bars = steps.map((s, i) => {
-    const absVal = Math.abs(s.value);
-    const barH = Math.max(4, (absVal / maxVal) * (h - pad * 2));
-    let y;
-    if (s.isTotal) {
-      runningTop = 0;
-      y = (h - pad) - (total / maxVal) * (h - pad * 2);
-    } else {
-      if (s.value >= 0) {
-        y = (h - pad) - runningTop - barH;
-        runningTop += barH;
-      } else {
-        y = (h - pad) - runningTop;
-        runningTop -= barH;
-      }
-    }
-    return { ...s, barH, y, x: pad + i * colW + 4, w: colW - 8 };
-  });
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible' }}>
-      {bars.map((b, i) => (
-        <g key={i}>
-          <rect x={b.x} y={b.y} width={b.w} height={b.barH} rx="3" fill={b.color} opacity="0.85" />
-          <text x={b.x + b.w / 2} y={h - 4} textAnchor="middle" fill="var(--text3)" fontSize="9">{b.label.split(' ')[0]}</text>
-          <text x={b.x + b.w / 2} y={b.y - 5} textAnchor="middle" fill={b.color} fontSize="9" fontWeight="600">{fmtCr(b.value)}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-// ─── Add Trade Form ───────────────────────────────────────────────────────────
-
-// TradeForm moved to TradeForm.js
-export function TradeForm_DISABLED() {
-  const { addTrade, deleteTrade, trades, portfolioId } = usePortfolio();
-  const [form, setForm] = useState({
-    symbol: '', assetType: 'STOCK', tradeType: 'BUY',
-    quantity: '', price: '', tradeDate: new Date().toISOString().slice(0, 10),
-    sector: '',
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [deleteId, setDeleteId] = useState(null);
-
-  function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
-
-  async function handleSubmit() {
-    if (!form.symbol || !form.quantity || !form.price || !form.tradeDate) return;
-    setSubmitting(true);
-    await addTrade({ ...form, quantity: parseFloat(form.quantity), price: parseFloat(form.price) });
-    setSubmitting(false);
-    setSuccess(true);
-    setTimeout(() => {
-      setSuccess(false);
-      setForm(f => ({ ...f, symbol: '', quantity: '', price: '', sector: '' }));
-    }, 1800);
-  }
-
-  async function handleDelete(id) {
-    setDeleteId(id);
-    await deleteTrade(id);
-    setDeleteId(null);
-  }
-
-  const recentTrades = [...trades].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)).slice(0, 10);
-  const txValue = form.quantity && form.price ? parseFloat(form.quantity) * parseFloat(form.price) : null;
-
-  return (
-    <div className="fade-up">
-      <div style={{ display: 'grid', gridTemplateColumns: '440px 1fr', gap: '16px', alignItems: 'start' }}>
-        {/* Form */}
-        <div className="glass" style={{ padding: '24px' }}>
-          <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text)', marginBottom: '4px' }}>Record Trade</div>
-          <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '20px' }}>
-            Add a buy or sell transaction to your portfolio database.
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-            <FormField label="Asset Type">
-              <select value={form.assetType} onChange={e => set('assetType', e.target.value)}>
-                <option value="STOCK">Equity Stock</option>
-                <option value="MF">Mutual Fund</option>
-              </select>
-            </FormField>
-            <FormField label="Trade Type">
-              <select value={form.tradeType} onChange={e => set('tradeType', e.target.value)}>
-                <option value="BUY">Buy</option>
-                <option value="SELL">Sell</option>
-              </select>
-            </FormField>
-          </div>
-
-          <FormField label="Symbol / Fund Name">
-            <input value={form.symbol} onChange={e => set('symbol', e.target.value.toUpperCase())}
-              placeholder={form.assetType === 'MF' ? 'e.g. HDFC TOP 100 FUND' : 'e.g. INFY'} />
-          </FormField>
-
-          <FormField label="Sector / Category (optional)">
-            <input value={form.sector} onChange={e => set('sector', e.target.value)}
-              placeholder={form.assetType === 'MF' ? 'e.g. Large Cap, ELSS' : 'e.g. IT, Banking'} />
-          </FormField>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <FormField label="Quantity / Units">
-              <input type="number" min="0" step="any" value={form.quantity}
-                onChange={e => set('quantity', e.target.value)} placeholder="100" />
-            </FormField>
-            <FormField label={form.assetType === 'MF' ? 'NAV (₹)' : 'Price (₹)'}>
-              <input type="number" min="0" step="any" value={form.price}
-                onChange={e => set('price', e.target.value)} placeholder="1500.00" />
-            </FormField>
-          </div>
-
-          <FormField label="Trade Date">
-            <input type="date" value={form.tradeDate} onChange={e => set('tradeDate', e.target.value)} />
-          </FormField>
-
-          {txValue != null && (
-            <div style={{ background: 'rgba(59,130,246,0.08)', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text2)' }}>Transaction value</span>
-              <span style={{ fontSize: '14px', fontWeight: '700', fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>{fmtCr(txValue)}</span>
-            </div>
-          )}
-
-          <button
-            className="btn btn-primary"
-            onClick={handleSubmit}
-            disabled={submitting || !form.symbol || !form.quantity || !form.price}
-            style={{ width: '100%', justifyContent: 'center', padding: '11px', opacity: submitting ? 0.7 : 1 }}
-          >
-            {submitting ? 'Saving…' : success ? '✅ Saved!' : `${form.tradeType === 'BUY' ? '📈 Buy' : '📉 Sell'} — Record Trade`}
-          </button>
-        </div>
-
-        {/* Recent trades */}
-        <div className="glass" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>Recent Trades</span>
-            <span style={{ fontSize: '11px', color: 'var(--text3)' }}>{trades.length} total</span>
-          </div>
-          {recentTrades.length === 0 ? (
-            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>No trades yet</div>
-          ) : (
-            recentTrades.map((t, i) => (
-              <div key={t.id} style={{ padding: '10px 18px', borderBottom: '1px solid rgba(45,64,96,0.3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span className={`chip ${t.tradeType === 'BUY' ? 'chip-green' : 'chip-red'}`}>{t.tradeType}</span>
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>{t.symbol}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
-                      {t.tradeDate} · {parseFloat(t.quantity)} × ₹{fmt(parseFloat(t.price), 1)}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <div style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text2)' }}>
-                    {fmtCr(parseFloat(t.quantity) * parseFloat(t.price))}
-                  </div>
-                  <button
-                    onClick={() => handleDelete(t.id)}
-                    disabled={deleteId === t.id}
-                    style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: 'var(--red2)', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', opacity: deleteId === t.id ? 0.5 : 1 }}
-                  >
-                    {deleteId === t.id ? '…' : '✕'}
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FormField({ label, children }) {
-  return (
-    <div style={{ marginBottom: '12px' }}>
-      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text3)', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '4px' }}>
-        {label}
-      </label>
-      {children}
     </div>
   );
 }
@@ -460,7 +241,7 @@ export function ActionView() {
   );
 }
 
-// ─── Snapshot History View — loads from DB ───────────────────────────────────
+// ─── Snapshot History View ────────────────────────────────────────────────────
 
 export function SnapshotView() {
   const { portfolioId, stats, saveSnapshot } = usePortfolio();
@@ -481,7 +262,6 @@ export function SnapshotView() {
   async function handleSaveSnapshot() {
     setSaving(true);
     await saveSnapshot();
-    // Refresh list
     const r = await fetch(`/api/snapshots?portfolioId=${portfolioId}&limit=30`);
     const d = await r.json();
     setSnapshots(d.snapshots || []);
@@ -529,24 +309,20 @@ export function SnapshotView() {
               </tr>
             </thead>
             <tbody>
-              {snapshots.map((s, i) => {
-                const prev = snapshots[i + 1];
-                const change = prev ? ((parseFloat(s.totalValue) - parseFloat(prev.totalValue)) / parseFloat(prev.totalValue) * 100) : null;
-                return (
-                  <tr key={s.id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                      {new Date(s.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(parseFloat(s.totalValue))}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(parseFloat(s.totalInvested))}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalGain)), fontWeight: '600' }}>{fmtCr(parseFloat(s.totalGain))}</td>
-                    <td><span className={parseFloat(s.totalReturnPct) >= 0 ? 'chip chip-green' : 'chip chip-red'}>{fmtPct(parseFloat(s.totalReturnPct), true)}</span></td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>{s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '—'}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '—'}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '—'}</td>
-                  </tr>
-                );
-              })}
+              {snapshots.map((s, i) => (
+                <tr key={s.id}>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                    {new Date(s.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(parseFloat(s.totalValue))}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(parseFloat(s.totalInvested))}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalGain)), fontWeight: '600' }}>{fmtCr(parseFloat(s.totalGain))}</td>
+                  <td><span className={parseFloat(s.totalReturnPct) >= 0 ? 'chip chip-green' : 'chip chip-red'}>{fmtPct(parseFloat(s.totalReturnPct), true)}</span></td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>{s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '—'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '—'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '—'}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}
