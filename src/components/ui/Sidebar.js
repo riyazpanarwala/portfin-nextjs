@@ -5,6 +5,7 @@ import {
   Camera,
   ChevronLeft,
   ChevronRight,
+  Database,
   Gauge,
   Goal,
   History,
@@ -24,24 +25,25 @@ const NAV = [
   {
     group: 'Views',
     items: [
-      { id: 'overview',   icon: LayoutDashboard, label: 'Overview' },
-      { id: 'mf',         icon: PieChart, label: 'Mutual Funds' },
-      { id: 'stocks',     icon: TrendingUp, label: 'Equity Stocks' },
-      { id: 'analytics',  icon: Gauge, label: 'Analytics' },
-      { id: 'timeline',   icon: History, label: 'Timeline' },
-      { id: 'goal',       icon: Goal, label: 'Goal Planner' },
-      { id: 'waterfall',  icon: Waves, label: 'Wealth Waterfall' },
-      { id: 'action',     icon: Sparkles, label: 'Action Signal' },
-      { id: 'snapshots',  icon: Camera, label: 'Snapshot History' },
-      { id: 'vs-nifty',   icon: LineChart, label: 'vs Nifty 50', badge: 'NEW' },
+      { id: 'overview',     icon: LayoutDashboard, label: 'Overview' },
+      { id: 'mf',           icon: PieChart,        label: 'Mutual Funds' },
+      { id: 'stocks',       icon: TrendingUp,      label: 'Equity Stocks' },
+      { id: 'analytics',    icon: Gauge,           label: 'Analytics' },
+      { id: 'timeline',     icon: History,         label: 'Timeline' },
+      { id: 'goal',         icon: Goal,            label: 'Goal Planner' },
+      { id: 'waterfall',    icon: Waves,           label: 'Wealth Waterfall' },
+      { id: 'action',       icon: Sparkles,        label: 'Action Signal' },
+      { id: 'snapshots',    icon: Camera,          label: 'Snapshot History' },
+      { id: 'vs-nifty',     icon: LineChart,       label: 'vs Nifty 50', badge: 'NEW' },
     ]
   },
   {
     group: 'Tools',
     items: [
-      { id: 'rebalancer', icon: Scale, label: 'Rebalancer' },
-      { id: 'ai-advisor', icon: Bot, label: 'AI Advisor', badge: 'AI' },
-      { id: 'trade',      icon: Plus,  label: 'Add Trade' },
+      { id: 'rebalancer',   icon: Scale,    label: 'Rebalancer' },
+      { id: 'ai-advisor',   icon: Bot,      label: 'AI Advisor', badge: 'AI' },
+      { id: 'instruments',  icon: Database, label: 'Instruments', badge: 'NEW' },
+      { id: 'trade',        icon: Plus,     label: 'Add Trade' },
     ]
   }
 ];
@@ -82,33 +84,34 @@ export default function Sidebar({ collapsed, onToggle }) {
             {section.items.map(item => {
               const Icon = item.icon;
               return (
-              <div
-                key={item.id}
-                className={`nav-item ${activeView === item.id ? 'active' : ''}`}
-                onClick={() => setActiveView(item.id)}
-                title={collapsed ? item.label : undefined}
-                style={{ marginBottom: '2px', justifyContent: collapsed ? 'center' : 'flex-start' }}
-              >
-                <Icon size={16} style={{ minWidth: '18px' }} />
-                {!collapsed && (
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                )}
-                {!collapsed && item.badge && (
-                  <span style={{
-                    fontSize: '9px', fontWeight: '700', padding: '2px 5px',
-                    borderRadius: '4px', letterSpacing: '0.04em',
-                    background: item.badge === 'AI'
-                      ? 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3))'
-                      : 'rgba(16,185,129,0.2)',
-                    color: item.badge === 'AI' ? 'var(--accent2)' : 'var(--green2)',
-                    border: item.badge === 'AI'
-                      ? '1px solid rgba(59,130,246,0.4)'
-                      : '1px solid rgba(16,185,129,0.35)',
-                    flexShrink: 0,
-                  }}>{item.badge}</span>
-                )}
-              </div>
-            )})}
+                <div
+                  key={item.id}
+                  className={`nav-item ${activeView === item.id ? 'active' : ''}`}
+                  onClick={() => setActiveView(item.id)}
+                  title={collapsed ? item.label : undefined}
+                  style={{ marginBottom: '2px', justifyContent: collapsed ? 'center' : 'flex-start' }}
+                >
+                  <Icon size={16} style={{ minWidth: '18px' }} />
+                  {!collapsed && (
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                  )}
+                  {!collapsed && item.badge && (
+                    <span style={{
+                      fontSize: '9px', fontWeight: '700', padding: '2px 5px',
+                      borderRadius: '4px', letterSpacing: '0.04em',
+                      background: item.badge === 'AI'
+                        ? 'linear-gradient(135deg, rgba(59,130,246,0.3), rgba(139,92,246,0.3))'
+                        : 'rgba(16,185,129,0.2)',
+                      color: item.badge === 'AI' ? 'var(--accent2)' : 'var(--green2)',
+                      border: item.badge === 'AI'
+                        ? '1px solid rgba(59,130,246,0.4)'
+                        : '1px solid rgba(16,185,129,0.35)',
+                      flexShrink: 0,
+                    }}>{item.badge}</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ))}
       </nav>

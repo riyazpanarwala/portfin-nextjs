@@ -14,23 +14,25 @@ import GoalView from '@/components/views/GoalView';
 import RebalancerView from '@/components/views/RebalancerView';
 import AIAdvisorView from '@/components/views/AIAdvisorView';
 import PortfolioVsNiftyView from '@/components/views/PortfolioVsNiftyView';
+import InstrumentsView from '@/components/views/InstrumentsView';
 import { TradeForm } from '@/components/views/TradeForm';
 import { TimelineView, WaterfallView, ActionView, SnapshotView } from '@/components/views/OtherViews';
 
 const VIEW_TITLES = {
-  overview:   'Portfolio Overview',
-  mf:         'Mutual Funds',
-  stocks:     'Equity Stocks',
-  analytics:  'Analytics',
-  timeline:   'Investment Timeline',
-  goal:       'Goal Planner',
-  waterfall:  'Wealth Waterfall',
-  action:     'Action Signal',
-  snapshots:  'Snapshot History',
-  rebalancer: 'Portfolio Rebalancer',
-  'vs-nifty': 'Portfolio vs Nifty 50',
+  overview:     'Portfolio Overview',
+  mf:           'Mutual Funds',
+  stocks:       'Equity Stocks',
+  analytics:    'Analytics',
+  timeline:     'Investment Timeline',
+  goal:         'Goal Planner',
+  waterfall:    'Wealth Waterfall',
+  action:       'Action Signal',
+  snapshots:    'Snapshot History',
+  rebalancer:   'Portfolio Rebalancer',
+  'vs-nifty':   'Portfolio vs Nifty 50',
   'ai-advisor': 'AI Portfolio Advisor',
-  trade:      'Add Trade',
+  instruments:  'Instrument Manager',
+  trade:        'Add Trade',
 };
 
 export default function Dashboard() {
@@ -65,6 +67,13 @@ export default function Dashboard() {
                 color: 'var(--green2)', letterSpacing: '0.04em',
               }}>BENCHMARK COMPARISON</span>
             )}
+            {activeView === 'instruments' && (
+              <span className="title-badge" style={{
+                fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '5px',
+                background: 'rgba(251,146,60,0.15)', border: '1px solid rgba(251,146,60,0.35)',
+                color: 'var(--orange)', letterSpacing: '0.04em',
+              }}>NSE · BSE · AMFI</span>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {loading && <Spinner />}
@@ -77,7 +86,7 @@ export default function Dashboard() {
         <main className="app-main">
           {error ? <ErrorState message={error} onRetry={refreshData} /> :
            loading ? <LoadingState /> :
-           trades.length === 0 && activeView !== 'trade' && activeView !== 'ai-advisor' ? <EmptyState /> :
+           trades.length === 0 && activeView !== 'trade' && activeView !== 'ai-advisor' && activeView !== 'instruments' ? <EmptyState /> :
            <ViewRenderer view={activeView} />}
         </main>
       </div>
@@ -100,6 +109,7 @@ function ViewRenderer({ view }) {
     case 'rebalancer':  return <RebalancerView />;
     case 'vs-nifty':    return <PortfolioVsNiftyView />;
     case 'ai-advisor':  return <AIAdvisorView />;
+    case 'instruments': return <InstrumentsView />;
     case 'trade':       return <TradeForm />;
     default:            return <OverviewView />;
   }
@@ -159,9 +169,14 @@ function EmptyState() {
       <div style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '400px', textAlign: 'center' }}>
         Run <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>npm run db:seed</code> to import your portfolio from Excel, or add trades manually.
       </div>
-      <button className="btn btn-primary" onClick={() => setActiveView('trade')} style={{ padding: '10px 24px' }}>
-        <Plus size={16} /> Add Trade Manually
-      </button>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn btn-primary" onClick={() => setActiveView('trade')} style={{ padding: '10px 24px' }}>
+          <Plus size={16} /> Add Trade Manually
+        </button>
+        <button className="btn btn-ghost" onClick={() => setActiveView('instruments')} style={{ padding: '10px 24px' }}>
+          📂 Manage Instruments
+        </button>
+      </div>
     </div>
   );
 }
