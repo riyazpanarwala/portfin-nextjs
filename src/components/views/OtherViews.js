@@ -301,6 +301,7 @@ export function SnapshotView() {
                 <th>Date</th>
                 <th>Portfolio Value</th>
                 <th>Invested</th>
+                <th>Realized</th>
                 <th>Gain</th>
                 <th>Return %</th>
                 <th>MF CAGR</th>
@@ -316,6 +317,7 @@ export function SnapshotView() {
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(parseFloat(s.totalValue))}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(parseFloat(s.totalInvested))}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalRealizedGain)), fontWeight: '600' }}>{s.totalRealizedGain != null ? fmtCr(parseFloat(s.totalRealizedGain)) : '—'}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalGain)), fontWeight: '600' }}>{fmtCr(parseFloat(s.totalGain))}</td>
                   <td><span className={parseFloat(s.totalReturnPct) >= 0 ? 'chip chip-green' : 'chip chip-red'}>{fmtPct(parseFloat(s.totalReturnPct), true)}</span></td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>{s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '—'}</td>

@@ -316,7 +316,7 @@ function SectorRotationWheel({ holdings, stats }) {
 
 // ── Main Analytics View ───────────────────────────────────────────────────────
 export default function AnalyticsView() {
-  const { stats, holdings, stHoldings, mfHoldings, taxData, monthlyFlow } = usePortfolio();
+  const { stats, holdings, stHoldings, mfHoldings, taxData, monthlyFlow, realizedSummary } = usePortfolio();
 
   const ltcg         = holdings.filter(h => h.years >= 1);
   const stcg         = holdings.filter(h => h.years <  1);
@@ -333,6 +333,13 @@ export default function AnalyticsView() {
   const sharpe   = ((stats.overallCagr - 6.5) / 14).toFixed(2);
   const totalTax = taxData.reduce((s, h) => s + h.tax, 0);
   const harvestable = taxData.filter(h => h.gain < 0);
+
+  // Realized breakdown
+  const realizedWins  = realizedSummary.sells.filter(s => s.realized > 0).length;
+  const realizedLosses = realizedSummary.sells.filter(s => s.realized < 0).length;
+  const realizedSellProceeds = realizedSummary.sells.reduce((s, sr) => s + sr.qty * sr.sellPrice, 0);
+  const realizedBySymbol = Object.entries(realizedSummary.sellsBySymbol)
+    .sort((a, b) => b[1].realized - a[1].realized);
 
   return (
     <div className="fade-up">
@@ -355,6 +362,66 @@ export default function AnalyticsView() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Realized P&L Summary */}
+      <div className="glass" style={{ padding: '18px', marginBottom: '16px' }}>
+        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Realized P&L Summary</div>
+        <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>
+          Tax computed from actual sell transactions using FIFO lot matching · FY Indian equity rates
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+          {[
+            { label: 'Total Realized P&L', value: fmtCr(realizedSummary.totalRealized), color: colorPnl(realizedSummary.totalRealized), note: 'All closed trades' },
+            { label: 'LTCG Realized',      value: fmtCr(realizedSummary.ltcgGain),        color: colorPnl(realizedSummary.ltcgGain),        note: '> 1 yr holding · 12.5%' },
+            { label: 'STCG Realized',      value: fmtCr(realizedSummary.stcgGain),        color: colorPnl(realizedSummary.stcgGain),        note: '< 1 yr holding · 20%' },
+            { label: 'LTCG Tax',           value: fmtCr(realizedSummary.ltcgTax),         color: 'var(--red2)',                               note: 'Over ₹1.25L exemption' },
+            { label: 'STCG Tax',           value: fmtCr(realizedSummary.stcgTax),         color: 'var(--red2)',                               note: 'Flat rate on gains' },
+            { label: 'Total Tax Liability',value: fmtCr(realizedSummary.totalTax),        color: 'var(--red2)',                               note: 'Realized gains only' },
+          ].map((m, i) => (
+            <div key={i} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '14px' }}>
+              <div style={{ fontSize: '22px', fontWeight: '800', fontFamily: 'var(--font-mono)', color: m.color }}>{m.value}</div>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text)', marginTop: '2px' }}>{m.label}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{m.note}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+          {[
+            { label: 'Winning Trades', value: realizedWins,              color: 'var(--green2)', note: 'Profitable sells' },
+            { label: 'Losing Trades',  value: realizedLosses,            color: 'var(--red2)',   note: 'Loss-making sells' },
+            { label: 'Total Sells',    value: realizedSummary.sells.length, color: 'var(--accent2)', note: 'Closed positions' },
+            { label: 'Sell Proceeds',  value: fmtCr(realizedSellProceeds), color: 'var(--text)',   note: 'Gross realized' },
+          ].map((m, i) => (
+            <div key={i} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '14px' }}>
+              <div style={{ fontSize: '22px', fontWeight: '800', fontFamily: 'var(--font-mono)', color: m.color }}>{m.value}</div>
+              <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text)', marginTop: '2px' }}>{m.label}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{m.note}</div>
+            </div>
+          ))}
+        </div>
+
+        {realizedBySymbol.length > 0 && (
+          <div style={{ marginTop: '10px' }}>
+            <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text3)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Realized by Symbol</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {realizedBySymbol.slice(0, 6).map(([sym, data]) => (
+                <div key={sym} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg3)', borderRadius: '6px', padding: '8px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{sym}</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text3)' }}>{data.sells.length} sell{data.sells.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <span style={{ fontSize: '13px', fontWeight: '700', fontFamily: 'var(--font-mono)', color: colorPnl(data.realized) }}>{fmtCr(data.realized)}</span>
+                </div>
+              ))}
+            </div>
+            {realizedBySymbol.length > 6 && (
+              <div style={{ fontSize: 10, color: 'var(--text3)', textAlign: 'center', marginTop: 6 }}>+{realizedBySymbol.length - 6} more symbols</div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Benchmark + Tax */}
@@ -385,9 +452,9 @@ export default function AnalyticsView() {
         </div>
 
         <div className="glass" style={{ padding: '18px' }}>
-          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Tax Harvesting Assistant</div>
+          <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Unrealized Tax & Harvesting Assistant</div>
           <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>
-            FY Indian equity tax — LTCG 12.5% (held &gt;1yr, gains &gt;₹1.25L) · STCG 20% (held &lt;1yr)
+            Current holdings · FY Indian equity tax — LTCG 12.5% (held &gt;1yr, gains &gt;₹1.25L) · STCG 20% (held &lt;1yr)
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
             <div style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '12px' }}>
@@ -402,7 +469,7 @@ export default function AnalyticsView() {
             </div>
           </div>
           <div style={{ background: 'rgba(239,68,68,0.08)', borderRadius: '8px', padding: '12px', border: '1px solid rgba(239,68,68,0.2)' }}>
-            <div style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '4px' }}>Estimated Tax Liability</div>
+            <div style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '4px' }}>Estimated Unrealized Tax Liability</div>
             <div style={{ fontSize: '20px', fontWeight: '800', fontFamily: 'var(--font-mono)', color: 'var(--red2)' }}>{fmtCr(totalTax)}</div>
           </div>
           {harvestable.length > 0 && (
