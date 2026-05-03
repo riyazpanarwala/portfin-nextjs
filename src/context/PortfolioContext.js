@@ -1,7 +1,14 @@
 'use client';
 
 import { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
-import { computeHoldings, computePortfolioStats, buildMonthlyFlow, computeTax } from '@/lib/store';
+import {
+  computeHoldings,
+  computePortfolioStats,
+  buildMonthlyFlow,
+  computeTax,
+  computeRealizedSummary,
+  computePortfolioXIRR,
+} from '@/lib/store';
 
 const PortfolioCtx = createContext(null);
 const DEFAULT_USER_ID = 'user-default-001';
@@ -39,7 +46,7 @@ export function PortfolioProvider({ children }) {
       }
       setPortfolioId(pid);
 
-      // 2. Fetch trades (already joined with instrument by the API)
+      // 2. Fetch trades
       const tRes = await fetch(`/api/trades?portfolioId=${pid}`);
       if (!tRes.ok) throw new Error(await tRes.text());
       const { trades: rawTrades } = await tRes.json();
@@ -69,12 +76,18 @@ export function PortfolioProvider({ children }) {
   useEffect(() => { loadData(); }, [loadData]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
-  const holdings    = useMemo(() => computeHoldings(trades, currentPrices), [trades, currentPrices]);
-  const stats       = useMemo(() => computePortfolioStats(holdings), [holdings]);
-  const mfHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'MF'),    [holdings]);
-  const stHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
-  const monthlyFlow = useMemo(() => buildMonthlyFlow(trades), [trades]);
-  const taxData     = useMemo(() => computeTax(holdings), [holdings]);
+  const holdings       = useMemo(() => computeHoldings(trades, currentPrices),    [trades, currentPrices]);
+  const stats          = useMemo(() => computePortfolioStats(holdings),            [holdings]);
+  const mfHoldings     = useMemo(() => holdings.filter(h => h.assetType === 'MF'),    [holdings]);
+  const stHoldings     = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
+  const monthlyFlow    = useMemo(() => buildMonthlyFlow(trades),                   [trades]);
+  const taxData        = useMemo(() => computeTax(holdings),                       [holdings]);
+  const realizedSummary = useMemo(() => computeRealizedSummary(holdings),          [holdings]);
+  // Portfolio XIRR is expensive — only compute when trades exist
+  const portfolioXIRR  = useMemo(() => {
+    if (trades.length < 2) return null;
+    return computePortfolioXIRR(trades, currentPrices);
+  }, [trades, currentPrices]);
 
   // ── Add trade ─────────────────────────────────────────────────────────────
   async function addTrade(trade) {
@@ -88,7 +101,6 @@ export function PortfolioProvider({ children }) {
       const { trade: newTrade } = await res.json();
       setTrades(prev => [...prev, newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)));
 
-      // Refresh price for new symbol
       if (!currentPrices[newTrade.symbol]) {
         const pr = await fetch('/api/prices', {
           method: 'POST',
@@ -163,7 +175,7 @@ export function PortfolioProvider({ children }) {
     }
   }
 
-  // ── Update prices manually ────────────────────────────────────────────────
+  // ── Refresh prices ────────────────────────────────────────────────────────
   async function refreshPrices() {
     const symbols = [...new Set(trades.map(t => t.symbol))];
     if (!symbols.length) return;
@@ -193,6 +205,7 @@ export function PortfolioProvider({ children }) {
     <PortfolioCtx.Provider value={{
       trades, holdings, stats, mfHoldings, stHoldings,
       monthlyFlow, taxData, currentPrices, priceMeta,
+      realizedSummary, portfolioXIRR,
       portfolioId, loading, error,
       activeView, setActiveView,
       addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,

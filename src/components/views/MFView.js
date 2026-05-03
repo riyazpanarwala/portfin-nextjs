@@ -5,7 +5,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, colorPnl, sectorColor } from '@/lib/store';
 import { HoldingPerformanceChart } from '@/components/charts/Charts';
 
-// ── XIRR (Newton-Raphson) ─────────────────────────────────────────────────────
+// ── XIRR ─────────────────────────────────────────────────────────────────────
 function computeXIRR(cashflows) {
   if (!cashflows || cashflows.length < 2) return null;
   const dates   = cashflows.map(c => new Date(c.date));
@@ -25,11 +25,13 @@ function computeXIRR(cashflows) {
   return isFinite(rate) ? rate * 100 : null;
 }
 
-function calcFundXIRR(lots, cmp) {
+function calcFundXIRR(lots, sells, cmp) {
   const tQty = lots.reduce((s, l) => s + l.qty, 0);
+  const sellCFs = (sells || []).map(s => ({ amount: s.qty * s.sellPrice, date: s.date }));
   return computeXIRR([
     ...lots.map(l => ({ amount: -(l.qty * l.price), date: l.date })),
-    { amount: tQty * cmp, date: new Date().toISOString().slice(0, 10) },
+    ...sellCFs,
+    ...(tQty > 0 ? [{ amount: tQty * cmp, date: new Date().toISOString().slice(0, 10) }] : []),
   ]);
 }
 
@@ -75,12 +77,11 @@ function TaxBadge({ days }) {
   );
 }
 
-// ── 12-column grid ────────────────────────────────────────────────────────────
-// chevron | fund name | category | # | units | cmp | invested | value | gain | cagr | return% | hold
-const COL = '20px 1fr 80px 32px 72px 72px 80px 80px 88px 64px 130px 50px';
+// ── Grid ──────────────────────────────────────────────────────────────────────
+const COL = '20px 1fr 80px 32px 72px 72px 80px 80px 80px 88px 64px 130px 50px';
 
 function HeaderRow() {
-  const cols = ['', 'FUND NAME', 'CAT', '#', 'UNITS', 'CMP', 'INVESTED', 'VALUE', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
+  const cols = ['', 'FUND NAME', 'CAT', '#', 'UNITS', 'CMP', 'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
   return (
     <div style={{
       display: 'grid', gridTemplateColumns: COL, padding: '0 6px',
@@ -88,7 +89,8 @@ function HeaderRow() {
     }}>
       {cols.map((c, i) => (
         <div key={i} style={{
-          fontSize: 9, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--text3)',
+          fontSize: 9, fontWeight: 700, letterSpacing: '0.07em',
+          color: i === 8 ? 'var(--yellow)' : 'var(--text3)',
           padding: '7px 5px', textAlign: i > 2 ? 'right' : 'left', whiteSpace: 'nowrap',
         }}>{c}</div>
       ))}
@@ -99,8 +101,9 @@ function HeaderRow() {
 // ── Expanded detail ───────────────────────────────────────────────────────────
 function DetailPanel({ h, priceMeta }) {
   const [tab, setTab] = useState('lots');
-  const xirr = useMemo(() => calcFundXIRR(h.lots, h.cmp), [h.symbol, h.cmp]);
+  const xirr = useMemo(() => calcFundXIRR(h.lots, h.sells, h.cmp), [h.symbol, h.cmp]);
   const meta = priceMeta?.[h.symbol];
+  const hasSells = h.sells && h.sells.length > 0;
 
   const monthly = useMemo(() => {
     const map = {};
@@ -133,16 +136,37 @@ function DetailPanel({ h, priceMeta }) {
   return (
     <div style={{ background: 'rgba(8,14,28,0.85)', borderTop: '1px solid var(--border)' }}>
       <div style={{ padding: '12px 16px 16px' }}>
-        {/* XIRR summary */}
-        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
-          Fund XIRR (money-weighted):{' '}
-          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--green2)' }}>
-            {xirr != null ? pct(xirr) : '—'}
-          </span>{' '}
-          <span style={{ color: 'var(--text3)' }}>p.a.</span>
+        {/* XIRR + stats */}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:'16px', marginBottom:10, alignItems:'center' }}>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+            Fund XIRR:{' '}
+            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--green2)' }}>
+              {xirr != null ? pct(xirr) : '—'}
+            </span>{' '}
+            <span style={{ color: 'var(--text3)' }}>p.a.</span>
+          </div>
+          {hasSells && (
+            <div style={{ display:'flex', gap:8 }}>
+              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                background:'rgba(16,185,129,0.1)', color:'var(--green2)',
+                border:'1px solid rgba(16,185,129,0.25)', fontWeight:700 }}>
+                ✓ {h.stats.winCount} wins
+              </span>
+              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                background:'rgba(239,68,68,0.1)', color:'var(--red2)',
+                border:'1px solid rgba(239,68,68,0.25)', fontWeight:700 }}>
+                ✗ {h.stats.lossCount} losses
+              </span>
+              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                background:'rgba(59,130,246,0.08)', color:'var(--accent2)',
+                border:'1px solid rgba(59,130,246,0.2)' }}>
+                Realized: <span style={{ fontWeight:700, color:colorPnl(h.realizedGain) }}>{fmtCr(h.realizedGain)}</span>
+              </span>
+            </div>
+          )}
           {meta && (
-            <span style={{ marginLeft: 10, color: 'var(--text3)', fontSize: 11 }}>
-              Price: {meta.source}{meta.updatedAt ? ` - ${new Date(meta.updatedAt).toLocaleString('en-IN')}` : ''}
+            <span style={{ color: 'var(--text3)', fontSize: 11 }}>
+              Price: {meta.source}{meta.updatedAt ? ` · ${new Date(meta.updatedAt).toLocaleString('en-IN')}` : ''}
             </span>
           )}
         </div>
@@ -156,7 +180,11 @@ function DetailPanel({ h, priceMeta }) {
 
         {/* Tabs */}
         <div style={{ display: 'flex', marginBottom: 10, borderBottom: '1px solid var(--border)' }}>
-          {[['lots', 'Lot-wise breakup'], ['monthly', 'Monthly breakup']].map(([k, l]) => (
+          {[
+            ['lots', 'Lot-wise breakup'],
+            ['monthly', 'Monthly breakup'],
+            ...(hasSells ? [['sells', `Sell History (${h.sells.length})`]] : []),
+          ].map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{
               background: 'none', border: 'none', cursor: 'pointer', padding: '5px 12px',
               fontSize: 11, fontWeight: 600, marginBottom: -1,
@@ -202,8 +230,8 @@ function DetailPanel({ h, priceMeta }) {
                     <td colSpan={2} style={{ padding: '6px 8px', fontSize: 10, color: 'var(--text3)' }}>TOTAL · {h.lots.length} LOTS</td>
                     <TD ch={fmt(h.qty, 3)} right mono bold />
                     <TD ch={`₹${fmt(h.invested, 0)}`} right mono bold />
-                    <TD ch={fmtCr(h.gain)} right mono color={colorPnl(h.gain)} bold />
-                    <TD ch={pct(h.returnPct)} right mono color={pcol(h.returnPct)} bold />
+                    <TD ch={fmtCr(h.unrealizedGain)} right mono color={colorPnl(h.unrealizedGain)} bold />
+                    <TD ch={pct(h.unrealizedReturnPct)} right mono color={pcol(h.unrealizedReturnPct)} bold />
                     <TD ch="← fund XIRR" right small color="var(--text3)" />
                     <TD ch="" /><TD ch="" />
                   </tr>
@@ -241,6 +269,60 @@ function DetailPanel({ h, priceMeta }) {
             </table>
           </div>
         )}
+
+        {tab === 'sells' && hasSells && (
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 580 }}>
+                <thead>
+                  <tr>
+                    <TH ch="SELL DATE" /><TH ch="SELL NAV" right /><TH ch="UNITS" right />
+                    <TH ch="PROCEEDS" right /><TH ch="REALIZED" right /><TH ch="TAX TYPE" />
+                    <TH ch="FIFO LOTS MATCHED" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {h.sells.map((s, i) => (
+                    <tr key={i}>
+                      <TD ch={s.date} mono color="var(--text2)" />
+                      <TD ch={`₹${fmt(s.sellPrice, 2)}`} right mono />
+                      <TD ch={fmt(s.qty, 3)} right mono />
+                      <TD ch={fmtCr(s.qty * s.sellPrice)} right mono />
+                      <TD ch={fmtCr(s.realized)} right mono color={colorPnl(s.realized)} bold />
+                      <TD ch={
+                        <span style={{
+                          fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3,
+                          background: s.taxType === 'LTCG' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                          color:      s.taxType === 'LTCG' ? 'var(--green2)' : 'var(--yellow)',
+                          border:     `1px solid ${s.taxType === 'LTCG' ? 'rgba(16,185,129,0.35)' : 'rgba(245,158,11,0.35)'}`,
+                        }}>{s.taxType}</span>
+                      } />
+                      <TD ch={
+                        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                          {s.matchedLots.map((ml, mi) => (
+                            <span key={mi} style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-mono)',
+                              background:'var(--bg3)', padding:'1px 5px', borderRadius:3, border:'1px solid var(--border)' }}>
+                              {fmt(ml.qty,3)}@{fmt(ml.buyPrice,2)} ({ml.holdDays}d)
+                            </span>
+                          ))}
+                        </div>
+                      } />
+                    </tr>
+                  ))}
+                  <tr style={{ background:'rgba(245,158,11,0.06)' }}>
+                    <td colSpan={3} style={{ padding:'6px 8px', fontSize:10, color:'var(--text3)' }}>TOTAL · {h.sells.length} SELL(S)</td>
+                    <TD ch={fmtCr(h.stats.totalSellProceeds)} right mono bold />
+                    <TD ch={fmtCr(h.realizedGain)} right mono color={colorPnl(h.realizedGain)} bold />
+                    <TD ch="" /><TD ch="" />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize:10, color:'var(--text3)', marginTop:6 }}>
+              FIFO matching — oldest units redeemed first. Hold days per matched lot determines LTCG/STCG.
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -249,8 +331,9 @@ function DetailPanel({ h, priceMeta }) {
 // ── Controls ──────────────────────────────────────────────────────────────────
 const SORTS = [
   { key: 'returnPct', label: 'Return' }, { key: 'cagr', label: 'CAGR' },
-  { key: 'marketValue', label: 'Value' }, { key: 'gain', label: 'Gain' },
-  { key: 'invested', label: 'Invested' }, { key: 'lots', label: 'Lots' },
+  { key: 'marketValue', label: 'Value' }, { key: 'unrealizedGain', label: 'Unrealized' },
+  { key: 'realizedGain', label: 'Realized' }, { key: 'invested', label: 'Invested' },
+  { key: 'lots', label: 'Lots' },
 ];
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -273,6 +356,7 @@ export default function MFView() {
 
   const maxRet = useMemo(() => Math.max(...mfHoldings.map(h => Math.abs(h.returnPct)), 1), [mfHoldings]);
   const mfGain = stats.mfValue - stats.mfInvested;
+  const mfRealized = mfHoldings.reduce((s, h) => s + (h.realizedGain || 0), 0);
 
   if (!mfHoldings.length) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'50vh', gap:12 }}>
@@ -286,8 +370,12 @@ export default function MFView() {
   function toggle(sym)    { setExpanded(e => ({ ...e, [sym]: !e[sym] })); }
 
   function exportCSV() {
-    const rows2 = [['Fund','Category','Lots','Units','CMP','Avg NAV','Invested','Value','Gain','Return%','CAGR','Holding']];
-    rows.forEach(h => rows2.push([h.symbol, h.sector||'', h.lots.length, fmt(h.qty,3), fmt(h.cmp,2), fmt(h.avgBuy,2), fmt(h.invested,0), fmt(h.marketValue,0), fmt(h.gain,0), fmt(h.returnPct,2)+'%', fmt(h.cagr,2)+'%', holdStr(h.holdingDays)]));
+    const rows2 = [['Fund','Category','Lots','Units','CMP','Avg NAV','Invested','Value','Unrealized','Realized','Total Gain','Return%','CAGR','Holding']];
+    rows.forEach(h => rows2.push([
+      h.symbol, h.sector||'', h.lots.length, fmt(h.qty,3), fmt(h.cmp,2), fmt(h.avgBuy,2),
+      fmt(h.invested,0), fmt(h.marketValue,0), fmt(h.unrealizedGain,0), fmt(h.realizedGain,0),
+      fmt(h.totalGain,0), fmt(h.returnPct,2)+'%', fmt(h.cagr,2)+'%', holdStr(h.holdingDays),
+    ]));
     const a = document.createElement('a'); a.href = 'data:text/csv,'+encodeURIComponent(rows2.map(r=>r.join(',')).join('\n')); a.download = 'mf.csv'; a.click();
   }
 
@@ -295,13 +383,14 @@ export default function MFView() {
     <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:12 }}>
 
       {/* Summary strip */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(120px, 1fr))', gap:10 }}>
         {[
-          { l:'MF Value',   v: fmtCr(stats.mfValue),     c:'var(--teal)' },
-          { l:'Invested',   v: fmtCr(stats.mfInvested),  c:'var(--text)' },
-          { l:'Gain',       v: fmtCr(mfGain),             c: colorPnl(mfGain) },
-          { l:'Wtd CAGR',   v: pct(stats.mfCagr),         c:'var(--green2)' },
-          { l:'Funds',      v: stats.fundCount,            c:'var(--accent2)' },
+          { l:'MF Value',       v: fmtCr(stats.mfValue),    c:'var(--teal)' },
+          { l:'Invested',       v: fmtCr(stats.mfInvested), c:'var(--text)' },
+          { l:'Unrealized',     v: fmtCr(mfGain),            c: colorPnl(mfGain) },
+          { l:'Realized P&L',  v: fmtCr(mfRealized),        c: colorPnl(mfRealized) },
+          { l:'Wtd CAGR',       v: `${mfGain >= 0 ? '+' : ''}${fmt(stats.mfCagr)}%`, c:'var(--green2)' },
+          { l:'Funds',          v: stats.fundCount,           c:'var(--accent2)' },
         ].map((m,i) => (
           <div key={i} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'11px 14px' }}>
             <div style={{ fontSize:9, color:'var(--text3)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{m.l}</div>
@@ -342,6 +431,7 @@ export default function MFView() {
         <HeaderRow />
         {rows.map(h => {
           const open = !!expanded[h.symbol];
+          const hasRealized = (h.realizedGain || 0) !== 0;
           return (
             <div key={h.symbol} style={{ borderBottom:'1px solid rgba(45,64,96,0.35)' }}>
               <div
@@ -355,13 +445,13 @@ export default function MFView() {
                 onMouseEnter={e => { if (!open) e.currentTarget.style.background='rgba(255,255,255,0.025)'; }}
                 onMouseLeave={e => { if (!open) e.currentTarget.style.background='transparent'; }}
               >
-                {/* Chevron */}
                 <div style={{ textAlign:'center', color:'var(--text3)', fontSize:8, padding:'0 2px' }}>{open?'▼':'►'}</div>
 
                 {/* Fund name */}
                 <div style={{ padding:'9px 5px', minWidth:0 }}>
                   <div style={{ fontSize:12, fontWeight:700, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }} title={h.name||h.symbol}>{h.symbol}</div>
                   {h.name && h.name!==h.symbol && <div style={{ fontSize:9, color:'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{h.name}</div>}
+                  {h.sells?.length > 0 && <div style={{ fontSize:9, color:'var(--yellow)', marginTop:1 }}>{h.sells.length} redemption{h.sells.length > 1 ? 's' : ''}</div>}
                 </div>
 
                 {/* Category badge */}
@@ -371,31 +461,23 @@ export default function MFView() {
                     border:`1px solid ${sectorColor(h.sector||'Other')}40` }}>{h.sector||'Other'}</span>
                 </div>
 
-                {/* # lots */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text2)' }}>{h.lots.length}</div>
-
-                {/* Units */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text2)' }}>{fmt(h.qty, 2)}</div>
-
-                {/* CMP / NAV */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11 }}>₹{fmt(h.cmp, 1)}</div>
-
-                {/* Invested */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11 }}>{fmtCr(h.invested)}</div>
-
-                {/* Value */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700 }}>{fmtCr(h.marketValue)}</div>
 
-                {/* Gain */}
-                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:600, color:colorPnl(h.gain) }}>{fmtCr(h.gain)}</div>
+                {/* Realized */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:600,
+                  color: hasRealized ? colorPnl(h.realizedGain) : 'var(--text3)' }}>
+                  {hasRealized ? fmtCr(h.realizedGain) : '—'}
+                </div>
 
-                {/* CAGR */}
+                {/* Unrealized gain */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:600, color:colorPnl(h.unrealizedGain) }}>{fmtCr(h.unrealizedGain)}</div>
+
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:700, color:pcol(h.cagr) }}>{pct(h.cagr)}</div>
-
-                {/* Return bar */}
                 <div style={{ padding:'9px 5px' }}><ReturnBar val={h.returnPct} max={maxRet} /></div>
-
-                {/* Holding */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:10, color:'var(--text2)' }}>{holdStr(h.holdingDays)}</div>
               </div>
               {open && <DetailPanel h={h} priceMeta={priceMeta} />}

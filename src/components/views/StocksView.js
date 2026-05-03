@@ -25,11 +25,13 @@ function computeXIRR(cashflows) {
   return isFinite(rate) ? rate * 100 : null;
 }
 
-function calcStockXIRR(lots, cmp) {
+function calcStockXIRR(lots, sells, cmp) {
   const tQty = lots.reduce((s, l) => s + l.qty, 0);
+  const sellCFs = (sells || []).map(s => ({ amount: s.qty * s.sellPrice, date: s.date }));
   return computeXIRR([
     ...lots.map(l => ({ amount: -(l.qty * l.price), date: l.date })),
-    { amount: tQty * cmp, date: new Date().toISOString().slice(0, 10) },
+    ...sellCFs,
+    ...(tQty > 0 ? [{ amount: tQty * cmp, date: new Date().toISOString().slice(0, 10) }] : []),
   ]);
 }
 
@@ -154,11 +156,11 @@ function PriceCell({ symbol, cmp, onSaved }) {
   );
 }
 
-// ── 12-column grid ────────────────────────────────────────────────────────────
-const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 88px 64px 130px 50px';
+// ── 13-column grid (added realized gain column) ───────────────────────────────
+const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 80px 88px 64px 130px 50px';
 
 function HeaderRow() {
-  const cols = ['', 'STOCK', 'SECTOR', '#', 'QTY', 'CMP ✎', 'INVESTED', 'VALUE', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
+  const cols = ['', 'STOCK', 'SECTOR', '#', 'QTY', 'CMP ✎', 'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
   return (
     <div style={{
       display:'grid', gridTemplateColumns: COL, padding:'0 6px',
@@ -166,7 +168,8 @@ function HeaderRow() {
     }}>
       {cols.map((c, i) => (
         <div key={i} style={{
-          fontSize:9, fontWeight:700, letterSpacing:'0.07em', color: i === 5 ? 'var(--accent2)' : 'var(--text3)',
+          fontSize:9, fontWeight:700, letterSpacing:'0.07em',
+          color: i === 5 ? 'var(--accent2)' : i === 8 ? 'var(--yellow)' : 'var(--text3)',
           padding:'7px 5px', textAlign: i > 2 ? 'right' : 'left', whiteSpace:'nowrap',
         }}>{c}</div>
       ))}
@@ -177,7 +180,8 @@ function HeaderRow() {
 // ── Expanded detail ───────────────────────────────────────────────────────────
 function DetailPanel({ h, priceMeta }) {
   const [tab, setTab] = useState('lots');
-  const xirr = useMemo(() => calcStockXIRR(h.lots, h.cmp), [h.symbol, h.cmp]);
+  // Include sell cashflows for a more accurate XIRR
+  const xirr = useMemo(() => calcStockXIRR(h.lots, h.sells, h.cmp), [h.symbol, h.cmp]);
   const meta = priceMeta?.[h.symbol];
 
   const monthly = useMemo(() => {
@@ -208,19 +212,43 @@ function DetailPanel({ h, priceMeta }) {
       borderBottom:'1px solid rgba(45,64,96,0.2)', whiteSpace:'nowrap' }}>{ch}</td>
   );
 
+  const hasSells = h.sells && h.sells.length > 0;
+
   return (
     <div style={{ background:'rgba(8,14,28,0.85)', borderTop:'1px solid var(--border)' }}>
       <div style={{ padding:'12px 16px 16px' }}>
-        {/* XIRR summary */}
-        <div style={{ fontSize:12, color:'var(--text2)', marginBottom:10 }}>
-          Stock XIRR (money-weighted):{' '}
-          <span style={{ fontFamily:'var(--font-mono)', fontWeight:700, color:'var(--green2)' }}>
-            {xirr != null ? pct(xirr) : '—'}
-          </span>{' '}
-          <span style={{ color:'var(--text3)' }}>p.a.</span>
+        {/* XIRR + stats summary */}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:'16px', marginBottom:10, alignItems:'center' }}>
+          <div style={{ fontSize:12, color:'var(--text2)' }}>
+            Stock XIRR:{' '}
+            <span style={{ fontFamily:'var(--font-mono)', fontWeight:700, color:'var(--green2)' }}>
+              {xirr != null ? pct(xirr) : '—'}
+            </span>{' '}
+            <span style={{ color:'var(--text3)' }}>p.a.</span>
+          </div>
+          {/* Win/loss stats */}
+          {hasSells && (
+            <div style={{ display:'flex', gap:8 }}>
+              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                background:'rgba(16,185,129,0.1)', color:'var(--green2)',
+                border:'1px solid rgba(16,185,129,0.25)', fontWeight:700 }}>
+                ✓ {h.stats.winCount} wins
+              </span>
+              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                background:'rgba(239,68,68,0.1)', color:'var(--red2)',
+                border:'1px solid rgba(239,68,68,0.25)', fontWeight:700 }}>
+                ✗ {h.stats.lossCount} losses
+              </span>
+              <span style={{ fontSize:11, padding:'2px 8px', borderRadius:4,
+                background:'rgba(59,130,246,0.08)', color:'var(--accent2)',
+                border:'1px solid rgba(59,130,246,0.2)' }}>
+                Realized: <span style={{ fontWeight:700, color:colorPnl(h.realizedGain) }}>{fmtCr(h.realizedGain)}</span>
+              </span>
+            </div>
+          )}
           {meta && (
-            <span style={{ marginLeft:10, color:'var(--text3)', fontSize:11 }}>
-              Price: {meta.source}{meta.updatedAt ? ` - ${new Date(meta.updatedAt).toLocaleString('en-IN')}` : ''}
+            <span style={{ fontSize:11, color:'var(--text3)' }}>
+              Price: {meta.source}{meta.updatedAt ? ` · ${new Date(meta.updatedAt).toLocaleString('en-IN')}` : ''}
             </span>
           )}
         </div>
@@ -234,7 +262,11 @@ function DetailPanel({ h, priceMeta }) {
 
         {/* Tabs */}
         <div style={{ display:'flex', marginBottom:10, borderBottom:'1px solid var(--border)' }}>
-          {[['lots','Lot-wise breakup'],['monthly','Monthly breakup']].map(([k,l]) => (
+          {[
+            ['lots','Lot-wise breakup'],
+            ['monthly','Monthly breakup'],
+            ...(hasSells ? [['sells', `Sell History (${h.sells.length})`]] : []),
+          ].map(([k,l]) => (
             <button key={k} onClick={() => setTab(k)} style={{
               background:'none', border:'none', cursor:'pointer', padding:'5px 12px',
               fontSize:11, fontWeight:600, marginBottom:-1,
@@ -280,8 +312,8 @@ function DetailPanel({ h, priceMeta }) {
                     <td colSpan={2} style={{ padding:'6px 8px', fontSize:10, color:'var(--text3)' }}>TOTAL · {h.lots.length} LOTS</td>
                     <TD ch={fmt(h.qty, 0)} right mono bold />
                     <TD ch={`₹${fmt(h.invested, 0)}`} right mono bold />
-                    <TD ch={fmtCr(h.gain)} right mono color={colorPnl(h.gain)} bold />
-                    <TD ch={pct(h.returnPct)} right mono color={pcol(h.returnPct)} bold />
+                    <TD ch={fmtCr(h.unrealizedGain)} right mono color={colorPnl(h.unrealizedGain)} bold />
+                    <TD ch={pct(h.unrealizedReturnPct)} right mono color={pcol(h.unrealizedReturnPct)} bold />
                     <TD ch="← stock XIRR" right small color="var(--text3)" />
                     <TD ch="" /><TD ch="" />
                   </tr>
@@ -319,6 +351,60 @@ function DetailPanel({ h, priceMeta }) {
             </table>
           </div>
         )}
+
+        {tab === 'sells' && hasSells && (
+          <>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:620 }}>
+                <thead>
+                  <tr>
+                    <TH ch="SELL DATE" /><TH ch="SELL PRICE" right /><TH ch="QTY" right />
+                    <TH ch="PROCEEDS" right /><TH ch="REALIZED" right /><TH ch="TAX TYPE" />
+                    <TH ch="FIFO LOTS MATCHED" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {h.sells.map((s, i) => (
+                    <tr key={i}>
+                      <TD ch={s.date} mono color="var(--text2)" />
+                      <TD ch={`₹${fmt(s.sellPrice, 2)}`} right mono />
+                      <TD ch={fmt(s.qty, 0)} right mono />
+                      <TD ch={fmtCr(s.qty * s.sellPrice)} right mono />
+                      <TD ch={fmtCr(s.realized)} right mono color={colorPnl(s.realized)} bold />
+                      <TD ch={
+                        <span style={{
+                          fontSize:10, fontWeight:700, padding:'2px 5px', borderRadius:3,
+                          background: s.taxType === 'LTCG' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+                          color:      s.taxType === 'LTCG' ? 'var(--green2)' : 'var(--yellow)',
+                          border:     `1px solid ${s.taxType === 'LTCG' ? 'rgba(16,185,129,0.35)' : 'rgba(245,158,11,0.35)'}`,
+                        }}>{s.taxType}</span>
+                      } />
+                      <TD ch={
+                        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+                          {s.matchedLots.map((ml, mi) => (
+                            <span key={mi} style={{ fontSize:10, color:'var(--text3)', fontFamily:'var(--font-mono)',
+                              background:'var(--bg3)', padding:'1px 5px', borderRadius:3, border:'1px solid var(--border)' }}>
+                              {fmt(ml.qty,0)}@{fmt(ml.buyPrice,0)} ({ml.holdDays}d)
+                            </span>
+                          ))}
+                        </div>
+                      } />
+                    </tr>
+                  ))}
+                  <tr style={{ background:'rgba(245,158,11,0.06)' }}>
+                    <td colSpan={3} style={{ padding:'6px 8px', fontSize:10, color:'var(--text3)' }}>TOTAL · {h.sells.length} SELL(S)</td>
+                    <TD ch={fmtCr(h.stats.totalSellProceeds)} right mono bold />
+                    <TD ch={fmtCr(h.realizedGain)} right mono color={colorPnl(h.realizedGain)} bold />
+                    <TD ch="" /><TD ch="" />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize:10, color:'var(--text3)', marginTop:6 }}>
+              FIFO matching — oldest lots consumed first. Holding days per matched lot determines LTCG/STCG.
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -327,13 +413,14 @@ function DetailPanel({ h, priceMeta }) {
 // ── Sort options ──────────────────────────────────────────────────────────────
 const SORTS = [
   { key:'returnPct', label:'Return' }, { key:'cagr', label:'CAGR' },
-  { key:'marketValue', label:'Value' }, { key:'gain', label:'Gain' },
-  { key:'invested', label:'Invested' }, { key:'lots', label:'Lots' },
+  { key:'marketValue', label:'Value' }, { key:'unrealizedGain', label:'Unrealized' },
+  { key:'realizedGain', label:'Realized' }, { key:'invested', label:'Invested' },
+  { key:'lots', label:'Lots' },
 ];
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function StocksView() {
-  const { stHoldings, stats, setActiveView, priceMeta } = usePortfolio();
+  const { stHoldings, stats, setActiveView, priceMeta, realizedSummary } = usePortfolio();
   const [sort, setSort]       = useState({ key:'returnPct', dir:-1 });
   const [sector, setSector]   = useState('All');
   const [filter, setFilter]   = useState('');
@@ -354,6 +441,13 @@ export default function StocksView() {
   const maxRet = useMemo(() => Math.max(...stHoldings.map(h => Math.abs(h.returnPct)), 1), [stHoldings]);
   const stGain = stats.stValue - stats.stInvested;
 
+  // Realized P&L for stocks only
+  const stRealized = useMemo(() => {
+    return stHoldings.reduce((s, h) => s + (h.realizedGain || 0), 0);
+  }, [stHoldings]);
+  const stWins  = stHoldings.reduce((s, h) => s + (h.stats?.winCount  || 0), 0);
+  const stLoss  = stHoldings.reduce((s, h) => s + (h.stats?.lossCount || 0), 0);
+
   if (!stHoldings.length) return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'50vh', gap:12 }}>
       <div style={{ fontSize:40 }}>◐</div>
@@ -366,26 +460,32 @@ export default function StocksView() {
   function toggle(sym)    { setExpanded(e => ({ ...e, [sym]: !e[sym] })); }
 
   function exportCSV() {
-    const rows2 = [['Stock','Sector','Lots','Qty','CMP','Avg Buy','Invested','Value','Gain','Return%','CAGR','Holding']];
-    rows.forEach(h => rows2.push([h.symbol, h.sector||'', h.lots.length, fmt(h.qty,0), fmt(h.cmp,2), fmt(h.avgBuy,2), fmt(h.invested,0), fmt(h.marketValue,0), fmt(h.gain,0), fmt(h.returnPct,2)+'%', fmt(h.cagr,2)+'%', holdStr(h.holdingDays)]));
+    const rows2 = [['Stock','Sector','Lots','Qty','CMP','Avg Buy','Invested','Value','Unrealized','Realized','Total Gain','Return%','CAGR','Holding']];
+    rows.forEach(h => rows2.push([
+      h.symbol, h.sector||'', h.lots.length, fmt(h.qty,0), fmt(h.cmp,2), fmt(h.avgBuy,2),
+      fmt(h.invested,0), fmt(h.marketValue,0), fmt(h.unrealizedGain,0), fmt(h.realizedGain,0),
+      fmt(h.totalGain,0), fmt(h.returnPct,2)+'%', fmt(h.cagr,2)+'%', holdStr(h.holdingDays),
+    ]));
     const a = document.createElement('a'); a.href = 'data:text/csv,'+encodeURIComponent(rows2.map(r=>r.join(',')).join('\n')); a.download = 'stocks.csv'; a.click();
   }
 
   return (
     <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:12 }}>
 
-      {/* Summary strip */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10 }}>
+      {/* Summary strip — now 7 cells */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(120px, 1fr))', gap:10 }}>
         {[
-          { l:'Stock Value', v: fmtCr(stats.stValue),    c:'var(--purple)' },
-          { l:'Invested',    v: fmtCr(stats.stInvested), c:'var(--text)' },
-          { l:'P&L',         v: fmtCr(stGain),            c: colorPnl(stGain) },
-          { l:'Return',      v: pct(stats.stInvested > 0 ? stGain/stats.stInvested*100 : 0), c: colorPnl(stGain) },
-          { l:'Stocks',      v: stats.stockCount,          c:'var(--accent2)' },
+          { l:'Stock Value',   v: fmtCr(stats.stValue),    c:'var(--purple)' },
+          { l:'Invested',      v: fmtCr(stats.stInvested), c:'var(--text)' },
+          { l:'Unrealized',    v: fmtCr(stGain),            c: colorPnl(stGain) },
+          { l:'Realized P&L', v: fmtCr(stRealized),        c: colorPnl(stRealized) },
+          { l:'Total Gain',    v: fmtCr(stGain + stRealized), c: colorPnl(stGain + stRealized) },
+          { l:'W / L',         v: `${stWins}W / ${stLoss}L`, c: stWins > stLoss ? 'var(--green2)' : 'var(--red2)' },
+          { l:'Stocks',        v: stats.stockCount,          c:'var(--accent2)' },
         ].map((m,i) => (
           <div key={i} style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:10, padding:'11px 14px' }}>
             <div style={{ fontSize:9, color:'var(--text3)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>{m.l}</div>
-            <div style={{ fontSize:18, fontWeight:700, fontFamily:'var(--font-mono)', color:m.c }}>{m.v}</div>
+            <div style={{ fontSize:17, fontWeight:700, fontFamily:'var(--font-mono)', color:m.c }}>{m.v}</div>
           </div>
         ))}
       </div>
@@ -422,7 +522,7 @@ export default function StocksView() {
       {/* Price edit hint */}
       <div style={{ fontSize:11, color:'var(--text3)', display:'flex', alignItems:'center', gap:6, paddingLeft:2 }}>
         <span style={{ color:'var(--accent2)', fontWeight:600 }}>✎</span>
-        Click the edit icon next to any CMP to update an individual stock price · Click row to expand lot details
+        Click edit icon next to CMP to update price · Click row to expand lot details + sell history
       </div>
 
       {/* Table */}
@@ -430,6 +530,7 @@ export default function StocksView() {
         <HeaderRow />
         {rows.map(h => {
           const open = !!expanded[h.symbol];
+          const hasRealized = (h.realizedGain || 0) !== 0;
           return (
             <div key={h.symbol} style={{ borderBottom:'1px solid rgba(45,64,96,0.35)' }}>
               <div
@@ -447,7 +548,14 @@ export default function StocksView() {
                 <div style={{ textAlign:'center', color:'var(--text3)', fontSize:8 }}>{open?'▼':'►'}</div>
 
                 {/* Symbol */}
-                <div style={{ padding:'9px 5px', fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700 }}>{h.symbol}</div>
+                <div style={{ padding:'9px 5px' }}>
+                  <div style={{ fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700 }}>{h.symbol}</div>
+                  {h.sells?.length > 0 && (
+                    <div style={{ fontSize:9, color:'var(--yellow)', marginTop:1 }}>
+                      {h.sells.length} sell{h.sells.length > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
 
                 {/* Sector */}
                 <div style={{ padding:'9px 5px', minWidth:0 }}>
@@ -462,7 +570,7 @@ export default function StocksView() {
                 {/* Qty */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--text2)' }}>{fmt(h.qty, 0)}</div>
 
-                {/* CMP — inline editable */}
+                {/* CMP */}
                 <div onClick={e => e.stopPropagation()}>
                   <PriceCell symbol={h.symbol} cmp={h.cmp} />
                 </div>
@@ -473,8 +581,14 @@ export default function StocksView() {
                 {/* Value */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:12, fontWeight:700 }}>{fmtCr(h.marketValue)}</div>
 
-                {/* Gain */}
-                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:600, color:colorPnl(h.gain) }}>{fmtCr(h.gain)}</div>
+                {/* Realized */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:600,
+                  color: hasRealized ? colorPnl(h.realizedGain) : 'var(--text3)' }}>
+                  {hasRealized ? fmtCr(h.realizedGain) : '—'}
+                </div>
+
+                {/* Unrealized Gain */}
+                <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:600, color:colorPnl(h.unrealizedGain) }}>{fmtCr(h.unrealizedGain)}</div>
 
                 {/* CAGR */}
                 <div style={{ padding:'9px 5px', textAlign:'right', fontFamily:'var(--font-mono)', fontSize:11, fontWeight:700, color:pcol(h.cagr) }}>{pct(h.cagr)}</div>
