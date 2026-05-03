@@ -141,79 +141,120 @@ export function Sparkline({ data, width = 120, height = 36, color = '#3b82f6' })
   return <canvas ref={canvasRef} width={width} height={height} style={{ display: 'block' }} />;
 }
 
+// ─── CSS var → hex resolver (Chart.js needs real colors) ──────────────────────
+const CSS_VAR_MAP = {
+  'var(--accent)':  '#3b82f6',
+  'var(--accent2)': '#60a5fa',
+  'var(--green)':   '#10b981',
+  'var(--green2)':  '#34d399',
+  'var(--red)':     '#ef4444',
+  'var(--red2)':    '#f87171',
+  'var(--yellow)':  '#f59e0b',
+  'var(--purple)':  '#8b5cf6',
+  'var(--teal)':    '#14b8a6',
+  'var(--text)':    '#e8eef8',
+  'var(--text2)':   '#94a9c4',
+  'var(--text3)':   '#5c7a9a',
+};
+function resolveColor(c, fallback = '#3b82f6') {
+  if (!c) return fallback;
+  return CSS_VAR_MAP[c] || (c.startsWith('var(') ? fallback : c);
+}
+
+// smart Y-axis formatter: picks the right unit based on max value
+function yFmt(v, maxVal) {
+  if (maxVal >= 1e7)  return `₹${(v / 1e7).toFixed(1)}Cr`;
+  if (maxVal >= 1e5)  return `₹${(v / 1e5).toFixed(1)}L`;
+  if (maxVal >= 1000) return `₹${(v / 1000).toFixed(0)}K`;
+  return `₹${v.toFixed(0)}`;
+}
+
 // ─── Bar chart ─────────────────────────────────────────────────────────────────
 export function BarChart({ data, width = 300, height = 120, color = '#3b82f6' }) {
   const canvasRef = useChart(() => {
     if (!data || !data.length) return null;
+    const resolvedColor = resolveColor(color, '#3b82f6');
+    const maxVal = Math.max(...data.map(d => d.value), 1);
     return {
       type: 'bar',
       data: {
         labels: data.map(d => d.label),
         datasets: [{
           data:            data.map(d => d.value),
-          backgroundColor: data.map(d => d.color || color + 'cc'),
-          borderColor:     data.map(d => d.color || color),
+          backgroundColor: data.map(d => resolveColor(d.color, resolvedColor) + 'cc'),
+          borderColor:     data.map(d => resolveColor(d.color, resolvedColor)),
           borderWidth:     1,
           borderRadius:    3,
         }],
       },
       options: {
-        responsive: false,
+        responsive: true,
+        maintainAspectRatio: false,
         animation:  { duration: 600 },
-        plugins:    { legend: { display: false }, tooltip: {
-          callbacks: { label: ctx => ` ₹${(ctx.parsed.y / 100000).toFixed(1)}L` },
-        }},
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: ctx => ` ${yFmt(ctx.parsed.y, maxVal)}` },
+          },
+        },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 9 } } },
-          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
-            font: { size: 9 },
-            callback: v => `₹${(v/100000).toFixed(0)}L`,
-          }},
+          x: { grid: { display: false }, ticks: { color: '#5c7a9a', font: { size: 9 } } },
+          y: {
+            grid: { color: 'rgba(45,64,96,0.4)' },
+            ticks: {
+              color: '#5c7a9a',
+              font: { size: 9 },
+              callback: v => yFmt(v, maxVal),
+            },
+          },
         },
       },
     };
   }, [JSON.stringify(data), color]);
 
-  return <canvas ref={canvasRef} width={width} height={height} style={{ display: 'block' }} />;
+  return <div style={{ height, position: 'relative' }}><canvas ref={canvasRef} /></div>;
 }
 
 // ─── Line chart ────────────────────────────────────────────────────────────────
 export function LineChart({ data, width = 300, height = 120, color = '#3b82f6', xKey = 'x', yKey = 'y' }) {
   const canvasRef = useChart(() => {
     if (!data || data.length < 2) return null;
+    const c = resolveColor(color, '#3b82f6');
+    const maxVal = Math.max(...data.map(d => d[yKey]), 1);
     return {
       type: 'line',
       data: {
         labels: data.map(d => d[xKey]),
         datasets: [{
           data:            data.map(d => d[yKey]),
-          borderColor:     color,
+          borderColor:     c,
           borderWidth:     2,
           fill:            true,
-          backgroundColor: color + '22',
+          backgroundColor: c + '22',
           tension:         0.4,
           pointRadius:     3,
-          pointBackgroundColor: color,
-          pointBorderColor: 'var(--bg)',
+          pointBackgroundColor: c,
+          pointBorderColor: '#0b0f1a',
           pointBorderWidth: 1.5,
         }],
       },
       options: {
-        responsive: false,
+        responsive: true,
+        maintainAspectRatio: false,
         animation:  { duration: 600 },
-        plugins:    { legend: { display: false } },
+        plugins: { legend: { display: false } },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 9 } } },
-          y: { grid: { color: 'rgba(45,64,96,0.4)' }, ticks: {
-            font: { size: 9 },
-            callback: v => `₹${(v/100000).toFixed(0)}L`,
-          }},
+          x: { grid: { display: false }, ticks: { color: '#5c7a9a', font: { size: 9 } } },
+          y: {
+            grid: { color: 'rgba(45,64,96,0.4)' },
+            ticks: { color: '#5c7a9a', font: { size: 9 }, callback: v => yFmt(v, maxVal) },
+          },
         },
       },
     };
   }, [JSON.stringify(data), color, xKey, yKey]);
 
-  return <canvas ref={canvasRef} width={width} height={height} style={{ display: 'block' }} />;
+  return <div style={{ height, position: 'relative' }}><canvas ref={canvasRef} /></div>;
 }
 
 // ─── Horizontal bar ────────────────────────────────────────────────────────────
