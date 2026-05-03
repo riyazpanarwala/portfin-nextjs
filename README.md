@@ -130,11 +130,15 @@ PortFin exposes a set of API endpoints for managing portfolio data:
 | `POST` | `/api/trades`                  | Add a new trade (auto-upserts instrument)     |
 | `DELETE` | `/api/trades/:id`              | Delete a specific trade                       |
 | `PATCH` | `/api/trades/:id`              | Edit an existing trade                        |
-| `GET`  | `/api/instruments?q=&assetType=` | Search instruments (with autocomplete)        |
+| `GET`  | `/api/instruments?q=&assetType=` | Search instruments by symbol/name (autocomplete) |
+| `GET`  | `/api/instruments/search?q=&exchange=&enrich=` | Advanced instrument search with enrichment |
+| `POST` | `/api/instruments/bulk`        | Bulk create/update instruments                |
+| `DELETE` | `/api/instruments/bulk`        | Delete an instrument (if no trades reference it) |
 | `POST` | `/api/prices`                  | Fetch live prices for specified symbols       |
 | `PATCH` | `/api/prices`                  | Override current market price for a symbol    |
 | `GET`  | `/api/snapshots?portfolioId=`  | Retrieve snapshot history for a portfolio     |
 | `POST` | `/api/snapshots`               | Save a new portfolio snapshot                 |
+| `POST` | `/api/ai-advisor`              | Get AI-driven portfolio insights (Ollama)     |
 
 ---
 
