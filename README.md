@@ -1,145 +1,221 @@
 # PortFin — Personal Portfolio Dashboard
 
-**PortFin** is a comprehensive, full-stack personal finance application designed for tracking Indian equity and mutual fund investments. Built with **Next.js 16.2.3**, **Tailwind CSS v4**, **Prisma 6**, and **PostgreSQL**, it offers real-time analytics, goal planning, and an integrated AI-powered portfolio advisor.
-
-## ✨ Features
-
-PortFin provides a rich set of features to manage and analyze your investment portfolio:
-
-*   **Portfolio Overview:** A consolidated view of your investments.
-*   **Mutual Funds & Equity Stocks:** Dedicated sections for detailed tracking of both asset classes.
-*   **Advanced Analytics:** In-depth analysis of portfolio performance, including investment timeline, wealth waterfall, and action signals.
-*   **Goal Planner:** Tools to set and track financial goals.
-*   **Portfolio Rebalancer:** Assists in maintaining desired asset allocation.
-*   **Portfolio vs. Nifty 50:** Benchmark your portfolio's performance against the Nifty 50 index.
-*   **AI Portfolio Advisor:** Powered by **Ollama**, this feature offers local, private, and free AI-driven insights and recommendations for your portfolio.
-*   **Instrument Manager:** Comprehensive management of all your investment instruments (stocks, ETFs, mutual funds) from NSE, BSE, and AMFI.
-*   **Snapshot History:** Track your portfolio's value over time with historical snapshots.
-*   **Trade Management:** Easily add, edit, and delete trade transactions.
-*   **Live Price Updates:** Fetches real-time prices for stocks/ETFs from Yahoo Finance and Mutual Fund NAVs from AMFI.
-
-## 🚀 Quick Start
-
-Follow these steps to get your PortFin application up and running locally:
-
-1.  **Install Dependencies:**
-
-    ```bash
-    npm install
-    ```
-
-2.  **Environment Setup:**
-
-    Create a `.env` file by copying the example and configure your PostgreSQL database connection string.
-
-    ```bash
-    cp .env.example .env
-    # Edit .env and set your DATABASE_URL
-    ```
-
-    If you plan to use the AI Portfolio Advisor, ensure Ollama is running and configured:
-
-    ```env
-    # .env
-    OLLAMA_URL="http://localhost:11434" # Default Ollama URL
-    OLLAMA_MODEL="llama3.2" # Or your preferred Ollama model
-    ```
-
-3.  **Database Schema & Client Generation:**
-
-    Push the Prisma schema to your database and generate the Prisma client.
-
-    ```bash
-    npx prisma generate
-    npx prisma db push
-    ```
-
-4.  **Seed Initial Data:**
-
-    Seed the database with instrument data (NSE, AMFI) and sample portfolio trades from `prisma/portfolio.xlsx`.
-
-    ```bash
-    npm run db:seed
-    ```
-
-5.  **Start the Application:**
-
-    ```bash
-    npm run dev
-    ```
-
-    Open your browser to `http://localhost:3000`.
-
-## ⚙️ Database Commands
-
-| Command            | Description                                      |
-| :----------------- | :----------------------------------------------- |
-| `npm run db:push`  | Push schema to DB (no migration history)         |
-| `npm run db:seed`  | Load NSE equities + AMFI funds + all portfolio trades |
-| `npm run db:migrate` | Create a named migration (for production)        |
-| `npm run db:reset` | Drop all tables and re-seed (⚠️ destructive) |
-| `npm run db:studio`| Open Prisma Studio GUI                           |
-| `npm run db:setup` | Push + seed in one command                       |
-
-## 🌱 Seed Details
-
-The `prisma/seed.js` script automates the initial population of your database:
-
-1.  **Fetches NSE Equity List:** Retrieves the latest equity list from `archives.nseindia.com/content/equities/EQUITY_L.csv` and upserts all NSE stocks as `Instrument` records (symbol, name, ISIN).
-2.  **Fetches AMFI NAV File:** Downloads the AMFI NAV file from `portal.amfiindia.com/spages/NAVAll.txt` and upserts all mutual fund schemes with live NAVs as `Instrument` records.
-3.  **Seeds Portfolio Trades:** Imports sample buy transactions from `prisma/portfolio.xlsx`, including various NSE Stocks, ETFs, and Mutual Funds, with exact dates and prices.
-
-Re-running the seed script will clear existing trades and re-import data cleanly.
-
-## 📊 Data Model Overview
-
-The application's data model is managed by Prisma and includes the following core entities:
-
-*   **User:** Manages user accounts.
-*   **Portfolio:** Represents a user's investment portfolio, linked to `User`.
-*   **Instrument:** Stores details of stocks, ETFs, and mutual funds, including symbol, ISIN, name, sector, exchange, and cached price.
-*   **Trade:** Records individual buy/sell transactions, linked to `Portfolio` and `Instrument`.
-*   **Snapshot:** Captures historical portfolio performance metrics like total value, invested amount, and gain.
-
-## 📈 Live Prices
-
-PortFin ensures your portfolio data is up-to-date with dynamic price fetching:
-
-*   **Mutual Funds:** Live NAVs are fetched from AMFI via `/api/prices` on every call (cached for 1 hour in Next.js fetch cache).
-*   **Stocks/ETFs:** Prices are refreshed from Yahoo Finance. You can manually refresh prices via the UI or use the `PATCH /api/prices` API endpoint to set the current market price (CMP) for a symbol.
-
-## 🤖 AI Portfolio Advisor
-
-The AI Portfolio Advisor integrates with **Ollama** to provide local, privacy-focused investment insights. To use this feature:
-
-1.  **Download Ollama:** Visit [ollama.com](https://ollama.com) to download and install the Ollama server.
-2.  **Run Ollama Server:** Start the server with `ollama serve`.
-3.  **Pull a Model:** Download a language model, e.g., `ollama pull llama3.2`.
-
-Ollama typically listens on `http://localhost:11434`. Ensure this URL is correctly configured in your `.env` file.
-
-## 🌐 API Reference
-
-PortFin exposes a set of API endpoints for managing portfolio data:
-
-| Method | Endpoint                       | Description                                   |
-| :----- | :----------------------------- | :-------------------------------------------- |
-| `GET`  | `/api/portfolio?userId=`       | List portfolios for a user                    |
-| `POST` | `/api/portfolio`               | Create a new portfolio                        |
-| `GET`  | `/api/trades?portfolioId=`     | Retrieve all trades for a portfolio           |
-| `POST` | `/api/trades`                  | Add a new trade (auto-upserts instrument)     |
-| `DELETE` | `/api/trades/:id`              | Delete a specific trade                       |
-| `PATCH` | `/api/trades/:id`              | Edit an existing trade                        |
-| `GET`  | `/api/instruments?q=&assetType=` | Search instruments by symbol/name (autocomplete) |
-| `GET`  | `/api/instruments/search?q=&exchange=&enrich=` | Advanced instrument search with enrichment |
-| `POST` | `/api/instruments/bulk`        | Bulk create/update instruments                |
-| `DELETE` | `/api/instruments/bulk`        | Delete an instrument (if no trades reference it) |
-| `POST` | `/api/prices`                  | Fetch live prices for specified symbols       |
-| `PATCH` | `/api/prices`                  | Override current market price for a symbol    |
-| `GET`  | `/api/snapshots?portfolioId=`  | Retrieve snapshot history for a portfolio     |
-| `POST` | `/api/snapshots`               | Save a new portfolio snapshot                 |
-| `POST` | `/api/ai-advisor`              | Get AI-driven portfolio insights (Ollama)     |
+**PortFin** is a comprehensive, full-stack personal finance application for tracking Indian equity and mutual fund investments. Built with **Next.js 16.2.3**, **Tailwind CSS v4**, **Prisma 6**, and **PostgreSQL**, it delivers real-time analytics, FIFO-based P&L tracking, goal planning, and a local AI-powered portfolio advisor.
 
 ---
 
-**PortFin** is designed to be a powerful and flexible tool for personal investment management, providing a robust backend and an intuitive user interface.
+## ✨ Features
+
+### Portfolio Tracking
+- **Portfolio Overview** — Consolidated view with unrealized P&L, realized P&L, overall CAGR, XIRR, and portfolio health score
+- **Mutual Funds** — Dedicated view with lot-wise breakup, monthly breakup, redemption history, XIRR per fund, and NAV chart
+- **Equity Stocks** — Per-stock detail with lot-wise XIRR, win/loss stats, sell history with FIFO lot matching, inline CMP editor, and CSV export
+- **FIFO P&L Engine** — Oldest lots consumed first on every sell; realized gain, tax type (LTCG/STCG), and matched lots tracked precisely
+- **Realized P&L** — Separate tracking of closed-position gains alongside unrealized gains; full sell history per holding
+
+### Analytics & Insights
+- **Advanced Analytics** — Benchmark comparison (Nifty 50, Sensex, Midcap, Smallcap), unrealized tax liability, loss-harvesting assistant, monthly flow chart, holding period distribution, and sector rotation wheel with donut + radar charts
+- **Investment Timeline** — Cumulative investment chart, monthly heatmap, full trade history grouped by month
+- **Wealth Waterfall** — Visual breakdown of how capital transformed into current portfolio value
+- **Action Signal** — Portfolio pulse, top gainer/loser, weekly investor checklist
+- **Portfolio vs Nifty 50** — Snapshot-driven indexed comparison chart, rolling return comparison (6M/1Y/2Y/3Y), alpha tracking, and hypothetical growth table
+
+### Planning Tools
+- **Goal Planner** — SIP projections with flat and step-up SIP scenarios, milestone tracker, goal progress bar
+- **Portfolio Rebalancer** — Target allocation sliders (MF / Stocks / ETF), current vs target comparison, rebalancing action plan with ₹ amounts
+
+### Data Management
+- **Trade Form** — Add buy/sell trades with instrument autocomplete from the DB; recent trades list with delete
+- **Instrument Manager** — Search instruments from DB + NSE/BSE/ETF CSV static data with Yahoo Finance sector enrichment; add single instruments; bulk CSV import (BSE equity, NSE equity, ETF list); instrument browser table with pagination
+- **Snapshot History** — Manual snapshot saving, snapshot table with full metrics, used by Portfolio vs Nifty 50 chart
+- **Live Prices** — Stocks/ETFs refreshed from Yahoo Finance (6-hour cache); MF NAVs from AMFI on demand; manual CMP override per symbol
+
+### AI Advisor
+- **AI Portfolio Advisor** — Powered by **Ollama** (local, free, no API key); full portfolio context injected; streaming SSE responses; suggested prompts; markdown-formatted output
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Dependencies
+```bash
+npm install
+```
+
+### 2. Environment Setup
+```bash
+cp .env.example .env
+# Set DATABASE_URL to your PostgreSQL connection string
+```
+
+For the AI Portfolio Advisor (optional):
+```env
+OLLAMA_URL="http://localhost:11434"
+OLLAMA_MODEL="llama3.2"
+```
+
+### 3. Database Setup
+```bash
+npx prisma generate
+npx prisma db push
+```
+
+### 4. Seed Initial Data
+```bash
+npm run db:seed
+```
+Seeds NSE equity list, AMFI fund NAVs, and sample portfolio trades from `prisma/portfolio.xlsx`.
+
+### 5. Run the App
+```bash
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## ⚙️ Database Commands
+
+| Command              | Description                                         |
+| :------------------- | :-------------------------------------------------- |
+| `npm run db:push`    | Push schema to DB (no migration history)            |
+| `npm run db:seed`    | Load NSE equities + AMFI funds + portfolio trades   |
+| `npm run db:migrate` | Create a named migration (for production)           |
+| `npm run db:reset`   | Drop all tables and re-seed ⚠️ destructive          |
+| `npm run db:studio`  | Open Prisma Studio GUI                              |
+| `npm run db:setup`   | Push + seed in one command                          |
+| `npm run update-prices` | Run price update script via Yahoo Finance / AMFI |
+
+---
+
+## 🌱 Seed Details
+
+`prisma/seed.js` automates initial data population:
+
+1. **NSE Equity List** — Fetches from `archives.nseindia.com/content/equities/EQUITY_L.csv` and upserts all NSE stocks (symbol, name, ISIN)
+2. **AMFI NAV File** — Downloads from `portal.amfiindia.com/spages/NAVAll.txt` and upserts all mutual fund schemes with live NAVs
+3. **Portfolio Trades** — Imports buy transactions from `prisma/portfolio.xlsx` including NSE stocks, ETFs, and mutual funds with exact dates and prices
+
+Re-running the seed clears existing trades and re-imports cleanly.
+
+---
+
+## 📊 Data Model
+
+| Model          | Description                                                                   |
+| :------------- | :---------------------------------------------------------------------------- |
+| `User`         | User accounts                                                                 |
+| `Portfolio`    | A user's portfolio, linked to `User`                                          |
+| `Instrument`   | Stocks, ETFs, and mutual funds — symbol, ISIN, name, sector, exchange, cached price |
+| `Trade`        | Buy/sell transactions linked to `Portfolio` and `Instrument`                  |
+| `Snapshot`     | Point-in-time portfolio metrics (value, invested, gain, return %, CAGR, etc.) |
+
+**Exchanges supported:** `NSE`, `BSE`, `AMFI`  
+**Asset types:** `STOCK`, `MF`  
+**Trade types:** `BUY`, `SELL`
+
+---
+
+## 🧮 Portfolio Engine
+
+The core engine (`src/lib/store.js`) uses production-grade calculations:
+
+- **FIFO Sell Matching** — Each sell consumes the oldest lots first; holding days per matched lot determine LTCG vs STCG tax treatment
+- **Realized vs Unrealized P&L** — Tracked separately; realized gain is never mixed into remaining position cost basis
+- **XIRR** — Newton-Raphson solver for money-weighted returns; computed per holding (lot-level and fund-level) and portfolio-wide
+- **CAGR** — Weighted by invested amount across holdings
+- **Tax Computation** — LTCG at 12.5% with ₹1.25L annual exemption; STCG at 20%; computed on both realized and unrealized gains
+
+---
+
+## 📈 Live Prices
+
+| Source          | Asset Types  | Behaviour                                          |
+| :-------------- | :----------- | :------------------------------------------------- |
+| Yahoo Finance   | STOCK, ETF   | Fetched on page load if stale (> 6 hours); forced refresh available |
+| AMFI NAVAll.txt | MF           | Fetched on explicit refresh; cached NAV used on page load |
+| Manual override | Any          | `PATCH /api/prices` or inline CMP editor in Stocks view |
+| Last trade price | Any         | Fallback when no other price source is available   |
+
+---
+
+## 🤖 AI Portfolio Advisor
+
+Powered by [Ollama](https://ollama.com) — runs 100% locally, no API key or internet required.
+
+**Setup:**
+```bash
+# 1. Install Ollama from https://ollama.com
+# 2. Start the server
+ollama serve
+# 3. Pull a model (~2 GB)
+ollama pull llama3.2
+```
+
+The advisor receives full portfolio context on every message: holdings, sector breakdown, CAGR, XIRR, realized P&L, and tax profile. Responses stream via SSE and render with markdown formatting.
+
+---
+
+## 🌐 API Reference
+
+### Portfolio
+| Method   | Endpoint                        | Description                          |
+| :------- | :------------------------------ | :----------------------------------- |
+| `GET`    | `/api/portfolio?userId=`        | List portfolios for a user           |
+| `POST`   | `/api/portfolio`                | Create a new portfolio               |
+
+### Trades
+| Method   | Endpoint                        | Description                          |
+| :------- | :------------------------------ | :----------------------------------- |
+| `GET`    | `/api/trades?portfolioId=`      | All trades for a portfolio           |
+| `POST`   | `/api/trades`                   | Add a trade (auto-upserts instrument)|
+| `DELETE` | `/api/trades/:id`               | Delete a trade                       |
+| `PATCH`  | `/api/trades/:id`               | Edit a trade                         |
+
+### Instruments
+| Method   | Endpoint                                         | Description                                        |
+| :------- | :----------------------------------------------- | :------------------------------------------------- |
+| `GET`    | `/api/instruments?q=&assetType=`                 | Autocomplete search (symbol/name)                  |
+| `GET`    | `/api/instruments/search?q=&exchange=&enrich=`   | Advanced search — DB + CSV static data + Yahoo enrichment |
+| `POST`   | `/api/instruments/bulk`                          | Bulk upsert instruments                            |
+| `DELETE` | `/api/instruments/bulk`                          | Delete instrument (blocked if trades reference it) |
+
+### Prices
+| Method   | Endpoint          | Description                                         |
+| :------- | :---------------- | :-------------------------------------------------- |
+| `POST`   | `/api/prices`     | Fetch/refresh prices for symbols (Yahoo + AMFI)     |
+| `PATCH`  | `/api/prices`     | Manual CMP override for a symbol                    |
+
+### Snapshots
+| Method   | Endpoint                            | Description                         |
+| :------- | :---------------------------------- | :---------------------------------- |
+| `GET`    | `/api/snapshots?portfolioId=&limit=`| Retrieve snapshot history           |
+| `POST`   | `/api/snapshots`                    | Save a portfolio snapshot           |
+
+### AI
+| Method   | Endpoint           | Description                                      |
+| :------- | :----------------- | :----------------------------------------------- |
+| `POST`   | `/api/ai-advisor`  | Streaming AI advice via local Ollama (SSE)       |
+
+---
+
+## 📂 Key Source Files
+
+| File | Purpose |
+| :--- | :------ |
+| `src/lib/store.js` | Core portfolio engine — FIFO, XIRR, CAGR, tax, formatters |
+| `src/context/PortfolioContext.js` | React context — data loading, state, actions |
+| `src/components/Dashboard.js` | Main shell — sidebar, header, view router |
+| `src/components/views/` | One file per view (Overview, MF, Stocks, Analytics, etc.) |
+| `src/components/charts/Charts.js` | Chart.js wrappers — donut, bar, line, sparkline, waterfall |
+| `prisma/schema.prisma` | Database schema |
+| `src/app/api/` | Next.js API routes |
+
+---
+
+## ⚠️ Important Notes
+
+- **Tax figures are estimates** — consult a CA before filing. LTCG/STCG classification is based on calendar-day holding period per FIFO lot.
+- **Nifty 50 data** in the comparison view uses approximate end-of-month closes hardcoded up to April 2026 — not a live feed.
+- **Benchmark CAGR figures** in Analytics are as of early 2025 and may diverge.
+- **AI advice** is for informational purposes only. PortFin is not a SEBI-registered investment advisor.
