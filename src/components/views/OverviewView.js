@@ -3,6 +3,7 @@
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmtPct, fmt, colorPnl, sectorColor } from '@/lib/store';
 import { DonutChart, HBar, Sparkline } from '@/components/charts/Charts';
+import { StatCard, Alert } from '@/components/ui/SharedUI';
 
 export default function OverviewView() {
   const { stats, holdings, mfHoldings, stHoldings, currentPrices, realizedSummary, portfolioXIRR } = usePortfolio();
@@ -39,20 +40,20 @@ export default function OverviewView() {
 
       {/* Summary stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-        <StatCard label="Total Value"       value={fmtCr(stats.totalValue)}          sub="Portfolio"                           color="var(--accent2)" />
-        <StatCard label="Total Invested"    value={fmtCr(stats.totalInvested)}        sub="Capital deployed"                    color="var(--text2)" />
-        <StatCard label="Total Gain"        value={fmtCr(stats.totalGain)}            sub={fmtPct(stats.totalReturnPct, true)}  color={colorPnl(stats.totalGain)} />
-        <StatCard label="Unrealized P&L"   value={fmtCr(stats.totalUnrealizedGain)}  sub="Open positions"                      color={colorPnl(stats.totalUnrealizedGain)} />
-        <StatCard label="Realized P&L"     value={fmtCr(stats.totalRealizedGain)}    sub={`${realizedSummary.sells.length} sell${realizedSummary.sells.length !== 1 ? 's' : ''}`} color={colorPnl(stats.totalRealizedGain)} />
-        <StatCard label="Overall CAGR"      value={fmtPct(stats.overallCagr)}         sub="Annualised"                          color="var(--green2)" />
+        <StatCard label="Total Value"       value={fmtCr(stats.totalValue)}          sub="Portfolio"                           color="var(--accent2)" valueSize={20} />
+        <StatCard label="Total Invested"    value={fmtCr(stats.totalInvested)}        sub="Capital deployed"                    color="var(--text2)"   valueSize={20} />
+        <StatCard label="Total Gain"        value={fmtCr(stats.totalGain)}            sub={fmtPct(stats.totalReturnPct, true)}  color={colorPnl(stats.totalGain)} valueSize={20} />
+        <StatCard label="Unrealized P&L"   value={fmtCr(stats.totalUnrealizedGain)}  sub="Open positions"                      color={colorPnl(stats.totalUnrealizedGain)} valueSize={20} />
+        <StatCard label="Realized P&L"     value={fmtCr(stats.totalRealizedGain)}    sub={`${realizedSummary.sells.length} sell${realizedSummary.sells.length !== 1 ? 's' : ''}`} color={colorPnl(stats.totalRealizedGain)} valueSize={20} />
+        <StatCard label="Overall CAGR"      value={fmtPct(stats.overallCagr)}         sub="Annualised"                          color="var(--green2)"  valueSize={20} />
         {portfolioXIRR != null && (
-          <StatCard label="Portfolio XIRR" value={fmtPct(portfolioXIRR)}             sub="Money-weighted"                      color="var(--teal)" />
+          <StatCard label="Portfolio XIRR" value={fmtPct(portfolioXIRR)}             sub="Money-weighted"                      color="var(--teal)"    valueSize={20} />
         )}
-        <StatCard label="MF Value"          value={fmtCr(stats.mfValue)}              sub={`${fmt(stats.mfPct,1)}% of portfolio`} color="var(--teal)" />
-        <StatCard label="Stock Value"       value={fmtCr(stats.stValue)}              sub={`${fmt(stats.stPct,1)}% of portfolio`} color="var(--purple)" />
+        <StatCard label="MF Value"          value={fmtCr(stats.mfValue)}              sub={`${fmt(stats.mfPct, 1)}% of portfolio`} color="var(--teal)"  valueSize={20} />
+        <StatCard label="Stock Value"       value={fmtCr(stats.stValue)}              sub={`${fmt(stats.stPct, 1)}% of portfolio`} color="var(--purple)" valueSize={20} />
       </div>
 
-      {/* Realized P&L panel — only when there are sells */}
+      {/* Realized P&L panel */}
       {hasSells && (
         <div className="glass" style={{ padding: '18px', marginBottom: '20px', background: 'linear-gradient(135deg, rgba(16,185,129,0.06), rgba(20,184,166,0.03))', border: '1px solid rgba(16,185,129,0.2)' }}>
           <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text)', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -60,10 +61,10 @@ export default function OverviewView() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
             {[
-              { label: 'Total Realized',  value: fmtCr(realizedSummary.totalRealized), color: colorPnl(realizedSummary.totalRealized) },
-              { label: 'LTCG Gain',       value: fmtCr(realizedSummary.ltcgGain),      color: 'var(--green2)', sub: '12.5% tax rate' },
-              { label: 'STCG Gain',       value: fmtCr(realizedSummary.stcgGain),      color: 'var(--yellow)', sub: '20% tax rate' },
-              { label: 'Est. Tax Liability', value: fmtCr(realizedSummary.totalTax),   color: 'var(--red2)',   sub: 'FY estimate' },
+              { label: 'Total Realized',    value: fmtCr(realizedSummary.totalRealized), color: colorPnl(realizedSummary.totalRealized) },
+              { label: 'LTCG Gain',         value: fmtCr(realizedSummary.ltcgGain),      color: 'var(--green2)', sub: '12.5% tax rate' },
+              { label: 'STCG Gain',         value: fmtCr(realizedSummary.stcgGain),      color: 'var(--yellow)', sub: '20% tax rate' },
+              { label: 'Est. Tax Liability',value: fmtCr(realizedSummary.totalTax),      color: 'var(--red2)',   sub: 'FY estimate' },
             ].map((m, i) => (
               <div key={i} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '12px 14px' }}>
                 <div style={{ fontSize: '10px', color: 'var(--text3)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>{m.label}</div>
@@ -160,7 +161,7 @@ export default function OverviewView() {
         </div>
       )}
 
-      {/* Risk alerts */}
+      {/* Portfolio alerts */}
       {holdings.length > 0 && (
         <div className="glass" style={{ padding: '18px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
@@ -169,7 +170,7 @@ export default function OverviewView() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
             {stats.stPct > 45 && (
-              <Alert type="warning" msg={`Direct equity is ${fmt(stats.stPct,1)}% of portfolio — consider capping at 40%`} />
+              <Alert type="warning" msg={`Direct equity is ${fmt(stats.stPct, 1)}% of portfolio — consider capping at 40%`} />
             )}
             {stats.mfCagr < 8 && stats.mfCagr > 0 && (
               <Alert type="info" msg="MF CAGR below 8% — some funds may be underperforming" />
@@ -185,7 +186,7 @@ export default function OverviewView() {
         </div>
       )}
 
-      {/* Action plan */}
+      {/* Suggested actions */}
       {holdings.length > 0 && (
         <div className="glass" style={{ padding: '18px', background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.05))' }}>
           <div style={{ fontSize: '12px', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent2)', marginBottom: '10px' }}>
@@ -193,10 +194,10 @@ export default function OverviewView() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
             {[
-              { icon: '📈', action: 'Continue SIP',       detail: 'Maintain existing SIP amounts and review after 6 months' },
-              { icon: '⚖️', action: 'Review Allocation',  detail: `MF at ${fmt(stats.mfPct,1)}% — ideal range is 60–75%` },
-              { icon: '💰', action: 'LTCG Planning',      detail: 'Book equity gains below ₹1.25L annually to stay tax-free' },
-              { icon: '🔄', action: 'Rebalance Check',    detail: 'Use the Rebalancer tab to check if drift exceeds ±5%' },
+              { icon: '📈', action: 'Continue SIP',      detail: 'Maintain existing SIP amounts and review after 6 months' },
+              { icon: '⚖️', action: 'Review Allocation', detail: `MF at ${fmt(stats.mfPct, 1)}% — ideal range is 60–75%` },
+              { icon: '💰', action: 'LTCG Planning',     detail: 'Book equity gains below ₹1.25L annually to stay tax-free' },
+              { icon: '🔄', action: 'Rebalance Check',   detail: 'Use the Rebalancer tab to check if drift exceeds ±5%' },
             ].map((a, i) => (
               <div key={i} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '12px', border: '1px solid var(--border)' }}>
                 <div style={{ fontSize: '20px', marginBottom: '4px' }}>{a.icon}</div>
@@ -211,15 +212,7 @@ export default function OverviewView() {
   );
 }
 
-function StatCard({ label, value, sub, color }) {
-  return (
-    <div className="metric-card">
-      <div style={{ fontSize: '11px', color: 'var(--text3)', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '4px' }}>{label}</div>
-      <div style={{ fontSize: '20px', fontWeight: '700', fontFamily: 'var(--font-mono)', color, marginBottom: '2px' }}>{value}</div>
-      <div style={{ fontSize: '12px', color: 'var(--text2)' }}>{sub}</div>
-    </div>
-  );
-}
+// ─── Local-only components (not duplicated elsewhere) ────────────────────────
 
 function TopList({ title, items }) {
   return (
@@ -241,17 +234,6 @@ function TopList({ title, items }) {
   );
 }
 
-function Alert({ type, msg }) {
-  const cfg = { warning: ['var(--yellow)', 'rgba(245,158,11,0.1)', '⚠'], info: ['var(--accent2)', 'rgba(59,130,246,0.1)', 'ℹ'], success: ['var(--green2)', 'rgba(16,185,129,0.1)', '✓'] };
-  const [color, bg, icon] = cfg[type] || cfg.info;
-  return (
-    <div style={{ background: bg, border: `1px solid ${color}30`, borderRadius: '8px', padding: '10px 12px', display: 'flex', gap: '8px' }}>
-      <span style={{ color, fontSize: '13px' }}>{icon}</span>
-      <span style={{ fontSize: '12px', color: 'var(--text2)' }}>{msg}</span>
-    </div>
-  );
-}
-
 function HealthGauge({ score }) {
   const color = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
   const r = 44, cx = 55, cy = 55;
@@ -260,8 +242,8 @@ function HealthGauge({ score }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
       <svg width="110" height="64">
-        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke="var(--bg3)" strokeWidth="8" strokeLinecap="round" />
-        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
+        <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="var(--bg3)" strokeWidth="8" strokeLinecap="round" />
+        <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
           strokeDasharray={circumference} strokeDashoffset={offset} />
         <text x={cx} y={cy - 8} textAnchor="middle" fill={color} fontSize="22" fontWeight="800" fontFamily="var(--font-mono)">{score}</text>
         <text x={cx} y={cy + 6} textAnchor="middle" fill="var(--text3)" fontSize="9">/ 100</text>

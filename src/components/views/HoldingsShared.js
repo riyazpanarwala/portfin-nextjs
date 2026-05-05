@@ -4,6 +4,10 @@ import { useMemo, useState, useRef } from 'react';
 import { colorPnl, fmtCr, fmt, sectorColor } from '@/lib/store';
 import { HoldingPerformanceChart } from '@/components/charts/Charts';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { SummaryStrip } from '@/components/ui/SharedUI';
+
+// Re-export EmptyState under the old name so MFView/StocksView don't need changing
+export { EmptyState as HoldingsEmpty } from '@/components/ui/SharedUI';
 
 // ─── XIRR ────────────────────────────────────────────────────────────────────
 
@@ -489,14 +493,4 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
   );
 }
 
-// ─── Shared empty state ───────────────────────────────────────────────────────
 
-export function HoldingsEmpty({ icon, label, cta, onCta }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: 12 }}>
-      <div style={{ fontSize: 40 }}>{icon}</div>
-      <div style={{ fontSize: 16, fontWeight: 600 }}>{label}</div>
-      <button className="btn btn-primary" onClick={onCta}>{cta}</button>
-    </div>
-  );
-}

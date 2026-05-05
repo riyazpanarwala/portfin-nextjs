@@ -3,19 +3,20 @@
 import { useState, useMemo } from 'react';
 import { projectWealth, fmtCr, fmt } from '@/lib/store';
 import { WealthProjectionChart } from '@/components/charts/Charts';
+import { StatCard } from '@/components/ui/SharedUI';
 
 export default function GoalView() {
   const [goal, setGoal] = useState({ corpus: 10000000, years: 20, returnPct: 12, sipMonthly: 25000, stepUp: 10 });
 
-  const projection       = useMemo(() => projectWealth(goal.sipMonthly, goal.years, goal.returnPct / 100, 0),        [goal]);
+  const projection       = useMemo(() => projectWealth(goal.sipMonthly, goal.years, goal.returnPct / 100, 0),          [goal]);
   const stepUpProjection = useMemo(() => projectWealth(goal.sipMonthly, goal.years, goal.returnPct / 100, goal.stepUp), [goal]);
 
-  const finalCorpus  = projection[projection.length - 1]?.corpus || 0;
-  const finalStepUp  = stepUpProjection[stepUpProjection.length - 1]?.corpus || 0;
+  const finalCorpus   = projection[projection.length - 1]?.corpus || 0;
+  const finalStepUp   = stepUpProjection[stepUpProjection.length - 1]?.corpus || 0;
   const totalInvested = projection[projection.length - 1]?.invested || 0;
 
-  const monthlyR = goal.returnPct / 100 / 12;
-  const months   = goal.years * 12;
+  const monthlyR  = goal.returnPct / 100 / 12;
+  const months    = goal.years * 12;
   const sipNeeded = monthlyR > 0
     ? (goal.corpus * monthlyR) / ((Math.pow(1 + monthlyR, months) - 1) * (1 + monthlyR))
     : goal.corpus / months;
@@ -65,18 +66,11 @@ export default function GoalView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Key numbers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-            {[
-              { label: 'Projected Corpus',  value: fmtCr(finalCorpus),               color: goalAchieved ? 'var(--green2)' : 'var(--yellow)' },
-              { label: 'Goal Corpus',       value: fmtCr(goal.corpus),               color: 'var(--text)' },
-              { label: 'Total Invested',    value: fmtCr(totalInvested),             color: 'var(--text2)' },
-              { label: 'SIP Needed',        value: `₹${fmt(sipNeeded, 0)}`,          color: 'var(--accent2)' },
-              { label: 'Gain from Market',  value: fmtCr(finalCorpus - totalInvested), color: 'var(--green2)' },
-            ].map((m, i) => (
-              <div key={i} className="metric-card">
-                <div style={{ fontSize: '10px', color: 'var(--text3)', fontWeight: '600', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '4px' }}>{m.label}</div>
-                <div style={{ fontSize: '18px', fontWeight: '700', fontFamily: 'var(--font-mono)', color: m.color }}>{m.value}</div>
-              </div>
-            ))}
+            <StatCard label="Projected Corpus" value={fmtCr(finalCorpus)}              color={goalAchieved ? 'var(--green2)' : 'var(--yellow)'} />
+            <StatCard label="Goal Corpus"       value={fmtCr(goal.corpus)}              color="var(--text)" />
+            <StatCard label="Total Invested"    value={fmtCr(totalInvested)}            color="var(--text2)" />
+            <StatCard label="SIP Needed"        value={`₹${fmt(sipNeeded, 0)}`}         color="var(--accent2)" />
+            <StatCard label="Gain from Market"  value={fmtCr(finalCorpus - totalInvested)} color="var(--green2)" />
           </div>
 
           {/* Goal progress */}
@@ -92,8 +86,7 @@ export default function GoalView() {
                 height: '100%',
                 width: Math.min(100, (finalCorpus / goal.corpus * 100)) + '%',
                 background: goalAchieved ? 'linear-gradient(90deg, var(--green), var(--teal))' : 'linear-gradient(90deg, var(--accent), var(--purple))',
-                borderRadius: '6px',
-                transition: 'width 0.6s ease',
+                borderRadius: '6px', transition: 'width 0.6s ease',
               }} />
             </div>
             <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
@@ -146,6 +139,8 @@ export default function GoalView() {
     </div>
   );
 }
+
+// ─── Local-only helper ────────────────────────────────────────────────────────
 
 function FormField({ label, value, onChange, type }) {
   return (
