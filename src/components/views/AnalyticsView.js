@@ -4,6 +4,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmtPct, fmt, colorPnl, sectorColor, SECTOR_COLORS } from '@/lib/store';
 import { BarChart, LineChart, HBar } from '@/components/charts/Charts';
 import { useMemo, useState } from 'react';
+import { StatCard } from '@/components/ui/SharedUI';
 
 const BENCHMARKS = [
   { name: 'Nifty 50',       cagr5y: 14.2, cagr3y: 12.8, cagr1y: 8.5 },
@@ -41,25 +42,26 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
   const winSells  = sells.filter(s => s.realized > 0);
   const lossSells = sells.filter(s => s.realized < 0);
   const winRate   = sells.length > 0 ? (winSells.length / sells.length) * 100 : 0;
-  const avgWin    = winSells.length  > 0 ? winSells.reduce((s, x) => s + x.realized, 0)  / winSells.length  : 0;
+  const avgWin    = winSells.length  > 0 ? winSells.reduce((s, x)  => s + x.realized, 0) / winSells.length  : 0;
   const avgLoss   = lossSells.length > 0 ? lossSells.reduce((s, x) => s + x.realized, 0) / lossSells.length : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {/* Headline metrics */}
+      {/* Headline metrics — reuse StatCard with a tinted background wrapper */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
         {[
-          { label: 'Total Realized',  value: fmtCr(totalRealized),  color: colorPnl(totalRealized),  note: 'All closed positions' },
-          { label: 'LTCG Gain',       value: fmtCr(ltcgGain),       color: 'var(--green2)',           note: '12.5% · held >1yr' },
-          { label: 'STCG Gain',       value: fmtCr(stcgGain),       color: 'var(--yellow)',           note: '20% · held <1yr' },
-          { label: 'Tax Liability',   value: fmtCr(totalTax),       color: 'var(--red2)',             note: 'Est. FY obligation' },
-          { label: 'Win Rate',        value: `${fmt(winRate, 0)}%`,  color: winRate >= 50 ? 'var(--green2)' : 'var(--red2)', note: `${winSells.length}W / ${lossSells.length}L` },
-          ...(portfolioXIRR != null ? [{ label: 'Portfolio XIRR', value: fmtPct(portfolioXIRR, true), color: 'var(--teal)', note: 'Money-weighted' }] : []),
+          { label: 'Total Realized',  value: fmtCr(totalRealized),  color: colorPnl(totalRealized),  sub: 'All closed positions' },
+          { label: 'LTCG Gain',       value: fmtCr(ltcgGain),       color: 'var(--green2)',           sub: '12.5% · held >1yr' },
+          { label: 'STCG Gain',       value: fmtCr(stcgGain),       color: 'var(--yellow)',           sub: '20% · held <1yr' },
+          { label: 'Tax Liability',   value: fmtCr(totalTax),       color: 'var(--red2)',             sub: 'Est. FY obligation' },
+          { label: 'Win Rate',        value: `${fmt(winRate, 0)}%`,  color: winRate >= 50 ? 'var(--green2)' : 'var(--red2)', sub: `${winSells.length}W / ${lossSells.length}L` },
+          ...(portfolioXIRR != null ? [{ label: 'Portfolio XIRR', value: fmtPct(portfolioXIRR, true), color: 'var(--teal)', sub: 'Money-weighted' }] : []),
         ].map((m, i) => (
+          // StatCard uses .metric-card class; override background for panel context
           <div key={i} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '12px 14px' }}>
             <div style={{ fontSize: '10px', color: 'var(--text3)', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>{m.label}</div>
             <div style={{ fontSize: '18px', fontWeight: '800', fontFamily: 'var(--font-mono)', color: m.color }}>{m.value}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '2px' }}>{m.note}</div>
+            {m.sub && <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '2px' }}>{m.sub}</div>}
           </div>
         ))}
       </div>
@@ -67,8 +69,8 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
       {/* Tax breakdown */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
         {[
-          { label: 'LTCG',  gain: ltcgGain, tax: ltcgTax, rate: '12.5%', exemption: '₹1.25L exempt', color: 'var(--green2)', bg: 'rgba(16,185,129,0.06)' },
-          { label: 'STCG',  gain: stcgGain, tax: stcgTax, rate: '20%',   exemption: 'No exemption',   color: 'var(--yellow)', bg: 'rgba(245,158,11,0.06)' },
+          { label: 'LTCG', gain: ltcgGain, tax: ltcgTax, rate: '12.5%', exemption: '₹1.25L exempt', color: 'var(--green2)', bg: 'rgba(16,185,129,0.06)' },
+          { label: 'STCG', gain: stcgGain, tax: stcgTax, rate: '20%',   exemption: 'No exemption',   color: 'var(--yellow)', bg: 'rgba(245,158,11,0.06)' },
         ].map((t, i) => (
           <div key={i} style={{ background: t.bg, border: `1px solid ${t.color}30`, borderRadius: '8px', padding: '12px 14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
@@ -105,7 +107,7 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
         </div>
       )}
 
-      {/* Per-symbol realized breakdown */}
+      {/* Per-symbol table */}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -121,19 +123,20 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
             {Object.entries(sellsBySymbol)
               .sort(([, a], [, b]) => Math.abs(b.realized) - Math.abs(a.realized))
               .map(([sym, d], i) => {
-                const ltcg = d.sells.filter(s => s.taxType === 'LTCG').reduce((s, x) => s + x.realized, 0);
-                const stcg = d.sells.filter(s => s.taxType === 'STCG').reduce((s, x) => s + x.realized, 0);
+                const ltcg     = d.sells.filter(s => s.taxType === 'LTCG').reduce((s, x) => s + x.realized, 0);
+                const stcg     = d.sells.filter(s => s.taxType === 'STCG').reduce((s, x) => s + x.realized, 0);
                 const proceeds = d.sells.reduce((s, x) => s + x.qty * x.sellPrice, 0);
-                const tax = (ltcg > 125000 ? (ltcg - 125000) * 0.125 : 0) + (stcg > 0 ? stcg * 0.20 : 0);
+                const tax      = (ltcg > 125000 ? (ltcg - 125000) * 0.125 : 0) + (stcg > 0 ? stcg * 0.20 : 0);
+                const cellStyle = { padding: '8px 12px', borderBottom: '1px solid rgba(45,64,96,0.3)' };
                 return (
                   <tr key={i}>
-                    <td style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent2)', borderBottom: '1px solid rgba(45,64,96,0.3)' }}>{sym}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)', borderBottom: '1px solid rgba(45,64,96,0.3)' }}>{d.sells.length}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', borderBottom: '1px solid rgba(45,64,96,0.3)' }}>{fmtCr(proceeds)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: colorPnl(d.realized), borderBottom: '1px solid rgba(45,64,96,0.3)' }}>{fmtCr(d.realized)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--green2)', borderBottom: '1px solid rgba(45,64,96,0.3)' }}>{ltcg !== 0 ? fmtCr(ltcg) : '—'}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--yellow)', borderBottom: '1px solid rgba(45,64,96,0.3)' }}>{stcg !== 0 ? fmtCr(stcg) : '—'}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--red2)', borderBottom: '1px solid rgba(45,64,96,0.3)' }}>{tax > 0 ? fmtCr(tax) : '—'}</td>
+                    <td style={{ ...cellStyle, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent2)' }}>{sym}</td>
+                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.sells.length}</td>
+                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{fmtCr(proceeds)}</td>
+                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: colorPnl(d.realized) }}>{fmtCr(d.realized)}</td>
+                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{ltcg !== 0 ? fmtCr(ltcg) : '—'}</td>
+                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--yellow)' }}>{stcg !== 0 ? fmtCr(stcg) : '—'}</td>
+                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--red2)' }}>{tax > 0 ? fmtCr(tax) : '—'}</td>
                   </tr>
                 );
               })}
@@ -144,9 +147,7 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
       {/* Harvesting opportunities */}
       {lossSells.length > 0 && (
         <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', padding: '12px 14px' }}>
-          <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent2)', marginBottom: '6px' }}>
-            💡 Tax Insight
-          </div>
+          <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--accent2)', marginBottom: '6px' }}>💡 Tax Insight</div>
           <div style={{ fontSize: '12px', color: 'var(--text2)', lineHeight: '1.7' }}>
             You have <strong style={{ color: 'var(--red2)' }}>{fmtCr(Math.abs(lossSells.reduce((s, x) => s + x.realized, 0)))}</strong> in realized losses that can be used to offset gains.
             {ltcgGain < 125000 && ltcgGain > 0 && (
@@ -345,17 +346,17 @@ function SectorRotationWheel({ holdings, stats }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(128px, 1fr))', gap: 8 }}>
         {[
-          { label: 'SECTORS TRACKED',    value: sectorCount,                               sub: 'Active in your portfolio',                                            color: 'var(--text)' },
-          { label: 'LARGEST EXPOSURE',   value: largestSector?.label?.slice(0,10)||'—',    sub: `${fmt(largestSector?.pct||0,1)}% of portfolio`,                       color: sectorColor(largestSector?.label) },
-          { label: 'OVERWEIGHT SECTORS', value: overweightSectors.length,                  sub: overweightSectors.slice(0,3).map(s=>s.label.slice(0,6)).join(', ')||'—', color: '#ef4444' },
-          { label: 'UNDERWEIGHT',        value: underweightSectors.length,                 sub: underweightSectors.slice(0,3).map(s=>s.label.slice(0,6)).join(', ')||'—', color: '#8b5cf6' },
-          { label: 'EQUAL WEIGHT REF',   value: `${fmt(equalWeight,1)}%`,                  sub: 'Per sector, if equally split',                                        color: 'var(--accent2)' },
-          { label: 'MF IMPLIED',         value: fmtCr(stats.mfValue),                      sub: 'Capital in funds',                                                    color: 'var(--teal)' },
+          { label: 'SECTORS TRACKED',    value: sectorCount,                                sub: 'Active in your portfolio',                                              color: 'var(--text)' },
+          { label: 'LARGEST EXPOSURE',   value: largestSector?.label?.slice(0, 10) || '—',  sub: `${fmt(largestSector?.pct || 0, 1)}% of portfolio`,                     color: sectorColor(largestSector?.label) },
+          { label: 'OVERWEIGHT SECTORS', value: overweightSectors.length,                   sub: overweightSectors.slice(0, 3).map(s => s.label.slice(0, 6)).join(', ') || '—', color: '#ef4444' },
+          { label: 'UNDERWEIGHT',        value: underweightSectors.length,                  sub: underweightSectors.slice(0, 3).map(s => s.label.slice(0, 6)).join(', ') || '—', color: '#8b5cf6' },
+          { label: 'EQUAL WEIGHT REF',   value: `${fmt(equalWeight, 1)}%`,                  sub: 'Per sector, if equally split',                                          color: 'var(--accent2)' },
+          { label: 'MF IMPLIED',         value: fmtCr(stats.mfValue),                       sub: 'Capital in funds',                                                      color: 'var(--teal)' },
         ].map((m, i) => (
           <div key={i} style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 4 }}>{m.label}</div>
             <div style={{ fontSize: 17, fontWeight: 800, fontFamily: 'var(--font-mono)', color: m.color, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.value}</div>
-            <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.sub}</div>
+            {m.sub && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.sub}</div>}
           </div>
         ))}
       </div>
@@ -433,8 +434,8 @@ function SectorRotationWheel({ holdings, stats }) {
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, marginTop: 5, flexWrap: 'wrap' }}>
-                {s.mfVal > 0 && <span style={{ fontSize: 9, color: '#14b8a6', background: 'rgba(20,184,166,0.1)', padding: '1px 7px', borderRadius: 3, border: '1px solid rgba(20,184,166,0.25)' }}>MF {fmt((s.mfVal/s.val)*100,0)}% · {fmtCr(s.mfVal)}</span>}
-                {s.stVal > 0 && <span style={{ fontSize: 9, color: '#c084fc', background: 'rgba(139,92,246,0.1)', padding: '1px 7px', borderRadius: 3, border: '1px solid rgba(139,92,246,0.25)' }}>Stocks {fmt((s.stVal/s.val)*100,0)}% · {fmtCr(s.stVal)}</span>}
+                {s.mfVal > 0 && <span style={{ fontSize: 9, color: '#14b8a6', background: 'rgba(20,184,166,0.1)', padding: '1px 7px', borderRadius: 3, border: '1px solid rgba(20,184,166,0.25)' }}>MF {fmt((s.mfVal / s.val) * 100, 0)}% · {fmtCr(s.mfVal)}</span>}
+                {s.stVal > 0 && <span style={{ fontSize: 9, color: '#c084fc', background: 'rgba(139,92,246,0.1)', padding: '1px 7px', borderRadius: 3, border: '1px solid rgba(139,92,246,0.25)' }}>Stocks {fmt((s.stVal / s.val) * 100, 0)}% · {fmtCr(s.stVal)}</span>}
                 <span style={{ fontSize: 9, color: 'var(--text3)' }}>EW benchmark: {fmt(equalWeight, 1)}%</span>
               </div>
             </div>
@@ -455,21 +456,17 @@ export default function AnalyticsView() {
   const ltcgInvested = ltcg.reduce((s, h) => s + h.invested, 0);
   const stcgInvested = stcg.reduce((s, h) => s + h.invested, 0);
 
-  // Use hex colors — Chart.js cannot resolve CSS variables
   const flowBars = monthlyFlow.slice(-12).map(d => ({
     label: d.month.slice(5),
     value: d.amount,
     color: '#3b82f6',
   }));
 
-  const sharpe   = ((stats.overallCagr - 6.5) / 14).toFixed(2);
-
-  // Use real unrealized tax from taxData for open positions
+  const sharpe = ((stats.overallCagr - 6.5) / 14).toFixed(2);
   const unrealizedTax = taxData.reduce((s, h) => s + (h.tax || 0), 0);
 
   return (
     <div className="fade-up">
-
       {/* Tab switcher */}
       <div style={{ display: 'flex', gap: 0, marginBottom: '16px', borderBottom: '1px solid var(--border)' }}>
         {[
@@ -488,25 +485,17 @@ export default function AnalyticsView() {
 
       {analyticsTab === 'overview' && (
         <>
-          {/* XIRR / returns */}
+          {/* Return metrics — flip=true renders value above label */}
           <div className="glass" style={{ padding: '18px', marginBottom: '16px' }}>
             <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Return Metrics</div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>Unrealized + realized — combined picture</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
-              {[
-                { label: 'Portfolio XIRR',    value: portfolioXIRR != null ? fmtPct(portfolioXIRR, true) : '—', color: 'var(--green2)',  note: 'True money-weighted' },
-                { label: 'Approx CAGR',       value: fmtPct(stats.overallCagr * 0.93),                          color: 'var(--accent2)', note: 'Time-weighted est.' },
-                { label: 'Sharpe Ratio',      value: sharpe,                                                     color: 'var(--teal)',    note: 'Risk-adjusted' },
-                { label: 'Unrealized Return', value: fmtPct(stats.totalReturnPct),                               color: colorPnl(stats.totalReturnPct), note: 'Open positions' },
-                { label: 'Total Realized',    value: fmtCr(realizedSummary.totalRealized),                       color: colorPnl(realizedSummary.totalRealized), note: 'Closed positions' },
-                { label: 'MF CAGR',           value: fmtPct(stats.mfCagr),                                      color: 'var(--purple)',  note: 'Weighted avg' },
-              ].map((m, i) => (
-                <div key={i} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '14px' }}>
-                  <div style={{ fontSize: '22px', fontWeight: '800', fontFamily: 'var(--font-mono)', color: m.color }}>{m.value}</div>
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text)', marginTop: '2px' }}>{m.label}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{m.note}</div>
-                </div>
-              ))}
+              <StatCard flip label="Portfolio XIRR"    value={portfolioXIRR != null ? fmtPct(portfolioXIRR, true) : '—'} color="var(--green2)"             sub="True money-weighted" valueSize={22} />
+              <StatCard flip label="Approx CAGR"       value={fmtPct(stats.overallCagr * 0.93)}                          color="var(--accent2)"            sub="Time-weighted est."  valueSize={22} />
+              <StatCard flip label="Sharpe Ratio"      value={sharpe}                                                     color="var(--teal)"               sub="Risk-adjusted"       valueSize={22} />
+              <StatCard flip label="Unrealized Return" value={fmtPct(stats.totalReturnPct)}                               color={colorPnl(stats.totalReturnPct)} sub="Open positions"  valueSize={22} />
+              <StatCard flip label="Total Realized"    value={fmtCr(realizedSummary.totalRealized)}                       color={colorPnl(realizedSummary.totalRealized)} sub="Closed positions" valueSize={22} />
+              <StatCard flip label="MF CAGR"           value={fmtPct(stats.mfCagr)}                                      color="var(--purple)"             sub="Weighted avg"        valueSize={22} />
             </div>
           </div>
 

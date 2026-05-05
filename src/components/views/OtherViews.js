@@ -5,11 +5,12 @@ import { useState, useEffect } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, fmtPct, colorPnl, sectorColor, buildMonthlyFlow } from '@/lib/store';
 import { CumChart, WaterfallChart } from '@/components/charts/Charts';
+import { EmptyState, Alert } from '@/components/ui/SharedUI';
 
 // ─── Timeline View ────────────────────────────────────────────────────────────
 
 export function TimelineView() {
-  const { trades, monthlyFlow } = usePortfolio();
+  const { trades, monthlyFlow, setActiveView } = usePortfolio();
 
   const byMonth = {};
   [...trades].sort((a, b) => b.tradeDate.localeCompare(a.tradeDate)).forEach(t => {
@@ -22,9 +23,15 @@ export function TimelineView() {
   let cum = 0;
   monthlyFlow.forEach(m => { cum += m.amount; cumFlow.push({ ...m, cum }); });
 
-  if (!trades.length) {
-    return <EmptySection icon="📅" msg="No trades recorded yet. Add trades to see your investment timeline." />;
-  }
+  if (!trades.length) return (
+    <EmptyState
+      icon="📅"
+      label="No trades recorded yet"
+      sub="Add trades to see your investment timeline."
+      cta="+ Add Trade"
+      onCta={() => setActiveView('trade')}
+    />
+  );
 
   return (
     <div className="fade-up">
@@ -58,7 +65,7 @@ export function TimelineView() {
                   <span className={`chip ${t.assetType === 'MF' ? 'chip-blue' : 'chip-purple'}`}>{t.assetType}</span>
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>{t.symbol}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{t.tradeDate} {t.sector ? `· ${t.sector}` : ''}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text3)' }}>{t.tradeDate}{t.sector ? ` · ${t.sector}` : ''}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
@@ -117,9 +124,11 @@ function MonthlyHeatmap({ data }) {
 // ─── Wealth Waterfall View ────────────────────────────────────────────────────
 
 export function WaterfallView() {
-  const { stats, holdings } = usePortfolio();
+  const { stats, holdings, setActiveView } = usePortfolio();
 
-  if (!holdings.length) return <EmptySection icon="💧" msg="Add trades to see your wealth waterfall." />;
+  if (!holdings.length) return (
+    <EmptyState icon="💧" label="No holdings yet" sub="Add trades to see your wealth waterfall." cta="+ Add Trade" onCta={() => setActiveView('trade')} />
+  );
 
   const mfGain = stats.mfValue - stats.mfInvested;
   const stGain = stats.stValue - stats.stInvested;
@@ -171,10 +180,12 @@ export function WaterfallView() {
 // ─── Action Signal View ───────────────────────────────────────────────────────
 
 export function ActionView() {
-  const { stats, holdings } = usePortfolio();
+  const { stats, holdings, setActiveView } = usePortfolio();
   const [checked, setChecked] = useState({});
 
-  if (!holdings.length) return <EmptySection icon="⚡" msg="Add trades to see your action signals." />;
+  if (!holdings.length) return (
+    <EmptyState icon="⚡" label="No holdings yet" sub="Add trades to see your action signals." cta="+ Add Trade" onCta={() => setActiveView('trade')} />
+  );
 
   const topGainer = [...holdings].sort((a, b) => b.returnPct - a.returnPct)[0];
   const topLoser  = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
@@ -192,6 +203,7 @@ export function ActionView() {
 
   return (
     <div className="fade-up">
+      {/* Today's signal */}
       <div className="glass" style={{ padding: '20px', marginBottom: '16px', background: 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.05))', border: '1px solid rgba(59,130,246,0.3)' }}>
         <div style={{ fontSize: '11px', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent2)', marginBottom: '8px' }}>⚡ Today's Signal</div>
         <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)', marginBottom: '6px' }}>
@@ -202,14 +214,15 @@ export function ActionView() {
         </div>
       </div>
 
+      {/* Portfolio pulse — reuse Alert for consistent styling */}
       <div className="glass" style={{ padding: '18px', marginBottom: '16px' }}>
         <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>Portfolio Pulse</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
           {[
-            { icon: '📈', title: 'Top Gainer',      body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : '—', color: 'var(--green2)' },
-            { icon: '📉', title: 'Underperformer',  body: topLoser  ? `${topLoser.symbol} ${fmtPct(topLoser.returnPct, true)}`  : '—', color: 'var(--red2)' },
-            { icon: '💰', title: 'Portfolio Value',  body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
-            { icon: '📊', title: 'Overall Return',   body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
+            { icon: '📈', title: 'Top Gainer',     body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : '—', color: 'var(--green2)' },
+            { icon: '📉', title: 'Underperformer', body: topLoser  ? `${topLoser.symbol}  ${fmtPct(topLoser.returnPct,  true)}` : '—', color: 'var(--red2)'   },
+            { icon: '💰', title: 'Portfolio Value', body: fmtCr(stats.totalValue),                                                        color: 'var(--accent2)' },
+            { icon: '📊', title: 'Overall Return',  body: fmtPct(stats.totalReturnPct, true),                                             color: colorPnl(stats.totalReturnPct) },
           ].map((c, i) => (
             <div key={i} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '14px' }}>
               <div style={{ fontSize: '20px', marginBottom: '4px' }}>{c.icon}</div>
@@ -220,6 +233,7 @@ export function ActionView() {
         </div>
       </div>
 
+      {/* Weekly checklist */}
       <div className="glass" style={{ padding: '18px' }}>
         <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Weekly Investor Checklist</div>
         <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>Tap to mark done</div>
@@ -310,7 +324,7 @@ export function SnapshotView() {
               </tr>
             </thead>
             <tbody>
-              {snapshots.map((s, i) => (
+              {snapshots.map((s) => (
                 <tr key={s.id}>
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '600', whiteSpace: 'nowrap' }}>
                     {new Date(s.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -329,19 +343,6 @@ export function SnapshotView() {
           </table>
         )}
       </div>
-    </div>
-  );
-}
-
-// ─── Shared empty state ───────────────────────────────────────────────────────
-
-function EmptySection({ icon, msg }) {
-  const { setActiveView } = usePortfolio();
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: '12px' }}>
-      <div style={{ fontSize: '40px' }}>{icon}</div>
-      <div style={{ fontSize: '14px', color: 'var(--text2)', textAlign: 'center', maxWidth: '340px' }}>{msg}</div>
-      <button className="btn btn-primary" onClick={() => setActiveView('trade')}>+ Add Trade</button>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
+import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 
 // ── Nifty 50 historical monthly close (Jan 2020 – Apr 2026) ──────────────────
 const NIFTY_HISTORY = {
@@ -146,7 +147,7 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
 
 // ── Main View ─────────────────────────────────────────────────────────────────
 export default function PortfolioVsNiftyView() {
-  const { portfolioId, stats } = usePortfolio();
+  const { portfolioId, stats, setActiveView } = usePortfolio();
   const [snapshots, setSnapshots] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [mode, setMode]           = useState('indexed');
@@ -205,26 +206,26 @@ export default function PortfolioVsNiftyView() {
 
   if (snapshots.length < 2) return (
     <div className="fade-up">
-      <div className="glass" style={{ padding: '40px', textAlign: 'center' }}>
-        <div style={{ fontSize: '40px', marginBottom: '12px' }}>📈</div>
-        <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text)', marginBottom: '8px' }}>Not enough snapshot data yet</div>
-        <div style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '420px', margin: '0 auto', marginBottom: '20px' }}>
-          You need at least 2 saved snapshots to draw a comparison chart.
-        </div>
-        <div style={{ fontSize: '12px', color: 'var(--text3)', marginBottom: '20px' }}>
-          {snapshots.length === 1
-            ? '✅ You have 1 snapshot — save one more to unlock this chart.'
-            : '📸 Go to Snapshot History and click "Save Snapshot Now" a few times over different days.'}
-        </div>
-        <div style={{
-          background: 'rgba(59,130,246,0.08)', borderRadius: '10px', padding: '14px 20px',
-          border: '1px solid rgba(59,130,246,0.2)', maxWidth: '380px', margin: '0 auto',
-          fontSize: '12px', color: 'var(--text2)', textAlign: 'left', lineHeight: '1.8',
-        }}>
-          <div style={{ fontWeight: '700', color: 'var(--accent2)', marginBottom: '6px' }}>💡 Pro tip</div>
-          Save a snapshot weekly or monthly to build a rich comparison history.
-        </div>
-      </div>
+      <EmptyState
+        icon="📈"
+        label="Not enough snapshot data yet"
+        sub="You need at least 2 saved snapshots to draw a comparison chart."
+        cta="Go to Snapshots"
+        onCta={() => setActiveView('snapshots')}
+        extra={
+          <div style={{
+            background: 'rgba(59,130,246,0.08)', borderRadius: '10px', padding: '14px 20px',
+            border: '1px solid rgba(59,130,246,0.2)', maxWidth: '380px',
+            fontSize: '12px', color: 'var(--text2)', textAlign: 'left', lineHeight: '1.8',
+          }}>
+            <div style={{ fontWeight: '700', color: 'var(--accent2)', marginBottom: '6px' }}>💡 Pro tip</div>
+            {snapshots.length === 1
+              ? '✅ You have 1 snapshot — save one more to unlock this chart.'
+              : '📸 Go to Snapshot History and click "Save Snapshot Now" a few times over different days.'}
+            <br />Save a snapshot weekly or monthly to build a rich comparison history.
+          </div>
+        }
+      />
     </div>
   );
 
@@ -233,26 +234,45 @@ export default function PortfolioVsNiftyView() {
 
       {/* Header stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
-        {[
-          { label: 'Portfolio Return', value: `${pTotal >= 0 ? '+' : ''}${fmt(pTotal, 1)}%`,   color: colorPnl(pTotal), sub: `Since ${firstSnapshotDate}` },
-          { label: 'Nifty 50 Return',  value: `${nTotal >= 0 ? '+' : ''}${fmt(nTotal, 1)}%`,   color: colorPnl(nTotal), sub: 'Same period' },
-          { label: 'Alpha Generated',  value: alpha != null ? `${alpha >= 0 ? '+' : ''}${fmt(alpha, 1)} pts` : '—', color: alpha != null ? colorPnl(alpha) : 'var(--text2)', sub: alpha != null && alpha > 0 ? '🏆 Beating index' : '📉 Trailing index' },
-          { label: 'Portfolio CAGR',   value: fmtPct(stats.overallCagr, true),                 color: 'var(--green2)', sub: 'Annualised' },
-          { label: 'Data Points',      value: snapshots.length,                                 color: 'var(--accent2)', sub: `${firstSnapshotDate} → ${latestSnapshotDate}` },
-        ].map((m, i) => (
-          <div key={i} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px' }}>
-            <div style={{ fontSize: '9px', color: 'var(--text3)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '4px' }}>{m.label}</div>
-            <div style={{ fontSize: '18px', fontWeight: '700', fontFamily: 'var(--font-mono)', color: m.color }}>{m.value}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text3)', marginTop: '2px' }}>{m.sub}</div>
-          </div>
-        ))}
+        <StatCard
+          label="Portfolio Return"
+          value={`${pTotal >= 0 ? '+' : ''}${fmt(pTotal, 1)}%`}
+          color={colorPnl(pTotal)}
+          sub={`Since ${firstSnapshotDate}`}
+        />
+        <StatCard
+          label="Nifty 50 Return"
+          value={`${nTotal >= 0 ? '+' : ''}${fmt(nTotal, 1)}%`}
+          color={colorPnl(nTotal)}
+          sub="Same period"
+        />
+        <StatCard
+          label="Alpha Generated"
+          value={alpha != null ? `${alpha >= 0 ? '+' : ''}${fmt(alpha, 1)} pts` : '—'}
+          color={alpha != null ? colorPnl(alpha) : 'var(--text2)'}
+          sub={alpha != null && alpha > 0 ? '🏆 Beating index' : '📉 Trailing index'}
+        />
+        <StatCard
+          label="Portfolio CAGR"
+          value={fmtPct(stats.overallCagr, true)}
+          color="var(--green2)"
+          sub="Annualised"
+        />
+        <StatCard
+          label="Data Points"
+          value={snapshots.length}
+          color="var(--accent2)"
+          sub={`${firstSnapshotDate} → ${latestSnapshotDate}`}
+        />
       </div>
 
       {/* Alpha badge */}
       {alpha != null && (
         <div style={{
           padding: '12px 18px', borderRadius: '10px',
-          background: alpha > 0 ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))' : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))',
+          background: alpha > 0
+            ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))'
+            : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))',
           border: `1px solid ${alpha > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
