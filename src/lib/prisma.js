@@ -1,13 +1,14 @@
-// NOTE: @prisma/client is generated at runtime via `npx prisma generate`
-// This module lazily creates the client so Next.js build doesn't try to
-// instantiate it during static page collection.
+/**
+ * lib/prisma.js
+ * Lazy singleton Prisma client — prevents instantiation during Next.js
+ * static build and avoids multiple client instances in development HMR.
+ */
 
 let _client = null;
 
 function getClient() {
   if (_client) return _client;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { PrismaClient } = require('@prisma/client');
+  const { PrismaClient } = require('@prisma/client'); // eslint-disable-line
   _client = globalThis.__prisma ?? new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
@@ -15,9 +16,7 @@ function getClient() {
   return _client;
 }
 
-// Proxy: property access triggers lazy init only when an API route actually runs
+// Proxy so property access triggers lazy init only when a route actually runs
 export const prisma = new Proxy({}, {
-  get(_, prop) {
-    return getClient()[prop];
-  },
+  get(_, prop) { return getClient()[prop]; },
 });

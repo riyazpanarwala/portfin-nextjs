@@ -11,7 +11,9 @@
 //   • All qty comparisons use EPSILON guard for float safety
 // ─────────────────────────────────────────────────────────────────────────────
 
-const EPSILON = 1e-6; // floating-point guard
+import { xirr } from '@/lib/xirr';
+
+const EPSILON = 1e-6;
 
 // ─── FIFO Engine ─────────────────────────────────────────────────────────────
 
@@ -20,41 +22,21 @@ const EPSILON = 1e-6; // floating-point guard
  *
  * @param {Array}  trades        - flat trade objects from API, sorted asc by tradeDate
  * @param {Object} currentPrices - { [symbol]: number }
- * @returns {Array} holdings     - one object per symbol with remaining position
- *
- * Returned shape (fully compatible with existing UI):
- * {
- *   symbol, name, assetType, exchange, sector,
- *   qty, invested, avgBuy,
- *   cmp, marketValue,
- *   unrealizedGain, realizedGain, totalGain,
- *   returnPct,          // based on totalGain / (invested + realizedCost)
- *   unrealizedReturnPct,
- *   cagr, holdingDays, years,
- *   lots: [{ date, qty, price }],   // ← REMAINING lots only (XIRR-safe)
- *   sells: [{
- *     date, qty, sellPrice, realized, taxType,
- *     matchedLots: [{ buyDate, qty, buyPrice, holdDays }]
- *   }],
- *   stats: { trades, buyTrades, sellTrades, winCount, lossCount, totalSellProceeds }
- * }
+ * @returns {Array} holdings
  */
 export function computeHoldings(trades, currentPrices = {}) {
-  // ── 1. Group & sort trades by symbol ───────────────────────────────────────
   const bySymbol = {};
 
   for (const t of trades) {
     const key = t.symbol;
     if (!bySymbol[key]) bySymbol[key] = { meta: t, buys: [], sells: [] };
-    if (t.tradeType === 'BUY')  bySymbol[key].buys.push(t);
-    else                        bySymbol[key].sells.push(t);
+    if (t.tradeType === 'BUY') bySymbol[key].buys.push(t);
+    else                       bySymbol[key].sells.push(t);
   }
 
   const holdings = [];
 
   for (const [symbol, { meta, buys, sells }] of Object.entries(bySymbol)) {
-    // ── 2. Build FIFO lot queue from BUYs (chronological) ────────────────────
-    // Each lot: { date, qty, price, remaining }
     const lotQueue = buys
       .slice()
       .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))
@@ -62,10 +44,9 @@ export function computeHoldings(trades, currentPrices = {}) {
         date:      t.tradeDate,
         qty:       parseFloat(t.quantity),
         price:     parseFloat(t.price),
-        remaining: parseFloat(t.quantity),   // mutable during FIFO matching
+        remaining: parseFloat(t.quantity),
       }));
 
-    // ── 3. Process SELLs in chronological order — FIFO match ─────────────────
     const sellRecords = [];
     let realizedGain  = 0;
 
@@ -83,138 +64,81 @@ export function computeHoldings(trades, currentPrices = {}) {
         if (sellQtyLeft <= EPSILON) break;
         if (lot.remaining <= EPSILON) continue;
 
-        const consumed = Math.min(lot.remaining, sellQtyLeft);
+        const consumed  = Math.min(lot.remaining, sellQtyLeft);
         const costBasis = consumed * lot.price;
         const proceeds  = consumed * sellPrice;
         const lotGain   = proceeds - costBasis;
-
         const holdDays  = daysBetween(lot.date, sellDate);
         const taxType   = holdDays >= 365 ? 'LTCG' : 'STCG';
 
-        matchedLots.push({
-          buyDate:  lot.date,
-          qty:      consumed,
-          buyPrice: lot.price,
-          holdDays,
-          taxType,
-          costBasis,
-          gain:     lotGain,
-        });
-
-        lot.remaining  -= consumed;
-        sellQtyLeft    -= consumed;
-        realizedGain   += lotGain;
+        matchedLots.push({ buyDate: lot.date, qty: consumed, buyPrice: lot.price, holdDays, taxType, costBasis, gain: lotGain });
+        lot.remaining -= consumed;
+        sellQtyLeft   -= consumed;
+        realizedGain  += lotGain;
       }
 
-      // If sell qty exceeded available lots, clamp silently (data integrity guard)
       const actualQtySold = parseFloat(sellTrade.quantity) - Math.max(0, sellQtyLeft);
-
       if (actualQtySold > EPSILON) {
-        const totalRealized = matchedLots.reduce((s, m) => s + m.gain, 0);
         sellRecords.push({
           date:        sellDate,
           qty:         actualQtySold,
           sellPrice,
-          realized:    totalRealized,
+          realized:    matchedLots.reduce((s, m) => s + m.gain, 0),
           matchedLots,
-          // Dominant tax type by qty
-          taxType: dominantTaxType(matchedLots),
+          taxType:     dominantTaxType(matchedLots),
         });
       }
     }
 
-    // ── 4. Build remaining lots (only those with qty > EPSILON) ───────────────
     const remainingLots = lotQueue
       .filter(l => l.remaining > EPSILON)
       .map(l => ({ date: l.date, qty: l.remaining, price: l.price }));
 
-    // ── 5. Compute position metrics from remaining lots ───────────────────────
     const qty      = remainingLots.reduce((s, l) => s + l.qty, 0);
     const invested = remainingLots.reduce((s, l) => s + l.qty * l.price, 0);
 
-    // If nothing remains, still include if there's realized gain to report
     if (qty <= EPSILON && realizedGain === 0 && sellRecords.length === 0) continue;
 
-    const avgBuy = qty > EPSILON ? invested / qty : 0;
+    const avgBuy         = qty > EPSILON ? invested / qty : 0;
+    const cmp            = currentPrices[symbol] ? parseFloat(currentPrices[symbol]) : avgBuy;
+    const marketValue    = qty * cmp;
+    const unrealizedGain = marketValue - invested;
+    const totalGain      = unrealizedGain + realizedGain;
 
-    // CMP: use live price, fallback to avgBuy (avoids 0 market-value distortion)
-    const cmp = currentPrices[symbol]
-      ? parseFloat(currentPrices[symbol])
-      : avgBuy;
+    const unrealizedReturnPct = invested > EPSILON ? (unrealizedGain / invested) * 100 : 0;
+    const returnPct           = invested > EPSILON ? (totalGain     / invested) * 100 : 0;
 
-    const marketValue     = qty * cmp;
-    const unrealizedGain  = marketValue - invested;
-
-    // totalGain = what you've made unrealized + what you've locked in via sells
-    const totalGain       = unrealizedGain + realizedGain;
-
-    // returnPct: total gain relative to total capital ever deployed in remaining position
-    // (use invested as base; realizedCost already "left" the book)
-    const unrealizedReturnPct = invested > EPSILON
-      ? (unrealizedGain / invested) * 100 : 0;
-    const returnPct = invested > EPSILON
-      ? (totalGain / invested) * 100 : 0;
-
-    // ── 6. Time metrics from remaining lots ──────────────────────────────────
-    const firstDate   = remainingLots.length > 0
-      ? new Date(remainingLots[0].date)
-      : new Date();
-    const now         = new Date();
-    const holdingDays = Math.max(0, Math.round((now - firstDate) / (24 * 3600 * 1000)));
+    const firstDate   = remainingLots.length > 0 ? new Date(remainingLots[0].date) : new Date();
+    const holdingDays = Math.max(0, Math.round((new Date() - firstDate) / (24 * 3600 * 1000)));
     const years       = Math.max(0.1, holdingDays / 365.25);
 
     const cagr = invested > EPSILON && marketValue > 0
       ? (Math.pow(marketValue / invested, 1 / years) - 1) * 100
       : 0;
 
-    // ── 7. Trade stats ────────────────────────────────────────────────────────
     const winCount  = sellRecords.filter(s => s.realized > 0).length;
     const lossCount = sellRecords.filter(s => s.realized < 0).length;
-    const totalSellProceeds = sellRecords.reduce((s, sr) => s + sr.qty * sr.sellPrice, 0);
 
     holdings.push({
-      // Identity
       symbol,
       name:      meta.name     || symbol,
       assetType: meta.assetType,
       exchange:  meta.exchange,
       sector:    meta.sector   || 'Other',
-
-      // Position
-      qty,
-      invested,
-      avgBuy,
-      lots: remainingLots,   // ← XIRR-safe: only remaining lots
-
-      // Pricing
-      cmp,
-      marketValue,
-
-      // P&L
-      unrealizedGain,
-      realizedGain,
-      totalGain,
-
-      // Returns
-      returnPct,
-      unrealizedReturnPct,
-
-      // Time
-      cagr,
-      holdingDays,
-      years,
-
-      // Sell history
+      qty, invested, avgBuy,
+      lots: remainingLots,
+      cmp, marketValue,
+      unrealizedGain, realizedGain, totalGain,
+      returnPct, unrealizedReturnPct,
+      cagr, holdingDays, years,
       sells: sellRecords,
-
-      // Stats
       stats: {
         trades:            buys.length + sells.length,
         buyTrades:         buys.length,
         sellTrades:        sells.length,
         winCount,
         lossCount,
-        totalSellProceeds,
+        totalSellProceeds: sellRecords.reduce((s, sr) => s + sr.qty * sr.sellPrice, 0),
       },
     });
   }
@@ -227,8 +151,8 @@ export function computeHoldings(trades, currentPrices = {}) {
 export function computePortfolioStats(holdings) {
   const active = holdings.filter(h => h.qty > EPSILON);
 
-  const totalValue    = active.reduce((s, h) => s + h.marketValue, 0);
-  const totalInvested = active.reduce((s, h) => s + h.invested,    0);
+  const totalValue          = active.reduce((s, h) => s + h.marketValue, 0);
+  const totalInvested       = active.reduce((s, h) => s + h.invested,    0);
   const totalUnrealizedGain = active.reduce((s, h) => s + h.unrealizedGain, 0);
   const totalRealizedGain   = holdings.reduce((s, h) => s + h.realizedGain, 0);
   const totalGain           = totalUnrealizedGain + totalRealizedGain;
@@ -255,8 +179,7 @@ export function computePortfolioStats(holdings) {
 
   return {
     totalValue, totalInvested, totalGain,
-    totalUnrealizedGain, totalRealizedGain,
-    totalReturnPct,
+    totalUnrealizedGain, totalRealizedGain, totalReturnPct,
     mfValue, stValue, mfInvested, stInvested,
     mfCagr, overallCagr,
     fundCount:  mfH.length,
@@ -266,42 +189,30 @@ export function computePortfolioStats(holdings) {
   };
 }
 
-// ─── True portfolio XIRR (includes sells) ────────────────────────────────────
-// This gives the accurate money-weighted return across ALL cash flows.
-//
-// Usage:
-//   const xirr = computePortfolioXIRR(trades, currentPrices);
-//   // Returns annualised return %, e.g. 14.2
-//
+// ─── Portfolio XIRR ───────────────────────────────────────────────────────────
+
 export function computePortfolioXIRR(trades, currentPrices = {}) {
-  // All outflows = BUY payments (negative cash flow)
-  // All inflows  = SELL proceeds (positive cash flow)
-  // Terminal inflow = current market value of remaining holdings
   const holdings = computeHoldings(trades, currentPrices);
 
-  const cashflows = [];
-
-  // Historical cash flows from trades
-  for (const t of trades) {
-    const qty   = parseFloat(t.quantity);
-    const price = parseFloat(t.price);
+  const cashflows = trades.map(t => {
+    const qty       = parseFloat(t.quantity);
+    const price     = parseFloat(t.price);
     const brokerage = t.brokerage ? parseFloat(t.brokerage) : 0;
-    if (t.tradeType === 'BUY') {
-      cashflows.push({ date: t.tradeDate, amount: -(qty * price + brokerage) });
-    } else {
-      cashflows.push({ date: t.tradeDate, amount: qty * price - brokerage });
-    }
-  }
+    const amount    = t.tradeType === 'BUY'
+      ? -(qty * price + brokerage)
+      :   qty * price - brokerage;
+    return { date: t.tradeDate, amount };
+  });
 
-  // Terminal: today's market value of remaining positions
-  const todayStr  = new Date().toISOString().slice(0, 10);
   const termValue = holdings.reduce((s, h) => s + h.marketValue, 0);
-  if (termValue > 0) cashflows.push({ date: todayStr, amount: termValue });
+  if (termValue > 0) {
+    cashflows.push({ date: new Date().toISOString().slice(0, 10), amount: termValue });
+  }
 
   if (cashflows.length < 2) return null;
   cashflows.sort((a, b) => a.date.localeCompare(b.date));
 
-  return newtonXIRR(cashflows);
+  return xirr(cashflows);
 }
 
 // ─── Realized P&L summary ────────────────────────────────────────────────────
@@ -311,21 +222,13 @@ export function computeRealizedSummary(holdings) {
     h.sells.map(s => ({ ...s, symbol: h.symbol, assetType: h.assetType }))
   );
 
-  const ltcgGain = sells
-    .filter(s => s.taxType === 'LTCG')
-    .reduce((sum, s) => sum + s.realized, 0);
+  const ltcgGain = sells.filter(s => s.taxType === 'LTCG').reduce((sum, s) => sum + s.realized, 0);
+  const stcgGain = sells.filter(s => s.taxType === 'STCG').reduce((sum, s) => sum + s.realized, 0);
 
-  const stcgGain = sells
-    .filter(s => s.taxType === 'STCG')
-    .reduce((sum, s) => sum + s.realized, 0);
-
-  // India FY2024+ tax rates
+  // India FY2024+ rates
   const ltcgExemption = 125000;
   const ltcgTax = ltcgGain > ltcgExemption ? (ltcgGain - ltcgExemption) * 0.125 : 0;
   const stcgTax = stcgGain > 0 ? stcgGain * 0.20 : 0;
-
-  const totalRealized = ltcgGain + stcgGain;
-  const totalTax      = ltcgTax + stcgTax;
 
   const sellsBySymbol = {};
   for (const s of sells) {
@@ -335,16 +238,15 @@ export function computeRealizedSummary(holdings) {
   }
 
   return {
-    totalRealized,
+    totalRealized: ltcgGain + stcgGain,
     ltcgGain, stcgGain,
     ltcgTax, stcgTax,
-    totalTax,
-    sells,
-    sellsBySymbol,
+    totalTax: ltcgTax + stcgTax,
+    sells, sellsBySymbol,
   };
 }
 
-// ─── Monthly flow (unchanged — used by existing charts) ──────────────────────
+// ─── Monthly flow ─────────────────────────────────────────────────────────────
 
 export function buildMonthlyFlow(trades) {
   const map = {};
@@ -354,11 +256,12 @@ export function buildMonthlyFlow(trades) {
     if (!key) continue;
     map[key] = (map[key] || 0) + parseFloat(t.quantity) * parseFloat(t.price);
   }
-  return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, amount]) => ({ month, amount }));
 }
 
-// ─── Tax computation (existing UI compat — now uses FIFO data when available) ─
+// ─── Tax computation ──────────────────────────────────────────────────────────
 
 export function computeTax(holdings) {
   return holdings.map(h => {
@@ -371,7 +274,7 @@ export function computeTax(holdings) {
   });
 }
 
-// ─── Wealth projection (unchanged) ───────────────────────────────────────────
+// ─── Wealth projection ────────────────────────────────────────────────────────
 
 export function projectWealth(sipMonthly, years, annualReturn, stepUpPct = 0) {
   const data = [];
@@ -384,58 +287,25 @@ export function projectWealth(sipMonthly, years, annualReturn, stepUpPct = 0) {
       }
       sip *= (1 + stepUpPct / 100);
     }
-    data.push({
-      year:      y,
-      corpus:    Math.round(corpus),
-      invested:  Math.round(totalInvested),
-      gain:      Math.round(corpus - totalInvested),
-    });
+    data.push({ year: y, corpus: Math.round(corpus), invested: Math.round(totalInvested), gain: Math.round(corpus - totalInvested) });
   }
   return data;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// INTERNAL HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function daysBetween(dateStrA, dateStrB) {
-  return Math.round(
-    (new Date(dateStrB) - new Date(dateStrA)) / (24 * 3600 * 1000)
-  );
+  return Math.round((new Date(dateStrB) - new Date(dateStrA)) / (24 * 3600 * 1000));
 }
 
 function dominantTaxType(matchedLots) {
   if (!matchedLots.length) return 'STCG';
-  const ltcgQty  = matchedLots.filter(m => m.taxType === 'LTCG').reduce((s, m) => s + m.qty, 0);
-  const stcgQty  = matchedLots.filter(m => m.taxType === 'STCG').reduce((s, m) => s + m.qty, 0);
+  const ltcgQty = matchedLots.filter(m => m.taxType === 'LTCG').reduce((s, m) => s + m.qty, 0);
+  const stcgQty = matchedLots.filter(m => m.taxType === 'STCG').reduce((s, m) => s + m.qty, 0);
   return ltcgQty >= stcgQty ? 'LTCG' : 'STCG';
 }
 
-// Newton-Raphson XIRR solver
-function newtonXIRR(cashflows) {
-  const dates   = cashflows.map(c => new Date(c.date));
-  const amounts = cashflows.map(c => c.amount);
-  const d0      = dates[0];
-  const yr      = i => (dates[i] - d0) / (365.25 * 864e5);
-
-  const npv  = r => amounts.reduce((s, a, i) => s + a / Math.pow(1 + r, yr(i)), 0);
-  const dnpv = r => amounts.reduce((s, a, i) => s - yr(i) * a / Math.pow(1 + r, yr(i) + 1), 0);
-
-  let rate = 0.1;
-  for (let k = 0; k < 200; k++) {
-    const f = npv(rate);
-    const d = dnpv(rate);
-    if (Math.abs(d) < 1e-12) break;
-    const nr = rate - f / d;
-    if (Math.abs(nr - rate) < 1e-8) { rate = nr; break; }
-    rate = Math.max(Math.min(nr, 100), -0.9999); // clamp to [-99.99%, 10000%]
-  }
-  return isFinite(rate) ? rate * 100 : null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FORMATTERS (unchanged — keep existing UI working)
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Formatters ───────────────────────────────────────────────────────────────
 
 export function fmt(n, dec = 2) {
   if (n == null || isNaN(n)) return '—';
@@ -466,7 +336,7 @@ export function chipPnl(n) {
   return n > 0 ? 'chip chip-green' : n < 0 ? 'chip chip-red' : 'chip';
 }
 
-// ─── Sector colours (unchanged) ───────────────────────────────────────────────
+// ─── Sector colours ───────────────────────────────────────────────────────────
 
 export const SECTOR_COLORS = {
   'Large Cap': '#38bdf8', 'Small Cap': '#e879f9', 'Mid Cap': '#fbbf24',

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useRef } from 'react';
 import { colorPnl, fmtCr, fmt, sectorColor } from '@/lib/store';
+import { xirr, holdingXIRR, lotXIRR } from '@/lib/xirr';
 import { HoldingPerformanceChart } from '@/components/charts/Charts';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { SummaryStrip } from '@/components/ui/SharedUI';
@@ -9,43 +10,10 @@ import { SummaryStrip } from '@/components/ui/SharedUI';
 // Re-export EmptyState under the old name so MFView/StocksView don't need changing
 export { EmptyState as HoldingsEmpty } from '@/components/ui/SharedUI';
 
-// ─── XIRR ────────────────────────────────────────────────────────────────────
-
-export function computeXIRR(cashflows) {
-  if (!cashflows || cashflows.length < 2) return null;
-  const dates   = cashflows.map(c => new Date(c.date));
-  const amounts = cashflows.map(c => c.amount);
-  const d0      = dates[0];
-  const yr      = i => (dates[i] - d0) / (365.25 * 864e5);
-  const npv     = r => amounts.reduce((s, a, i) => s + a / Math.pow(1 + r, yr(i)), 0);
-  const dnpv    = r => amounts.reduce((s, a, i) => s - yr(i) * a / Math.pow(1 + r, yr(i) + 1), 0);
-  let rate = 0.1;
-  for (let k = 0; k < 100; k++) {
-    const d = dnpv(rate), f = npv(rate);
-    if (Math.abs(d) < 1e-10) break;
-    const nr = rate - f / d;
-    if (Math.abs(nr - rate) < 1e-7) { rate = nr; break; }
-    rate = Math.max(nr, -0.999);
-  }
-  return isFinite(rate) ? rate * 100 : null;
-}
-
-export function calcHoldingXIRR(lots, sells, cmp) {
-  const tQty = lots.reduce((s, l) => s + l.qty, 0);
-  const sellCFs = (sells || []).map(s => ({ amount: s.qty * s.sellPrice, date: s.date }));
-  return computeXIRR([
-    ...lots.map(l => ({ amount: -(l.qty * l.price), date: l.date })),
-    ...sellCFs,
-    ...(tQty > 0 ? [{ amount: tQty * cmp, date: new Date().toISOString().slice(0, 10) }] : []),
-  ]);
-}
-
-export function calcLotXIRR(lot, cmp) {
-  return computeXIRR([
-    { amount: -(lot.qty * lot.price), date: lot.date },
-    { amount: lot.qty * cmp,          date: new Date().toISOString().slice(0, 10) },
-  ]);
-}
+// ─── Public XIRR wrappers (kept for backward-compat imports from this file) ──
+export const computeXIRR      = xirr;
+export const calcHoldingXIRR  = holdingXIRR;
+export const calcLotXIRR      = lotXIRR;
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 

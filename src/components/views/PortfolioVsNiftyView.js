@@ -2,49 +2,16 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { getNiftyForMonth, rebaseToIndex } from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 
-// ── Nifty 50 historical monthly close (Jan 2020 – Apr 2026) ──────────────────
-const NIFTY_HISTORY = {
-  '2020-01': 12282, '2020-02': 11633, '2020-03': 8598,  '2020-04': 9860,
-  '2020-05': 9580,  '2020-06': 10302, '2020-07': 11073, '2020-08': 11388,
-  '2020-09': 11248, '2020-10': 11642, '2020-11': 12968, '2020-12': 13982,
-  '2021-01': 13635, '2021-02': 14529, '2021-03': 14691, '2021-04': 14631,
-  '2021-05': 15582, '2021-06': 15722, '2021-07': 15763, '2021-08': 16706,
-  '2021-09': 17618, '2021-10': 17671, '2021-11': 16983, '2021-12': 17354,
-  '2022-01': 17340, '2022-02': 16658, '2022-03': 17465, '2022-04': 17103,
-  '2022-05': 16584, '2022-06': 15780, '2022-07': 17158, '2022-08': 17759,
-  '2022-09': 17094, '2022-10': 18012, '2022-11': 18758, '2022-12': 18105,
-  '2023-01': 17616, '2023-02': 17554, '2023-03': 17360, '2023-04': 18065,
-  '2023-05': 18534, '2023-06': 18935, '2023-07': 19754, '2023-08': 19265,
-  '2023-09': 19638, '2023-10': 19047, '2023-11': 19795, '2023-12': 21731,
-  '2024-01': 21725, '2024-02': 22040, '2024-03': 22326, '2024-04': 22147,
-  '2024-05': 22531, '2024-06': 23440, '2024-07': 24951, '2024-08': 25235,
-  '2024-09': 25811, '2024-10': 24205, '2024-11': 23911, '2024-12': 23645,
-  '2025-01': 23163, '2025-02': 22125, '2025-03': 23519, '2025-04': 24039,
-  '2025-05': 24857, '2025-06': 24502, '2025-07': 25412, '2025-08': 24987,
-  '2025-09': 26103, '2025-10': 25678, '2025-11': 26845, '2025-12': 27210,
-  '2026-01': 27502, '2026-02': 26843, '2026-03': 27920, '2026-04': 23500,
-};
-
-function getNiftyForMonth(month) {
-  if (NIFTY_HISTORY[month]) return NIFTY_HISTORY[month];
-  const months = Object.keys(NIFTY_HISTORY).sort();
-  const prior  = months.filter(m => m <= month).pop();
-  return prior ? NIFTY_HISTORY[prior] : null;
-}
-
-function rebaseToIndex(series, baseValue) {
-  return series.map(d => ({ ...d, indexed: baseValue > 0 ? (d.value / baseValue) * 100 : 100 }));
-}
-
 // ── Rolling return comparison ─────────────────────────────────────────────────
 function RollingReturns({ portfolioSeries, niftySeries }) {
-  const periods   = [{ label: '6M', months: 6 }, { label: '1Y', months: 12 }, { label: '2Y', months: 24 }, { label: '3Y', months: 36 }];
-  const pMap      = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
-  const nMap      = Object.fromEntries(niftySeries.map(d => [d.month, d.value]));
+  const periods = [{ label: '6M', months: 6 }, { label: '1Y', months: 12 }, { label: '2Y', months: 24 }, { label: '3Y', months: 36 }];
+  const pMap = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
+  const nMap = Object.fromEntries(niftySeries.map(d => [d.month, d.value]));
   const allMonths = portfolioSeries.map(d => d.month).sort();
   const lastMonth = allMonths[allMonths.length - 1];
 
@@ -61,9 +28,9 @@ function RollingReturns({ portfolioSeries, niftySeries }) {
         const fromMonth = allMonths[fromIdx];
         const pStart = pMap[fromMonth], pEnd = pMap[lastMonth];
         const nStart = nMap[fromMonth], nEnd = nMap[lastMonth];
-        const pRet   = pStart > 0 ? ((pEnd / pStart) - 1) * 100 : null;
-        const nRet   = nStart > 0 ? ((nEnd / nStart) - 1) * 100 : null;
-        const alpha  = pRet != null && nRet != null ? pRet - nRet : null;
+        const pRet = pStart > 0 ? ((pEnd / pStart) - 1) * 100 : null;
+        const nRet = nStart > 0 ? ((nEnd / nStart) - 1) * 100 : null;
+        const alpha = pRet != null && nRet != null ? pRet - nRet : null;
         return (
           <div key={label} style={{
             background: 'var(--bg3)', borderRadius: '8px', padding: '14px',
@@ -103,8 +70,8 @@ function RollingReturns({ portfolioSeries, niftySeries }) {
 // ── Hypothetical growth table ─────────────────────────────────────────────────
 function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
   if (!portfolioSeries.length) return null;
-  const baseP   = portfolioSeries[0]?.value || 1;
-  const baseN   = niftySeries[0]?.value    || 1;
+  const baseP = portfolioSeries[0]?.value || 1;
+  const baseN = niftySeries[0]?.value || 1;
   const baseAmt = totalInvested || 100000;
   const milestones = portfolioSeries.filter((_, i) => i === 0 || i % 6 === 0 || i === portfolioSeries.length - 1);
   return (
@@ -122,15 +89,15 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
         </thead>
         <tbody>
           {milestones.map((d, i) => {
-            const niftyD   = niftySeries.find(n => n.month === d.month) || niftySeries[niftySeries.length - 1];
-            const portVal  = baseAmt * (d.value / baseP);
+            const niftyD = niftySeries.find(n => n.month === d.month) || niftySeries[niftySeries.length - 1];
+            const portVal = baseAmt * (d.value / baseP);
             const niftyVal = baseAmt * (niftyD.value / baseN);
-            const alpha    = portVal - niftyVal;
+            const alpha = portVal - niftyVal;
             return (
               <tr key={i}>
                 <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.month}</td>
                 <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: '600' }}>{(d.value / baseP * 100).toFixed(1)}</td>
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--yellow)',  fontWeight: '600' }}>{(niftyD.value / baseN * 100).toFixed(1)}</td>
+                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--yellow)', fontWeight: '600' }}>{(niftyD.value / baseN * 100).toFixed(1)}</td>
                 <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(portVal)}</td>
                 <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtCr(niftyVal)}</td>
                 <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: colorPnl(alpha) }}>
@@ -149,8 +116,8 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
 export default function PortfolioVsNiftyView() {
   const { portfolioId, stats, setActiveView } = usePortfolio();
   const [snapshots, setSnapshots] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [mode, setMode]           = useState('indexed');
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState('indexed');
 
   useEffect(() => {
     if (!portfolioId) return;
@@ -165,18 +132,18 @@ export default function PortfolioVsNiftyView() {
   const portfolioSeries = useMemo(() => {
     if (!snapshots.length) return [];
     return snapshots.map(s => ({
-      month:     s.snapshotAt.slice(0, 7),
-      value:     parseFloat(s.totalValue),
-      invested:  parseFloat(s.totalInvested),
-      gain:      parseFloat(s.totalGain),
+      month: s.snapshotAt.slice(0, 7),
+      value: parseFloat(s.totalValue),
+      invested: parseFloat(s.totalInvested),
+      gain: parseFloat(s.totalGain),
       returnPct: parseFloat(s.totalReturnPct),
-      date:      s.snapshotAt,
+      date: s.snapshotAt,
     }));
   }, [snapshots]);
 
   const niftySeries = useMemo(() =>
     portfolioSeries.map(d => ({ month: d.month, value: getNiftyForMonth(d.month) || 0 })).filter(d => d.value > 0),
-  [portfolioSeries]);
+    [portfolioSeries]);
 
   const rebasedPortfolio = useMemo(() => {
     if (!portfolioSeries.length) return [];
@@ -188,12 +155,12 @@ export default function PortfolioVsNiftyView() {
     return rebaseToIndex(niftySeries, niftySeries[0].value);
   }, [niftySeries]);
 
-  const lastP  = rebasedPortfolio[rebasedPortfolio.length - 1];
-  const lastN  = rebasedNifty[rebasedNifty.length - 1];
-  const alpha  = lastP && lastN ? lastP.indexed - lastN.indexed : null;
+  const lastP = rebasedPortfolio[rebasedPortfolio.length - 1];
+  const lastN = rebasedNifty[rebasedNifty.length - 1];
+  const alpha = lastP && lastN ? lastP.indexed - lastN.indexed : null;
   const pTotal = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
   const nTotal = lastN ? ((lastN.indexed / 100) - 1) * 100 : 0;
-  const firstSnapshotDate  = snapshots[0]?.snapshotAt?.slice(0, 10);
+  const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
   const latestSnapshotDate = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
 
   if (loading) return (
@@ -305,14 +272,14 @@ export default function PortfolioVsNiftyView() {
                 padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer',
                 background: mode === v ? 'rgba(59,130,246,0.2)' : 'transparent',
                 border: `1px solid ${mode === v ? 'var(--accent)' : 'var(--border)'}`,
-                color:   mode === v ? 'var(--accent2)' : 'var(--text3)',
+                color: mode === v ? 'var(--accent2)' : 'var(--text3)',
               }}>{l}</button>
             ))}
           </div>
         </div>
         {mode === 'indexed'
           ? <ComparisonChart portfolioSeries={rebasedPortfolio} niftySeries={rebasedNifty} />
-          : <AbsoluteChart   portfolioSeries={portfolioSeries} />
+          : <AbsoluteChart portfolioSeries={portfolioSeries} />
         }
       </div>
 
