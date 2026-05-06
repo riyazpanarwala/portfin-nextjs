@@ -3,6 +3,7 @@ export { TradeForm } from '@/components/views/TradeForm';
 
 import { useState, useEffect } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { useSnapshots } from '@/hooks/useSnapshots';
 import { fmtCr, fmt, fmtPct, colorPnl, sectorColor, buildMonthlyFlow } from '@/lib/store';
 import { CumChart, WaterfallChart } from '@/components/charts/Charts';
 import { EmptyState, Alert } from '@/components/ui/SharedUI';
@@ -88,7 +89,7 @@ export function TimelineView() {
 function MonthlyHeatmap({ data }) {
   if (!data || !data.length) return <div style={{ color: 'var(--text3)', fontSize: '12px' }}>No data</div>;
   const max = Math.max(...data.map(d => d.amount));
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const byYear = {};
   data.forEach(d => {
     const [y, m] = d.month.split('-');
@@ -134,11 +135,11 @@ export function WaterfallView() {
   const stGain = stats.stValue - stats.stInvested;
 
   const steps = [
-    { label: 'MF Invested',    value: stats.mfInvested, color: 'var(--teal)',    pct: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0 },
-    { label: 'Stock Invested', value: stats.stInvested, color: 'var(--purple)',  pct: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0 },
-    { label: 'MF Gains',       value: mfGain,           color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0 },
-    { label: 'Stock Gains',    value: stGain,            color: stGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0 },
-    { label: 'Total Portfolio',value: stats.totalValue,  color: 'var(--accent2)', isTotal: true },
+    { label: 'MF Invested', value: stats.mfInvested, color: 'var(--teal)', pct: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0 },
+    { label: 'Stock Invested', value: stats.stInvested, color: 'var(--purple)', pct: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0 },
+    { label: 'MF Gains', value: mfGain, color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0 },
+    { label: 'Stock Gains', value: stGain, color: stGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0 },
+    { label: 'Total Portfolio', value: stats.totalValue, color: 'var(--accent2)', isTotal: true },
   ];
 
   return (
@@ -188,7 +189,7 @@ export function ActionView() {
   );
 
   const topGainer = [...holdings].sort((a, b) => b.returnPct - a.returnPct)[0];
-  const topLoser  = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
+  const topLoser = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
 
   const checklist = [
     'Review all SIP amounts and due dates',
@@ -219,10 +220,10 @@ export function ActionView() {
         <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>Portfolio Pulse</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
           {[
-            { icon: '📈', title: 'Top Gainer',     body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : '—', color: 'var(--green2)' },
-            { icon: '📉', title: 'Underperformer', body: topLoser  ? `${topLoser.symbol}  ${fmtPct(topLoser.returnPct,  true)}` : '—', color: 'var(--red2)'   },
-            { icon: '💰', title: 'Portfolio Value', body: fmtCr(stats.totalValue),                                                        color: 'var(--accent2)' },
-            { icon: '📊', title: 'Overall Return',  body: fmtPct(stats.totalReturnPct, true),                                             color: colorPnl(stats.totalReturnPct) },
+            { icon: '📈', title: 'Top Gainer', body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : '—', color: 'var(--green2)' },
+            { icon: '📉', title: 'Underperformer', body: topLoser ? `${topLoser.symbol}  ${fmtPct(topLoser.returnPct, true)}` : '—', color: 'var(--red2)' },
+            { icon: '💰', title: 'Portfolio Value', body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
+            { icon: '📊', title: 'Overall Return', body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
           ].map((c, i) => (
             <div key={i} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '14px' }}>
               <div style={{ fontSize: '20px', marginBottom: '4px' }}>{c.icon}</div>
@@ -258,27 +259,14 @@ export function ActionView() {
 // ─── Snapshot History View ────────────────────────────────────────────────────
 
 export function SnapshotView() {
-  const { portfolioId, stats, saveSnapshot } = usePortfolio();
-  const [snapshots, setSnapshots] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [saving, setSaving]       = useState(false);
-
-  useEffect(() => {
-    if (!portfolioId) return;
-    setLoading(true);
-    fetch(`/api/snapshots?portfolioId=${portfolioId}&limit=30`)
-      .then(r => r.json())
-      .then(d => setSnapshots(d.snapshots || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [portfolioId]);
+  const { portfolioId, saveSnapshot } = usePortfolio();
+  const { snapshots, loading, reload } = useSnapshots(portfolioId, 30);
+  const [saving, setSaving] = useState(false);
 
   async function handleSaveSnapshot() {
     setSaving(true);
     await saveSnapshot();
-    const r = await fetch(`/api/snapshots?portfolioId=${portfolioId}&limit=30`);
-    const d = await r.json();
-    setSnapshots(d.snapshots || []);
+    await reload();
     setSaving(false);
   }
 

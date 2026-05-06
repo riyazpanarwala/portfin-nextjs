@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { useSnapshots } from '@/hooks/useSnapshots';
 import { getNiftyForMonth, rebaseToIndex } from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
@@ -115,19 +116,8 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
 // ── Main View ─────────────────────────────────────────────────────────────────
 export default function PortfolioVsNiftyView() {
   const { portfolioId, stats, setActiveView } = usePortfolio();
-  const [snapshots, setSnapshots] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { snapshots, loading } = useSnapshots(portfolioId, 100);
   const [mode, setMode] = useState('indexed');
-
-  useEffect(() => {
-    if (!portfolioId) return;
-    setLoading(true);
-    fetch(`/api/snapshots?portfolioId=${portfolioId}&limit=100`)
-      .then(r => r.json())
-      .then(d => setSnapshots((d.snapshots || []).sort((a, b) => a.snapshotAt.localeCompare(b.snapshotAt))))
-      .catch(() => setSnapshots([]))
-      .finally(() => setLoading(false));
-  }, [portfolioId]);
 
   const portfolioSeries = useMemo(() => {
     if (!snapshots.length) return [];
