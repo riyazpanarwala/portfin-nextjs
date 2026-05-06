@@ -21,13 +21,13 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "chart.js": "^4.5.1",
     "csv-parse": "^6.2.1",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "prisma": "^6.19.3",
     "react": "19.2.5",
     "react-dom": "19.2.5",
+    "recharts": "^3.8.1",
     "xlsx": "^0.18.5",
     "yahoo-finance2": "^3.14.0"
   },
