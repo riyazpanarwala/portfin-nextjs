@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { withErrorHandler } from '@/lib/apiHelpers';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -26,13 +27,13 @@ function getStaticData() {
       // when the file isn't present.  xlsx is already in package.json.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const XLSX = require('xlsx');
-      const wb   = XLSX.readFile(XLSX_PATH, { cellDates: false, sheetRows: 0 });
+      const wb = XLSX.readFile(XLSX_PATH, { cellDates: false, sheetRows: 0 });
 
       const SHEET_CFG = [
         // [sheetName, exchangeOverride, sectorOverride]
         ['NSE_Equity', 'NSE', null],
         ['BSE_Equity', 'BSE', null],
-        ['NSE_ETF',    'NSE', 'Index ETF'],
+        ['NSE_ETF', 'NSE', 'Index ETF'],
       ];
 
       const instruments = [];
@@ -43,12 +44,12 @@ function getStaticData() {
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
 
         for (const row of rows) {
-          const symbol   = String(row['Symbol']       || '').trim().toUpperCase();
-          const name     = String(row['Company Name'] || '').trim();
-          const isin     = String(row['ISIN']         || '').trim() || null;
-          const exchange = String(row['Exchange']     || defaultExchange).trim() || defaultExchange;
-          const assetType= String(row['AssetType']    || 'STOCK').trim();
-          const sector   = defaultSector
+          const symbol = String(row['Symbol'] || '').trim().toUpperCase();
+          const name = String(row['Company Name'] || '').trim();
+          const isin = String(row['ISIN'] || '').trim() || null;
+          const exchange = String(row['Exchange'] || defaultExchange).trim() || defaultExchange;
+          const assetType = String(row['AssetType'] || 'STOCK').trim();
+          const sector = defaultSector
             || String(row['Sector'] || '').trim()
             || null;
 
@@ -91,9 +92,9 @@ async function fetchYahooSector(symbol, exchange) {
     if (!res.ok) return null;
     const json = await res.json();
     const profile = json?.quoteSummary?.result?.[0];
-    const sector   = profile?.summaryProfile?.sector   || null;
+    const sector = profile?.summaryProfile?.sector || null;
     const industry = profile?.summaryProfile?.industry || null;
-    const longName = profile?.quoteType?.longName      || null;
+    const longName = profile?.quoteType?.longName || null;
     return { sector, industry, longName };
   } catch {
     return null;
@@ -109,98 +110,93 @@ async function fetchYahooSector(symbol, exchange) {
  *
  * Returns: { instruments: [...] }
  */
-export async function GET(request) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const q        = searchParams.get('q')?.trim() || '';
-    const exchange = searchParams.get('exchange') || '';
-    const enrich   = searchParams.get('enrich') === 'true';
-    const limit    = Math.min(15, parseInt(searchParams.get('limit') || '10'));
+export const GET = withErrorHandler('GET /api/instruments/search', async (request) => {
+  const { searchParams } = new URL(request.url);
+  const q = searchParams.get('q')?.trim() || '';
+  const exchange = searchParams.get('exchange') || '';
+  const enrich = searchParams.get('enrich') === 'true';
+  const limit = Math.min(15, parseInt(searchParams.get('limit') || '10'));
 
-    if (q.length < 1) return NextResponse.json({ instruments: [] });
+  if (q.length < 1) return NextResponse.json({ instruments: [] });
 
-    const qUp = q.toUpperCase();
+  const qUp = q.toUpperCase();
 
-    // 1. DB results ──────────────────────────────────────────────────────────
-    const dbResults = await prisma.instrument.findMany({
-      where: {
-        ...(exchange && { exchange }),
-        OR: [
-          { symbol: { contains: qUp } },
-          { name: { contains: q, mode: 'insensitive' } },
-          ...(q.length >= 8 ? [{ isin: { contains: qUp } }] : []),
-        ],
-      },
-      orderBy: [{ symbol: 'asc' }],
-      take: limit,
-      select: {
-        id: true, symbol: true, name: true, isin: true,
-        exchange: true, assetType: true, sector: true,
-        price: true, priceUpdatedAt: true,
-      },
-    });
+  // 1. DB results ──────────────────────────────────────────────────────────
+  const dbResults = await prisma.instrument.findMany({
+    where: {
+      ...(exchange && { exchange }),
+      OR: [
+        { symbol: { contains: qUp } },
+        { name: { contains: q, mode: 'insensitive' } },
+        ...(q.length >= 8 ? [{ isin: { contains: qUp } }] : []),
+      ],
+    },
+    orderBy: [{ symbol: 'asc' }],
+    take: limit,
+    select: {
+      id: true, symbol: true, name: true, isin: true,
+      exchange: true, assetType: true, sector: true,
+      price: true, priceUpdatedAt: true,
+    },
+  });
 
-    const dbKeys = new Set(dbResults.map(r => `${r.symbol}:${r.exchange}`));
+  const dbKeys = new Set(dbResults.map(r => `${r.symbol}:${r.exchange}`));
 
-    // 2. XLSX static data — fill remaining slots ─────────────────────────────
-    const staticData = getStaticData();
-    const staticMatches = staticData
-      .filter(item => {
-        if (exchange && item.e !== exchange) return false;
-        if (dbKeys.has(`${item.s}:${item.e}`)) return false;
-        return item.s.includes(qUp) || item.n.toUpperCase().includes(qUp);
-      })
-      .slice(0, Math.max(0, limit - dbResults.length))
-      .map(item => ({
-        symbol:    item.s,
-        name:      item.n,
-        isin:      item.i || null,
-        exchange:  item.e,
-        assetType: item.t,
-        sector:    item.c || null,
-        price:     null,
-        inDb:      false,
-      }));
+  // 2. XLSX static data — fill remaining slots ─────────────────────────────
+  const staticData = getStaticData();
+  const staticMatches = staticData
+    .filter(item => {
+      if (exchange && item.e !== exchange) return false;
+      if (dbKeys.has(`${item.s}:${item.e}`)) return false;
+      return item.s.includes(qUp) || item.n.toUpperCase().includes(qUp);
+    })
+    .slice(0, Math.max(0, limit - dbResults.length))
+    .map(item => ({
+      symbol: item.s,
+      name: item.n,
+      isin: item.i || null,
+      exchange: item.e,
+      assetType: item.t,
+      sector: item.c || null,
+      price: null,
+      inDb: false,
+    }));
 
-    // 3. Combine ──────────────────────────────────────────────────────────────
-    const combined = [
-      ...dbResults.map(r => ({
-        id:             r.id,
-        symbol:         r.symbol,
-        name:           r.name,
-        isin:           r.isin,
-        exchange:       r.exchange,
-        assetType:      r.assetType,
-        sector:         r.sector,
-        price:          r.price ? parseFloat(r.price) : null,
-        priceUpdatedAt: r.priceUpdatedAt,
-        inDb:           true,
-      })),
-      ...staticMatches,
-    ].slice(0, limit);
+  // 3. Combine ──────────────────────────────────────────────────────────────
+  const combined = [
+    ...dbResults.map(r => ({
+      id: r.id,
+      symbol: r.symbol,
+      name: r.name,
+      isin: r.isin,
+      exchange: r.exchange,
+      assetType: r.assetType,
+      sector: r.sector,
+      price: r.price ? parseFloat(r.price) : null,
+      priceUpdatedAt: r.priceUpdatedAt,
+      inDb: true,
+    })),
+    ...staticMatches,
+  ].slice(0, limit);
 
-    // 4. Yahoo enrichment on exact single-symbol match ───────────────────────
-    if (enrich && combined.length > 0) {
-      const exact = combined.find(r =>
-        r.symbol.toUpperCase() === qUp &&
-        (r.exchange === 'NSE' || r.exchange === 'BSE')
-      );
-      if (exact && !exact.sector) {
-        const yInfo = await fetchYahooSector(exact.symbol, exact.exchange);
-        if (yInfo) {
-          exact.sector   = yInfo.sector   || exact.sector;
-          exact.industry = yInfo.industry || null;
-          if (yInfo.longName && (!exact.name || exact.name === exact.symbol)) {
-            exact.name = yInfo.longName;
-          }
-          exact._enriched = true;
+  // 4. Yahoo enrichment on exact single-symbol match ───────────────────────
+  if (enrich && combined.length > 0) {
+    const exact = combined.find(r =>
+      r.symbol.toUpperCase() === qUp &&
+      (r.exchange === 'NSE' || r.exchange === 'BSE')
+    );
+    if (exact && !exact.sector) {
+      const yInfo = await fetchYahooSector(exact.symbol, exact.exchange);
+      if (yInfo) {
+        exact.sector = yInfo.sector || exact.sector;
+        exact.industry = yInfo.industry || null;
+        if (yInfo.longName && (!exact.name || exact.name === exact.symbol)) {
+          exact.name = yInfo.longName;
         }
+        exact._enriched = true;
       }
     }
-
-    return NextResponse.json({ instruments: combined });
-  } catch (e) {
-    console.error('GET /api/instruments/search:', e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
   }
-}
+
+  return NextResponse.json({ instruments: combined });
+});
