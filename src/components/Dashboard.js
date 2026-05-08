@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, BarChart3, Plus, RefreshCw } from 'lucide-react';
+import { AlertTriangle, BarChart3, Plus, RefreshCw, Upload } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import Sidebar from '@/components/ui/Sidebar';
 import Header from '@/components/ui/Header';
@@ -15,6 +15,7 @@ import RebalancerView from '@/components/views/RebalancerView';
 import AIAdvisorView from '@/components/views/AIAdvisorView';
 import PortfolioVsNiftyView from '@/components/views/PortfolioVsNiftyView';
 import InstrumentsView from '@/components/views/InstrumentsView';
+import TradeImporter from '@/components/views/TradeImporter';
 import { TradeForm } from '@/components/views/TradeForm';
 import { TimelineView, WaterfallView, ActionView, SnapshotView } from '@/components/views/OtherViews';
 
@@ -38,10 +39,11 @@ const VIEW_TITLES = {
 export default function Dashboard() {
   const { activeView, loading, error, trades, refreshData, refreshPrices } = usePortfolio();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showImporter, setShowImporter]         = useState(false);
 
   return (
     <div className="app-shell grid-bg">
-      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
+      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} onImport={() => setShowImporter(true)} />
 
       <div className="app-content">
         <Header onRefreshPrices={refreshPrices} />
@@ -75,8 +77,17 @@ export default function Dashboard() {
               }}>NSE · BSE · AMFI</span>
             )}
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {loading && <Spinner />}
+            <button
+              className="btn btn-ghost"
+              onClick={() => setShowImporter(true)}
+              style={{ padding: '5px 12px', fontSize: '11px', gap: '5px' }}
+              title="Import trades from CSV / Excel"
+            >
+              <Upload size={13} /> Import
+            </button>
             <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
               {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </div>
@@ -86,11 +97,13 @@ export default function Dashboard() {
         <main className="app-main">
           {error ? <ErrorState message={error} onRetry={refreshData} /> :
            loading ? <LoadingState /> :
-           trades.length === 0 && activeView !== 'trade' && activeView !== 'ai-advisor' && activeView !== 'instruments' ? <EmptyState /> :
+           trades.length === 0 && activeView !== 'trade' && activeView !== 'ai-advisor' && activeView !== 'instruments' ? <EmptyState onImport={() => setShowImporter(true)} /> :
            <ViewRenderer view={activeView} />}
         </main>
       </div>
+
       <ToastContainer />
+      {showImporter && <TradeImporter onClose={() => setShowImporter(false)} />}
     </div>
   );
 }
@@ -160,18 +173,21 @@ function ErrorState({ message, onRetry }) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ onImport }) {
   const { setActiveView } = usePortfolio();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px' }}>
       <BarChart3 size={48} color="var(--accent2)" />
-      <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)' }}>Database connected - no trades yet</div>
+      <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)' }}>Database connected — no trades yet</div>
       <div style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '400px', textAlign: 'center' }}>
-        Run <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>npm run db:seed</code> to import your portfolio from Excel, or add trades manually.
+        Import from a broker CSV, upload your own Excel, or add trades manually.
       </div>
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
         <button className="btn btn-primary" onClick={() => setActiveView('trade')} style={{ padding: '10px 24px' }}>
           <Plus size={16} /> Add Trade Manually
+        </button>
+        <button className="btn btn-ghost" onClick={onImport} style={{ padding: '10px 24px' }}>
+          <Upload size={15} /> Import from CSV / Excel
         </button>
         <button className="btn btn-ghost" onClick={() => setActiveView('instruments')} style={{ padding: '10px 24px' }}>
           📂 Manage Instruments
