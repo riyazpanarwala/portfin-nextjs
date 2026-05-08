@@ -1,0 +1,197 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.controlsCol {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.formPanel {
+  padding: 18px;
+}
+
+.formPanelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.formField {
+  margin-bottom: 12px;
+}
+
+.formFieldLabel {
+  display: block;
+  font-size: 11px;
+  color: var(--text3);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+/* ── Step-up planner ── */
+.stepUpPanel {
+  padding: 18px;
+}
+
+.stepUpTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.stepUpSub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+
+.stepUpSliderRow {
+  margin-bottom: 12px;
+}
+
+.stepUpSliderHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.stepUpSliderLabel {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.stepUpSliderValue {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--accent2);
+}
+
+.stepUpRange {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.stepUpScaleRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.stepUpResult {
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.stepUpResultLabel {
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 4px;
+}
+
+.stepUpResultValue {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--green2);
+}
+
+.stepUpResultSub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+/* ── Results column ── */
+.resultsCol {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+/* ── Progress bar ── */
+.progressPanel {
+  padding: 18px;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.progressTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.progressPct {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.progressTrack {
+  height: 12px;
+  background: var(--bg3);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.6s ease;
+}
+
+.progressNote {
+  font-size: 12px;
+  color: var(--text3);
+}
+
+/* ── Chart panel ── */
+.chartPanel {
+  padding: 18px;
+}
+
+.chartTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+/* ── Milestones table ── */
+.milestonesPanel {
+  padding: 18px;
+}
+
+.milestonesTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.milestonesTableWrapper {
+  overflow-x: auto;
+}

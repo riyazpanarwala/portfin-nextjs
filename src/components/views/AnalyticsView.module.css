@@ -1,0 +1,539 @@
+.tabBar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: -1px;
+  color: var(--text3);
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-main);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tabBtnActive {
+  color: var(--accent2);
+  border-bottom-color: var(--accent2);
+}
+
+.returnMetricsPanel {
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.panelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.panelSub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.benchmarkNote {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+
+.taxGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.taxCell {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.taxCellLabel {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 2px;
+}
+
+.taxCellValue {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--green2);
+}
+
+.taxCellSub {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.unrealizedTaxBox {
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  margin-bottom: 10px;
+}
+
+.unrealizedTaxLabel {
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 4px;
+}
+
+.unrealizedTaxValue {
+  font-size: 20px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--red2);
+}
+
+.realizedTaxBox {
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.realizedTaxLabel {
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 2px;
+}
+
+.realizedTaxValue {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--yellow);
+}
+
+.flowDistRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}
+
+.holdingDistNote {
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.realizedContainer {
+  padding: 20px;
+}
+
+.realizedTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.realizedSub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 16px;
+}
+
+.realizedMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.realizedMetricCell {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.realizedMetricLabel {
+  font-size: 10px;
+  color: var(--text3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 4px;
+}
+
+.realizedMetricValue {
+  font-size: 18px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+
+.realizedMetricSub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.taxBreakdownGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.taxBreakdownCell {
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.taxBreakdownHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.taxBreakdownType {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.taxBreakdownExemption {
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.taxBreakdownValues {
+  display: flex;
+  justify-content: space-between;
+}
+
+.taxBreakdownItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.taxBreakdownItemLabel {
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.taxBreakdownItemValue {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.winLossGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.winCell {
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.lossCell {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.winLossLabel {
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.winLossValue {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+
+.winLossSub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.sellTableWrapper {
+  overflow-x: auto;
+  margin-bottom: 14px;
+}
+
+.taxInsightBox {
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.taxInsightTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent2);
+  margin-bottom: 6px;
+}
+
+.taxInsightText {
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.7;
+}
+
+.sectorSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.sectorSectionTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.sectorSectionSub {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.sectorMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+}
+
+.sectorMetricCell {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.sectorMetricLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+
+.sectorMetricValue {
+  font-size: 17px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectorMetricSub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chartsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.chartPanel {
+  padding: 18px;
+  display: flex;
+  justify-content: center;
+}
+
+.legendRow {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legendLabel {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.legendDesc {
+  font-size: 9px;
+  color: var(--text3);
+}
+
+.sectorTableTitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+
+.sectorTableWrapper {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sectorRow {
+  border-bottom: 1px solid rgba(45, 64, 96, 0.35);
+  padding: 10px 16px;
+  transition: background 0.15s;
+}
+
+.sectorRow:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.sectorRowHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.sectorRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sectorRowRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sectorRowName {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sectorRowPct {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.sectorRowValue {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.sectorSignalBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.barTrack {
+  height: 5px;
+  background: var(--bg3);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 3px;
+}
+
+.barFillMF {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #14b8a6, #3b82f6);
+  transition: width 0.6s ease;
+}
+
+.barFillStock {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #8b5cf6, #c084fc);
+  transition: width 0.6s ease;
+}
+
+.barRowHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.barRowLabel {
+  font-size: 9px;
+}
+
+.barRowValue {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.sectorChips {
+  display: flex;
+  gap: 8px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+
+.sectorChip {
+  font-size: 9px;
+  padding: 1px 7px;
+  border-radius: 3px;
+}

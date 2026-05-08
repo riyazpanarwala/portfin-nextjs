@@ -1,0 +1,283 @@
+.timelineWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chartPanel {
+  padding: 18px;
+}
+
+.panelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.heatmapScroll { overflow-x: auto; }
+
+.heatmapGrid {
+  display: grid;
+  gap: 3px;
+  min-width: 500px;
+}
+
+.heatmapYearLabel {
+  font-size: 11px;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.heatmapMonthLabel {
+  font-size: 10px;
+  color: var(--text3);
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.heatmapCell {
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  cursor: default;
+}
+
+.tradeHistoryPanel { overflow: hidden; }
+
+.tradeHistoryHeader {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tradeHistoryTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tradeHistoryCount {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.monthGroupLabel {
+  padding: 10px 18px;
+  background: var(--bg3);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  letter-spacing: 0.06em;
+}
+
+.monthGroupCount {
+  margin-left: 8px;
+  color: var(--text3);
+  font-weight: 400;
+}
+
+.tradeRow {
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(45, 64, 96, 0.3);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tradeRowLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tradeSymbol {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tradeMeta {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.tradeRowRight { text-align: right; }
+
+.tradeQtyPrice {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.tradeTotal {
+  font-size: 12px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+
+.waterfallWrapper { display: flex; flex-direction: column; gap: 16px; }
+
+.waterfallChartPanel { padding: 18px; }
+
+.waterfallTitle { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+
+.waterfallSub { font-size: 11px; color: var(--text3); margin-bottom: 18px; }
+
+.waterfallBreakdownPanel { overflow: hidden; }
+
+.waterfallBreakdownHeader {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.waterfallBreakdownTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.colorDotCell { display: flex; align-items: center; gap: 8px; }
+
+.colorDot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+.actionWrapper { display: flex; flex-direction: column; gap: 16px; }
+
+.signalBanner {
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.signalBannerLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent2);
+  margin-bottom: 8px;
+}
+
+.signalBannerTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.signalBannerSub { font-size: 12px; color: var(--text2); }
+
+.pulsePanel { padding: 18px; }
+
+.pulsePanelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.pulseGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.pulseCard { background: var(--bg3); border-radius: 8px; padding: 14px; }
+
+.pulseCardIcon { font-size: 20px; margin-bottom: 4px; }
+
+.pulseCardLabel { font-size: 11px; color: var(--text3); margin-bottom: 2px; }
+
+.pulseCardValue { font-size: 15px; font-weight: 700; font-family: var(--font-mono); }
+
+.checklistPanel { padding: 18px; }
+
+.checklistTitle { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+
+.checklistSub { font-size: 11px; color: var(--text3); margin-bottom: 14px; }
+
+.checklistItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.checklistItemChecked {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.checklistBox {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #fff;
+  transition: all 0.2s;
+}
+
+.checklistText { font-size: 13px; color: var(--text); }
+
+.checklistTextDone { color: var(--text3); text-decoration: line-through; }
+
+.checklistSummary {
+  margin-top: 12px;
+  padding: 10px;
+  background: var(--bg3);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.snapshotWrapper { display: flex; flex-direction: column; gap: 16px; }
+
+.snapshotHeaderPanel {
+  padding: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.snapshotHeaderLeft { display: flex; flex-direction: column; gap: 4px; }
+
+.snapshotHeaderTitle { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.snapshotHeaderSub { font-size: 12px; color: var(--text3); }
+
+.snapshotTablePanel { overflow: hidden; }
+
+.snapshotTableHeader {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.snapshotTableTitle { font-size: 13px; font-weight: 600; color: var(--text); }
+
+.snapshotTableCount { margin-left: 8px; font-size: 11px; color: var(--text3); }
+
+.snapshotLoading {
+  padding: 32px;
+  text-align: center;
+  color: var(--text3);
+  font-size: 13px;
+}
+
+.snapshotEmpty { padding: 40px; text-align: center; color: var(--text3); }
+
+.snapshotEmptyIcon { font-size: 32px; margin-bottom: 8px; }
+
+.snapshotEmptyText { font-size: 13px; }

@@ -1,95 +1,95 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { projectWealth, fmtCr, fmt } from '@/lib/store';
+import { fmtCr, fmt } from '@/lib/store';
 import { WealthProjectionChart } from '@/components/charts/Charts';
 import { StatCard } from '@/components/ui/SharedUI';
+import { useGoalView } from '@/hooks/useGoalView';
+import styles from './GoalView.module.css';
 
 export default function GoalView() {
-  const [goal, setGoal] = useState({ corpus: 10000000, years: 20, returnPct: 12, sipMonthly: 25000, stepUp: 10 });
+  const {
+    goal, setField,
+    projection, stepUpProjection,
+    finalCorpus, finalStepUp, totalInvested,
+    goalAchieved, sipNeeded, goalPct,
+    milestones,
+  } = useGoalView();
 
-  const projection       = useMemo(() => projectWealth(goal.sipMonthly, goal.years, goal.returnPct / 100, 0),          [goal]);
-  const stepUpProjection = useMemo(() => projectWealth(goal.sipMonthly, goal.years, goal.returnPct / 100, goal.stepUp), [goal]);
-
-  const finalCorpus   = projection[projection.length - 1]?.corpus || 0;
-  const finalStepUp   = stepUpProjection[stepUpProjection.length - 1]?.corpus || 0;
-  const totalInvested = projection[projection.length - 1]?.invested || 0;
-
-  const monthlyR  = goal.returnPct / 100 / 12;
-  const months    = goal.years * 12;
-  const sipNeeded = monthlyR > 0
-    ? (goal.corpus * monthlyR) / ((Math.pow(1 + monthlyR, months) - 1) * (1 + monthlyR))
-    : goal.corpus / months;
-
-  const goalAchieved = finalCorpus >= goal.corpus;
+  const progressColor = goalAchieved
+    ? 'linear-gradient(90deg, var(--green), var(--teal))'
+    : 'linear-gradient(90deg, var(--accent), var(--purple))';
 
   return (
     <div className="fade-up">
-      <div className="grid-sidebar-main" style={{ gap: '16px' }}>
-        {/* Controls */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="glass" style={{ padding: '18px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>Set Your Goal</div>
-            <FormField label="Target Corpus (₹)"          value={goal.corpus}     onChange={v => setGoal(g => ({ ...g, corpus:     +v }))} type="number" />
-            <FormField label="Target Year (from now)"     value={goal.years}      onChange={v => setGoal(g => ({ ...g, years:      +v }))} type="number" />
-            <FormField label="Expected Annual Return (%)" value={goal.returnPct}  onChange={v => setGoal(g => ({ ...g, returnPct:  +v }))} type="number" />
-            <FormField label="Monthly SIP (₹)"            value={goal.sipMonthly} onChange={v => setGoal(g => ({ ...g, sipMonthly: +v }))} type="number" />
+      <div className={styles.layout}>
+
+        {/* ── Controls ── */}
+        <div className={styles.controlsCol}>
+
+          <div className={`glass ${styles.formPanel}`}>
+            <div className={styles.formPanelTitle}>Set Your Goal</div>
+            <FormField label="Target Corpus (₹)"          value={goal.corpus}     onChange={setField('corpus')}     />
+            <FormField label="Target Year (from now)"     value={goal.years}      onChange={setField('years')}      />
+            <FormField label="Expected Annual Return (%)" value={goal.returnPct}  onChange={setField('returnPct')}  />
+            <FormField label="Monthly SIP (₹)"            value={goal.sipMonthly} onChange={setField('sipMonthly')} />
           </div>
 
-          {/* Step-up planner */}
-          <div className="glass" style={{ padding: '18px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>📈 SIP Step-Up Planner</div>
-            <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>Increase your SIP by a fixed % every year</div>
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <label style={{ fontSize: '12px', color: 'var(--text2)' }}>Annual Step-Up Rate</label>
-                <span style={{ fontSize: '13px', fontWeight: '700', fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>{goal.stepUp}%</span>
+          <div className={`glass ${styles.stepUpPanel}`}>
+            <div className={styles.stepUpTitle}>📈 SIP Step-Up Planner</div>
+            <div className={styles.stepUpSub}>Increase your SIP by a fixed % every year</div>
+
+            <div className={styles.stepUpSliderRow}>
+              <div className={styles.stepUpSliderHeader}>
+                <span className={styles.stepUpSliderLabel}>Annual Step-Up Rate</span>
+                <span className={styles.stepUpSliderValue}>{goal.stepUp}%</span>
               </div>
-              <input type="range" min="0" max="30" value={goal.stepUp}
-                onChange={e => setGoal(g => ({ ...g, stepUp: +e.target.value }))}
-                style={{ width: '100%', accentColor: 'var(--accent)' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text3)' }}>
+              <input
+                type="range"
+                min="0"
+                max="30"
+                value={goal.stepUp}
+                onChange={e => setField('stepUp')(e.target.value)}
+                className={styles.stepUpRange}
+              />
+              <div className={styles.stepUpScaleRow}>
                 <span>0% (flat)</span><span>10% (typical)</span><span>20%</span><span>30%</span>
               </div>
             </div>
-            <div style={{ background: 'rgba(16,185,129,0.08)', borderRadius: '8px', padding: '12px', border: '1px solid rgba(16,185,129,0.2)' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text2)', marginBottom: '4px' }}>With {goal.stepUp}% step-up, final corpus:</div>
-              <div style={{ fontSize: '22px', fontWeight: '800', fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{fmtCr(finalStepUp)}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+
+            <div className={styles.stepUpResult}>
+              <div className={styles.stepUpResultLabel}>
+                With {goal.stepUp}% step-up, final corpus:
+              </div>
+              <div className={styles.stepUpResultValue}>{fmtCr(finalStepUp)}</div>
+              <div className={styles.stepUpResultSub}>
                 +{fmtCr(finalStepUp - finalCorpus)} vs flat SIP ({((finalStepUp / finalCorpus - 1) * 100).toFixed(0)}% more)
               </div>
             </div>
           </div>
         </div>
 
-        {/* Results */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* Key numbers */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-            <StatCard label="Projected Corpus" value={fmtCr(finalCorpus)}              color={goalAchieved ? 'var(--green2)' : 'var(--yellow)'} />
-            <StatCard label="Goal Corpus"       value={fmtCr(goal.corpus)}              color="var(--text)" />
-            <StatCard label="Total Invested"    value={fmtCr(totalInvested)}            color="var(--text2)" />
-            <StatCard label="SIP Needed"        value={`₹${fmt(sipNeeded, 0)}`}         color="var(--accent2)" />
+        {/* ── Results ── */}
+        <div className={styles.resultsCol}>
+
+          <div className={styles.statsGrid}>
+            <StatCard label="Projected Corpus" value={fmtCr(finalCorpus)}            color={goalAchieved ? 'var(--green2)' : 'var(--yellow)'} />
+            <StatCard label="Goal Corpus"       value={fmtCr(goal.corpus)}            color="var(--text)" />
+            <StatCard label="Total Invested"    value={fmtCr(totalInvested)}          color="var(--text2)" />
+            <StatCard label="SIP Needed"        value={`₹${fmt(sipNeeded, 0)}`}       color="var(--accent2)" />
             <StatCard label="Gain from Market"  value={fmtCr(finalCorpus - totalInvested)} color="var(--green2)" />
           </div>
 
-          {/* Goal progress */}
-          <div className="glass" style={{ padding: '18px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>Goal Progress</span>
-              <span style={{ fontSize: '13px', fontWeight: '700', fontFamily: 'var(--font-mono)', color: goalAchieved ? 'var(--green2)' : 'var(--yellow)' }}>
-                {Math.min(100, (finalCorpus / goal.corpus * 100)).toFixed(1)}%
+          <div className={`glass ${styles.progressPanel}`}>
+            <div className={styles.progressHeader}>
+              <span className={styles.progressTitle}>Goal Progress</span>
+              <span className={styles.progressPct} style={{ color: goalAchieved ? 'var(--green2)' : 'var(--yellow)' }}>
+                {goalPct.toFixed(1)}%
               </span>
             </div>
-            <div style={{ height: '12px', background: 'var(--bg3)', borderRadius: '6px', overflow: 'hidden', marginBottom: '8px' }}>
-              <div style={{
-                height: '100%',
-                width: Math.min(100, (finalCorpus / goal.corpus * 100)) + '%',
-                background: goalAchieved ? 'linear-gradient(90deg, var(--green), var(--teal))' : 'linear-gradient(90deg, var(--accent), var(--purple))',
-                borderRadius: '6px', transition: 'width 0.6s ease',
-              }} />
+            <div className={styles.progressTrack}>
+              <div className={styles.progressFill} style={{ width: `${goalPct}%`, background: progressColor }} />
             </div>
-            <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
+            <div className={styles.progressNote}>
               {goalAchieved
                 ? `✅ Goal achievable! Surplus of ${fmtCr(finalCorpus - goal.corpus)}`
                 : `⚠️ Shortfall of ${fmtCr(goal.corpus - finalCorpus)} — increase SIP to ₹${fmt(sipNeeded, 0)}/month`
@@ -97,16 +97,14 @@ export default function GoalView() {
             </div>
           </div>
 
-          {/* Wealth projection chart */}
-          <div className="glass" style={{ padding: '18px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>Wealth Projection</div>
+          <div className={`glass ${styles.chartPanel}`}>
+            <div className={styles.chartTitle}>Wealth Projection</div>
             <WealthProjectionChart data={projection} stepData={stepUpProjection} goal={goal.corpus} />
           </div>
 
-          {/* Milestone table */}
-          <div className="glass" style={{ padding: '18px' }}>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '14px' }}>Milestone Tracker</div>
-            <div style={{ overflowX: 'auto' }}>
+          <div className={`glass ${styles.milestonesPanel}`}>
+            <div className={styles.milestonesTitle}>Milestone Tracker</div>
+            <div className={styles.milestonesTableWrapper}>
               <table>
                 <thead>
                   <tr>
@@ -118,14 +116,14 @@ export default function GoalView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {projection.filter((_, i) => i % 5 === 0 || i === projection.length - 1).map((d, i) => {
+                  {milestones.map((d, i) => {
                     const su = stepUpProjection[d.year] || stepUpProjection[stepUpProjection.length - 1];
                     return (
                       <tr key={i}>
-                        <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '600' }}>Y{d.year}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>Y{d.year}</td>
                         <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtCr(d.invested)}</td>
-                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: '600' }}>{fmtCr(d.corpus)}</td>
-                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green2)', fontWeight: '600' }}>{fmtCr(su.corpus)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: 600 }}>{fmtCr(d.corpus)}</td>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green2)', fontWeight: 600 }}>{fmtCr(su.corpus)}</td>
                         <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{fmtCr(d.corpus - d.invested)}</td>
                       </tr>
                     );
@@ -140,13 +138,11 @@ export default function GoalView() {
   );
 }
 
-// ─── Local-only helper ────────────────────────────────────────────────────────
-
-function FormField({ label, value, onChange, type }) {
+function FormField({ label, value, onChange }) {
   return (
-    <div style={{ marginBottom: '12px' }}>
-      <label style={{ display: 'block', fontSize: '11px', color: 'var(--text3)', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: '4px' }}>{label}</label>
-      <input type={type || 'text'} value={value} onChange={e => onChange(e.target.value)} />
+    <div className={styles.formField}>
+      <label className={styles.formFieldLabel}>{label}</label>
+      <input type="number" value={value} onChange={e => onChange(e.target.value)} />
     </div>
   );
 }

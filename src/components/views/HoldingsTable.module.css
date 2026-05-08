@@ -1,0 +1,177 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.summaryStrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.summaryCell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 14px;
+}
+
+.summaryCellLabel {
+  font-size: 9px;
+  color: var(--text3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 3px;
+}
+
+.summaryCellValue {
+  font-size: 17px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.tableContainer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.headerRow {
+  padding: 0 6px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+
+.headerCell {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: var(--text3);
+  padding: 7px 5px;
+  white-space: nowrap;
+}
+
+.headerCellHighlight {
+  color: var(--accent2);
+}
+
+.headerCellYellow {
+  color: var(--yellow);
+}
+
+.dataRow {
+  padding: 0 6px;
+  cursor: pointer;
+  align-items: center;
+  transition: background 0.15s;
+}
+
+.dataRowExpanded {
+  background: rgba(59, 130, 246, 0.07);
+}
+
+.expandChevron {
+  text-align: center;
+  color: var(--text3);
+  font-size: 8px;
+}
+
+.symbolCell {
+  padding: 9px 5px;
+}
+
+.symbolText {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.fundName {
+  font-size: 9px;
+  color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sellBadge {
+  font-size: 9px;
+  color: var(--yellow);
+  margin-top: 1px;
+}
+
+.sectorCell {
+  padding: 9px 5px;
+  min-width: 0;
+}
+
+.sectorBadge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monoCell {
+  padding: 9px 5px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.monoCellBold {
+  padding: 9px 5px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cmpCell {
+  padding: 9px 5px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.returnBarCell {
+  padding: 9px 5px;
+}
+
+.holdCell {
+  padding: 9px 5px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text2);
+}
+
+.tableEmpty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text3);
+  font-size: 13px;
+}
+
+.editHint {
+  font-size: 11px;
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 2px;
+}
+
+.editHintAccent {
+  color: var(--accent2);
+  font-weight: 600;
+}
