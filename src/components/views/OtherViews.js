@@ -12,21 +12,37 @@ import styles from './OtherViews.module.css';
 
 // ── TimelineView ──────────────────────────────────────────────────────────────
 
+// ─── Timeline View ────────────────────────────────────────────────────────────
+// Drop-in replacement for the TimelineView function in OtherViews.js
+// Changes:
+//   • Trade history table shows only the last 3 months (performance fix for 600+ trades)
+//   • Cumulative chart and monthly heatmap still use ALL trades (unchanged)
+//   • A small info pill shows total trade count vs displayed count
+
 export function TimelineView() {
   const { trades, monthlyFlow, setActiveView } = usePortfolio();
+
+  // ── All months → for chart + heatmap (no change) ──────────────────────────
+  const cumFlow = [];
+  let cum = 0;
+  monthlyFlow.forEach(m => { cum += m.amount; cumFlow.push({ ...m, cum }); });
+
+  // ── Last-3-months filter for the trade history table ───────────────────────
+  const now = new Date();
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - 2, 1); // start of 3 months ago
+  const cutoffKey = cutoff.toISOString().slice(0, 7);                   // 'YYYY-MM'
 
   const byMonth = {};
   [...trades]
     .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
     .forEach(t => {
       const key = t.tradeDate.slice(0, 7);
+      if (key < cutoffKey) return;          // skip older than 3 months
       if (!byMonth[key]) byMonth[key] = [];
       byMonth[key].push(t);
     });
 
-  const cumFlow = [];
-  let cum = 0;
-  monthlyFlow.forEach(m => { cum += m.amount; cumFlow.push({ ...m, cum }); });
+  const recentCount = Object.values(byMonth).reduce((s, arr) => s + arr.length, 0);
 
   if (!trades.length) return (
     <EmptyState
@@ -37,8 +53,6 @@ export function TimelineView() {
       onCta={() => setActiveView('trade')}
     />
   );
-
-  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   return (
     <div className={`fade-up ${styles.timelineWrapper}`}>
@@ -57,10 +71,23 @@ export function TimelineView() {
         <div className={styles.tradeHistoryHeader}>
           <span className={styles.tradeHistoryTitle}>Trade History</span>
           <span className={styles.tradeHistoryCount}>· {trades.length} total trades</span>
+          {/* Info pill — explains the 3-month window */}
+          <span style={{
+            marginLeft: 'auto',
+            fontSize: '10px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px',
+            background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)',
+            color: 'var(--accent2)', letterSpacing: '0.03em',
+          }}>
+            Showing last 3 months · {recentCount} trade{recentCount !== 1 ? 's' : ''}
+          </span>
         </div>
-        {Object.entries(byMonth)
-          .sort(([a], [b]) => b.localeCompare(a))
-          .map(([month, ts]) => (
+
+        {Object.keys(byMonth).length === 0 ? (
+          <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
+            No trades in the last 3 months.
+          </div>
+        ) : (
+          Object.entries(byMonth).sort(([a], [b]) => b.localeCompare(a)).map(([month, ts]) => (
             <div key={month}>
               <div className={styles.monthGroupLabel}>
                 {new Date(month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
@@ -87,7 +114,8 @@ export function TimelineView() {
                 </div>
               ))}
             </div>
-          ))}
+          ))
+        )}
       </div>
     </div>
   );
@@ -96,7 +124,7 @@ export function TimelineView() {
 function MonthlyHeatmap({ data }) {
   if (!data || !data.length) return <div style={{ color: 'var(--text3)', fontSize: 12 }}>No data</div>;
 
-  const max  = Math.max(...data.map(d => d.amount));
+  const max = Math.max(...data.map(d => d.amount));
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   const byYear = {};
@@ -122,7 +150,7 @@ function MonthlyHeatmap({ data }) {
         {Object.entries(byYear).sort().map(([year, mdata]) => ([
           <div key={`${year}_l`} className={styles.heatmapYearLabel}>{year}</div>,
           ...MONTHS.map((_, mi) => {
-            const val       = mdata[mi] || 0;
+            const val = mdata[mi] || 0;
             const intensity = max > 0 ? val / max : 0;
             return (
               <div
@@ -162,11 +190,11 @@ export function WaterfallView() {
   const stGain = stats.stValue - stats.stInvested;
 
   const steps = [
-    { label: 'MF Invested',    value: stats.mfInvested, color: 'var(--teal)',                                     pct: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0 },
-    { label: 'Stock Invested', value: stats.stInvested, color: 'var(--purple)',                                    pct: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0 },
-    { label: 'MF Gains',       value: mfGain,           color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)',     pct: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0 },
-    { label: 'Stock Gains',    value: stGain,           color: stGain >= 0 ? 'var(--green2)' : 'var(--red2)',     pct: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0 },
-    { label: 'Total Portfolio',value: stats.totalValue, color: 'var(--accent2)', isTotal: true },
+    { label: 'MF Invested', value: stats.mfInvested, color: 'var(--teal)', pct: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0 },
+    { label: 'Stock Invested', value: stats.stInvested, color: 'var(--purple)', pct: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0 },
+    { label: 'MF Gains', value: mfGain, color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0 },
+    { label: 'Stock Gains', value: stGain, color: stGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0 },
+    { label: 'Total Portfolio', value: stats.totalValue, color: 'var(--accent2)', isTotal: true },
   ];
 
   return (
@@ -224,13 +252,13 @@ export function ActionView() {
   );
 
   const topGainer = [...holdings].sort((a, b) => b.returnPct - a.returnPct)[0];
-  const topLoser  = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
+  const topLoser = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
 
   const pulseCards = [
-    { icon: '📈', title: 'Top Gainer',      body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : '—', color: 'var(--green2)'  },
-    { icon: '📉', title: 'Underperformer',  body: topLoser  ? `${topLoser.symbol} ${fmtPct(topLoser.returnPct, true)}`   : '—', color: 'var(--red2)'    },
-    { icon: '💰', title: 'Portfolio Value', body: fmtCr(stats.totalValue),                                                       color: 'var(--accent2)' },
-    { icon: '📊', title: 'Overall Return',  body: fmtPct(stats.totalReturnPct, true),                                            color: colorPnl(stats.totalReturnPct) },
+    { icon: '📈', title: 'Top Gainer', body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : '—', color: 'var(--green2)' },
+    { icon: '📉', title: 'Underperformer', body: topLoser ? `${topLoser.symbol} ${fmtPct(topLoser.returnPct, true)}` : '—', color: 'var(--red2)' },
+    { icon: '💰', title: 'Portfolio Value', body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
+    { icon: '📊', title: 'Overall Return', body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
   ];
 
   const checklist = [
@@ -289,8 +317,8 @@ export function ActionView() {
             <div
               className={styles.checklistBox}
               style={{
-                border:     `2px solid ${checked[i] ? 'var(--green2)' : 'var(--border2)'}`,
-                background:  checked[i] ? 'var(--green2)' : 'transparent',
+                border: `2px solid ${checked[i] ? 'var(--green2)' : 'var(--border2)'}`,
+                background: checked[i] ? 'var(--green2)' : 'transparent',
               }}
             >
               {checked[i] ? '✓' : ''}

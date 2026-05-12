@@ -1,6 +1,14 @@
 'use client';
 
-import { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useMemo,
+  useEffect,
+  useCallback,
+  useTransition,
+} from 'react';
 import {
   computeHoldings,
   computePortfolioStats,
@@ -22,6 +30,11 @@ export function PortfolioProvider({ children }) {
   const [error, setError]                 = useState(null);
   const [activeView, setActiveView]       = useState('overview');
   const [toasts, setToasts]               = useState([]);
+
+  // FIX 4 — portfolioXIRR is expensive; keep it in state and compute it in a
+  // low-priority transition so it never blocks paint / user interactions.
+  const [portfolioXIRR, setPortfolioXIRR]   = useState(null);
+  const [, startXIRRTransition]             = useTransition();
 
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -62,6 +75,7 @@ export function PortfolioProvider({ children }) {
         });
         if (prRes.ok) {
           const priceData = await prRes.json();
+          // Use setter directly on first load — no previous prices to compare
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
         }
@@ -76,18 +90,57 @@ export function PortfolioProvider({ children }) {
   useEffect(() => { loadData(); }, [loadData]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
-  const holdings       = useMemo(() => computeHoldings(trades, currentPrices),    [trades, currentPrices]);
-  const stats          = useMemo(() => computePortfolioStats(holdings),            [holdings]);
-  const mfHoldings     = useMemo(() => holdings.filter(h => h.assetType === 'MF'),    [holdings]);
-  const stHoldings     = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
-  const monthlyFlow    = useMemo(() => buildMonthlyFlow(trades),                   [trades]);
-  const taxData        = useMemo(() => computeTax(holdings),                       [holdings]);
-  const realizedSummary = useMemo(() => computeRealizedSummary(holdings),          [holdings]);
-  // Portfolio XIRR is expensive — only compute when trades exist
-  const portfolioXIRR  = useMemo(() => {
-    if (trades.length < 2) return null;
-    return computePortfolioXIRR(trades, currentPrices);
-  }, [trades, currentPrices]);
+  // These memo chains are ordered so each depends only on the previous result,
+  // avoiding redundant re-runs when an unrelated piece of state changes.
+
+  const holdings = useMemo(
+    () => computeHoldings(trades, currentPrices),
+    [trades, currentPrices],
+  );
+
+  const stats = useMemo(
+    () => computePortfolioStats(holdings),
+    [holdings],
+  );
+
+  const mfHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'MF'),    [holdings]);
+  const stHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
+  const monthlyFlow = useMemo(() => buildMonthlyFlow(trades),                       [trades]);
+  const taxData     = useMemo(() => computeTax(holdings),                           [holdings]);
+
+  const realizedSummary = useMemo(
+    () => computeRealizedSummary(holdings),
+    [holdings],
+  );
+
+  // FIX 1 + FIX 4 — pass already-computed `holdings` into computePortfolioXIRR
+  // so it never calls computeHoldings a second time; run it in a low-priority
+  // transition so Newton-Raphson iterations don't block UI interactions.
+  useEffect(() => {
+    if (trades.length < 2) {
+      setPortfolioXIRR(null);
+      return;
+    }
+    startXIRRTransition(() => {
+      setPortfolioXIRR(computePortfolioXIRR(trades, currentPrices, holdings));
+    });
+  }, [trades, currentPrices, holdings]);
+
+  // ── Stable price-merge helper ─────────────────────────────────────────────
+  // FIX 2 — only update currentPrices when values actually changed.
+  // This prevents all 6 memo chains from re-running when a refresh returns
+  // the same prices (e.g. market closed, cached response).
+  function mergePrices(next = {}) {
+    setCurrentPrices(prev => {
+      const changed = Object.keys(next).some(k => prev[k] !== next[k]) ||
+                      Object.keys(prev).some(k => !(k in next));
+      return changed ? { ...prev, ...next } : prev;
+    });
+  }
+
+  function mergeMeta(next = {}) {
+    setPriceMeta(prev => ({ ...prev, ...next }));
+  }
 
   // ── Add trade ─────────────────────────────────────────────────────────────
   async function addTrade(trade) {
@@ -99,8 +152,11 @@ export function PortfolioProvider({ children }) {
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       const { trade: newTrade } = await res.json();
-      setTrades(prev => [...prev, newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)));
+      setTrades(prev =>
+        [...prev, newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)),
+      );
 
+      // Fetch price for the new symbol if we don't have it yet
       if (!currentPrices[newTrade.symbol]) {
         const pr = await fetch('/api/prices', {
           method: 'POST',
@@ -109,8 +165,8 @@ export function PortfolioProvider({ children }) {
         });
         if (pr.ok) {
           const prData = await pr.json();
-          setCurrentPrices(p => ({ ...p, ...prData.prices }));
-          setPriceMeta(p => ({ ...p, ...(prData.meta || {}) }));
+          mergePrices(prData.prices);
+          mergeMeta(prData.meta);
         }
       }
       toast('Trade recorded ✓', 'green');
@@ -139,16 +195,16 @@ export function PortfolioProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           portfolioId,
-          totalValue:          stats.totalValue,
-          totalInvested:       stats.totalInvested,
-          totalGain:           stats.totalGain,
-          totalRealizedGain:   stats.totalRealizedGain,
-          totalReturnPct:      stats.totalReturnPct,
-          mfCagr:              stats.mfCagr,
-          mfInvested:          stats.mfInvested,
-          stInvested:          stats.stInvested,
-          fundCount:           stats.fundCount,
-          stockCount:          stats.stockCount,
+          totalValue:        stats.totalValue,
+          totalInvested:     stats.totalInvested,
+          totalGain:         stats.totalGain,
+          totalRealizedGain: stats.totalRealizedGain,
+          totalReturnPct:    stats.totalReturnPct,
+          mfCagr:            stats.mfCagr,
+          mfInvested:        stats.mfInvested,
+          stInvested:        stats.stInvested,
+          fundCount:         stats.fundCount,
+          stockCount:        stats.stockCount,
         }),
       });
       if (!res.ok) throw new Error('Snapshot failed');
@@ -167,9 +223,10 @@ export function PortfolioProvider({ children }) {
         body: JSON.stringify({ symbol, price }),
       });
       if (!res.ok) throw new Error('Price update failed');
-      setCurrentPrices(p => ({ ...p, [symbol]: parseFloat(price) }));
+      // FIX 2 — use mergePrices so only a real value change triggers recompute
+      mergePrices({ [symbol]: parseFloat(price) });
       const data = await res.json();
-      setPriceMeta(p => ({ ...p, ...(data.meta || {}) }));
+      mergeMeta(data.meta);
       toast(`${symbol} price updated ✓`, 'green');
     } catch (err) {
       toast(err.message, 'red');
@@ -188,11 +245,14 @@ export function PortfolioProvider({ children }) {
       });
       if (res.ok) {
         const priceData = await res.json();
-        setCurrentPrices(priceData.prices || {});
-        setPriceMeta(priceData.meta || {});
+        // FIX 2 — skip recompute if nothing actually changed
+        mergePrices(priceData.prices);
+        mergeMeta(priceData.meta);
         toast('Prices refreshed ✓', 'green');
       }
-    } catch (err) { toast(err.message, 'red'); }
+    } catch (err) {
+      toast(err.message, 'red');
+    }
   }
 
   // ── Toast ──────────────────────────────────────────────────────────────────

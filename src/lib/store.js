@@ -191,8 +191,8 @@ export function computePortfolioStats(holdings) {
 
 // ─── Portfolio XIRR ───────────────────────────────────────────────────────────
 
-export function computePortfolioXIRR(trades, currentPrices = {}) {
-  const holdings = computeHoldings(trades, currentPrices);
+export function computePortfolioXIRR(trades, currentPrices = {}, precomputedHoldings = null) {
+  const holdings = precomputedHoldings ?? computeHoldings(trades, currentPrices);
 
   const cashflows = trades.map(t => {
     const qty       = parseFloat(t.quantity);

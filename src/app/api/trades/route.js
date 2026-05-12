@@ -18,10 +18,15 @@ export const GET = withErrorHandler('GET /api/trades', async (request) => {
   const portfolioId = searchParams.get('portfolioId');
   if (!portfolioId) return badRequest('portfolioId required');
 
+  const limit = parseInt(searchParams.get('limit') || '1000');
+  const offset = parseInt(searchParams.get('offset') || '0');
+
   const trades = await prisma.trade.findMany({
     where: { portfolioId },
     include: { instrument: true },
     orderBy: { tradeDate: 'asc' },
+    take: limit,
+    skip: offset,
   });
 
   return NextResponse.json({ trades: trades.map(flattenTrade) });
