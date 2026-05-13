@@ -3,14 +3,24 @@
 import { useState, useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
-import { getNiftyForMonth, rebaseToIndex } from '@/lib/niftyData';
+import {
+  getNiftyForMonth,
+  rebaseToIndex,
+  isNiftyDataStale,
+  NIFTY_DATA_LAST_MONTH,
+} from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 
 // ── Rolling return comparison ─────────────────────────────────────────────────
 function RollingReturns({ portfolioSeries, niftySeries }) {
-  const periods = [{ label: '6M', months: 6 }, { label: '1Y', months: 12 }, { label: '2Y', months: 24 }, { label: '3Y', months: 36 }];
+  const periods = [
+    { label: '6M', months: 6 },
+    { label: '1Y', months: 12 },
+    { label: '2Y', months: 24 },
+    { label: '3Y', months: 36 },
+  ];
   const pMap = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
   const nMap = Object.fromEntries(niftySeries.map(d => [d.month, d.value]));
   const allMonths = portfolioSeries.map(d => d.month).sort();
@@ -119,21 +129,28 @@ export default function PortfolioVsNiftyView() {
   const { snapshots, loading } = useSnapshots(portfolioId, 100);
   const [mode, setMode] = useState('indexed');
 
+  // FIX (high): check whether our hardcoded Nifty data is stale relative to
+  // today. If so, show a warning so users know the Nifty line may be flat.
+  const niftyStale = isNiftyDataStale();
+
   const portfolioSeries = useMemo(() => {
     if (!snapshots.length) return [];
     return snapshots.map(s => ({
-      month: s.snapshotAt.slice(0, 7),
-      value: parseFloat(s.totalValue),
-      invested: parseFloat(s.totalInvested),
-      gain: parseFloat(s.totalGain),
+      month:     s.snapshotAt.slice(0, 7),
+      value:     parseFloat(s.totalValue),
+      invested:  parseFloat(s.totalInvested),
+      gain:      parseFloat(s.totalGain),
       returnPct: parseFloat(s.totalReturnPct),
-      date: s.snapshotAt,
+      date:      s.snapshotAt,
     }));
   }, [snapshots]);
 
   const niftySeries = useMemo(() =>
-    portfolioSeries.map(d => ({ month: d.month, value: getNiftyForMonth(d.month) || 0 })).filter(d => d.value > 0),
-    [portfolioSeries]);
+    portfolioSeries
+      .map(d => ({ month: d.month, value: getNiftyForMonth(d.month) || 0 }))
+      .filter(d => d.value > 0),
+    [portfolioSeries]
+  );
 
   const rebasedPortfolio = useMemo(() => {
     if (!portfolioSeries.length) return [];
@@ -150,7 +167,7 @@ export default function PortfolioVsNiftyView() {
   const alpha = lastP && lastN ? lastP.indexed - lastN.indexed : null;
   const pTotal = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
   const nTotal = lastN ? ((lastN.indexed / 100) - 1) * 100 : 0;
-  const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
+  const firstSnapshotDate  = snapshots[0]?.snapshotAt?.slice(0, 10);
   const latestSnapshotDate = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
 
   if (loading) return (
@@ -188,6 +205,22 @@ export default function PortfolioVsNiftyView() {
 
   return (
     <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+      {/* FIX: staleness warning — shown when current month exceeds our data */}
+      {niftyStale && (
+        <div style={{
+          padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
+          background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+          color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: '8px',
+        }}>
+          <span>⚠</span>
+          <span>
+            Nifty 50 data is only available up to <strong>{NIFTY_DATA_LAST_MONTH}</strong>.
+            The Nifty line on the chart may appear flat for recent months.
+            Update <code style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>src/lib/niftyData.js</code> with the latest end-of-month closes to fix this.
+          </span>
+        </div>
+      )}
 
       {/* Header stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
@@ -301,7 +334,8 @@ export default function PortfolioVsNiftyView() {
         background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', lineHeight: '1.7',
       }}>
         <strong style={{ color: 'var(--text2)' }}>Methodology:</strong> Portfolio values are from your saved snapshots.
-        Nifty 50 data uses approximate end-of-month closes. Both series are rebased to 100 at your first snapshot date for fair comparison.
+        Nifty 50 data uses approximate end-of-month closes (last entry: {NIFTY_DATA_LAST_MONTH}).
+        Both series are rebased to 100 at your first snapshot date for fair comparison.
         Alpha = Portfolio indexed value − Nifty indexed value (index points).
         Save more snapshots regularly for better granularity.
       </div>

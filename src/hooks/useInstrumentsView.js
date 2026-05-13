@@ -56,6 +56,68 @@ export function detectFileType(filename, text) {
   return 'nse';
 }
 
+/**
+ * parseXlsxFile — reads an XLSX/XLS file as ArrayBuffer and converts each
+ * sheet row to the instrument shape expected by the bulk import API.
+ *
+ * FIX (high): the old readFiles() called f.text() on every file including
+ * binary XLSX files, producing garbled output that the CSV parsers turned
+ * into 0 instruments with no error shown to the user.
+ */
+async function parseXlsxFile(file) {
+  const XLSX = await import('xlsx').then(m => m.default ?? m);
+  const buffer = await file.arrayBuffer();
+  const wb = XLSX.read(buffer, { type: 'array' });
+
+  // Accept sheets named NSE_Equity / BSE_Equity / NSE_ETF (matching the
+  // instruments_data.xlsx convention), or fall back to the first sheet.
+  const SHEET_CFG = [
+    ['NSE_Equity', 'NSE', 'STOCK', null],
+    ['BSE_Equity', 'BSE', 'STOCK', null],
+    ['NSE_ETF',    'NSE', 'STOCK', 'Index ETF'],
+  ];
+
+  const instruments = [];
+  const seen = new Set();
+
+  const sheetsToProcess = SHEET_CFG.filter(([name]) => wb.SheetNames.includes(name));
+  // If none of the known sheet names match, process all sheets with NSE defaults
+  const targets = sheetsToProcess.length > 0
+    ? sheetsToProcess
+    : wb.SheetNames.map(name => [name, 'NSE', 'STOCK', null]);
+
+  for (const [sheetName, exchange, assetType, sector] of targets) {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
+    for (const row of rows) {
+      // Support both the instruments_data.xlsx column names and common broker exports
+      const symbol = String(
+        row['Symbol'] || row['SYMBOL'] || row['Scrip Code'] || ''
+      ).trim().toUpperCase();
+      const name = String(
+        row['Company Name'] || row['NAME'] || row['Issuer Name'] || ''
+      ).trim();
+      const isin = String(row['ISIN'] || row['Isin'] || '').trim() || null;
+      const rowExchange = String(row['Exchange'] || exchange).trim();
+      const rowSector   = sector || String(row['Sector'] || '').trim() || null;
+
+      if (!symbol) continue;
+      const key = `${symbol}:${rowExchange}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      instruments.push({
+        symbol,
+        name:      name || symbol,
+        isin,
+        exchange:  rowExchange,
+        assetType: String(row['AssetType'] || assetType).trim(),
+        sector:    rowSector,
+      });
+    }
+  }
+  return instruments;
+}
+
 // ── Hook: instrument browser table ───────────────────────────────────────────
 
 export function useInstrumentTable({ refresh }) {
@@ -189,20 +251,48 @@ export function useBulkImport({ onImported, toast }) {
   const [result, setResult]       = useState(null);
   const [dragOver, setDragOver]   = useState(false);
 
+  // FIX (high): XLSX/XLS files are binary — reading them with f.text() produces
+  // garbled output and 0 imported instruments with no error shown to the user.
+  // Now detects the file extension and uses the correct read strategy:
+  //   .csv  → f.text() + existing CSV parsers
+  //   .xlsx / .xls → f.arrayBuffer() + xlsx library
   async function readFiles(fileList) {
     const fileArr = Array.from(fileList);
     setFiles(fileArr.map(f => ({ name: f.name, size: f.size, status: 'parsing' })));
     setResult(null);
     setProgress(0);
+
     const all = [];
     const updated = [];
+
     for (const f of fileArr) {
-      const text = await f.text();
-      const type = detectFileType(f.name, text);
-      const instruments = type === 'bse' ? parseBSE(text) : type === 'etf' ? parseETF(text) : parseNSE(text);
+      const ext = f.name.split('.').pop().toLowerCase();
+      let instruments = [];
+      let type = 'unknown';
+
+      try {
+        if (ext === 'xlsx' || ext === 'xls') {
+          // Binary format — must use ArrayBuffer + xlsx library
+          instruments = await parseXlsxFile(f);
+          type = 'xlsx';
+        } else {
+          // CSV / TXT — text is fine
+          const text = await f.text();
+          type = detectFileType(f.name, text);
+          instruments = type === 'bse' ? parseBSE(text)
+                      : type === 'etf' ? parseETF(text)
+                      : parseNSE(text);
+        }
+      } catch (err) {
+        console.error(`Failed to parse ${f.name}:`, err);
+        updated.push({ name: f.name, size: f.size, status: 'error', count: 0, type: ext });
+        continue;
+      }
+
       all.push(...instruments);
       updated.push({ name: f.name, size: f.size, status: 'ready', count: instruments.length, type });
     }
+
     setFiles(updated);
     setParsed(all);
   }
@@ -253,10 +343,12 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
   const [activeIdx, setActiveIdx] = useState(-1);
   const debounce = useRef(null);
 
-  // Reset on type/exchange change
+  // Reset query only when assetType changes (switching between MF/STOCK is a
+  // meaningfully different search context).  Changing exchange alone does NOT
+  // reset the query — the user may be looking for the same stock on BSE.
   useEffect(() => {
     setQuery(''); setSugs([]); setSelected(null); setOpen(false);
-  }, [assetType, exchange]);
+  }, [assetType]); // FIX (medium): removed `exchange` from deps
 
   useEffect(() => {
     if (query.length < 1) { setSugs([]); setOpen(false); return; }

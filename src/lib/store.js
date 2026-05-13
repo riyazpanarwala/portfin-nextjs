@@ -9,6 +9,12 @@
 //   • lots[] on the returned holding = REMAINING lots only (UI compat)
 //   • Invested = sum of remaining FIFO lot costs (not avg-price approximation)
 //   • All qty comparisons use EPSILON guard for float safety
+//
+// Bug fixes applied:
+//   FIX-A: FIFO unmatched sells surfaced as `hasDataError` flag + logged
+//   FIX-B: holdingDays uses earliest buy date across ALL lots (not just remaining)
+//   FIX-C: returnPct denominator uses total-ever-invested (remaining + sold cost)
+//   FIX-D: dominantTaxType uses realized gain value, not unit count
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { xirr } from '@/lib/xirr';
@@ -47,8 +53,20 @@ export function computeHoldings(trades, currentPrices = {}) {
         remaining: parseFloat(t.quantity),
       }));
 
+    // FIX-B: capture the earliest buy date across ALL lots before FIFO
+    // consumption.  Previously this used remainingLots[0].date which would be
+    // wrong for fully-sold positions (falling back to today) and for
+    // partially-sold positions where the earliest lot was already consumed.
+    const earliestBuyDate = lotQueue.length > 0 ? lotQueue[0].date : null;
+
+    // FIX-C: track total cost ever deployed (remaining + sold) so that
+    // returnPct has the correct denominator for partially/fully sold positions.
+    const totalEverInvested = lotQueue.reduce((s, l) => s + l.qty * l.price, 0);
+
     const sellRecords = [];
     let realizedGain  = 0;
+    // FIX-A: track unmatched sell quantity for data-integrity alerting
+    let unmatchedSellQty = 0;
 
     const sortedSells = sells
       .slice()
@@ -71,10 +89,22 @@ export function computeHoldings(trades, currentPrices = {}) {
         const holdDays  = daysBetween(lot.date, sellDate);
         const taxType   = holdDays >= 365 ? 'LTCG' : 'STCG';
 
-        matchedLots.push({ buyDate: lot.date, qty: consumed, buyPrice: lot.price, holdDays, taxType, costBasis, gain: lotGain });
+        matchedLots.push({
+          buyDate: lot.date, qty: consumed, buyPrice: lot.price,
+          holdDays, taxType, costBasis, gain: lotGain,
+        });
         lot.remaining -= consumed;
         sellQtyLeft   -= consumed;
         realizedGain  += lotGain;
+      }
+
+      // FIX-A: accumulate any quantity that couldn't be matched to buy lots
+      if (sellQtyLeft > EPSILON) {
+        unmatchedSellQty += sellQtyLeft;
+        console.warn(
+          `[portfin] FIFO mismatch for ${symbol}: ${sellQtyLeft.toFixed(4)} units sold ` +
+          `on ${sellDate} have no matching buy lots. Realized gain is understated.`
+        );
       }
 
       const actualQtySold = parseFloat(sellTrade.quantity) - Math.max(0, sellQtyLeft);
@@ -85,7 +115,9 @@ export function computeHoldings(trades, currentPrices = {}) {
           sellPrice,
           realized:    matchedLots.reduce((s, m) => s + m.gain, 0),
           matchedLots,
-          taxType:     dominantTaxType(matchedLots),
+          // FIX-D: use realized gain value (not unit count) to determine
+          // the dominant tax type when a sell spans both LTCG and STCG lots
+          taxType: dominantTaxType(matchedLots),
         });
       }
     }
@@ -105,10 +137,18 @@ export function computeHoldings(trades, currentPrices = {}) {
     const unrealizedGain = marketValue - invested;
     const totalGain      = unrealizedGain + realizedGain;
 
-    const unrealizedReturnPct = invested > EPSILON ? (unrealizedGain / invested) * 100 : 0;
-    const returnPct           = invested > EPSILON ? (totalGain     / invested) * 100 : 0;
+    // FIX-C: use totalEverInvested as the denominator so that return % is not
+    // inflated for partially/fully sold positions where sold-lot costs are no
+    // longer in `invested` but their gains are still in `totalGain`.
+    const returnPct = totalEverInvested > EPSILON
+      ? (totalGain / totalEverInvested) * 100
+      : 0;
+    const unrealizedReturnPct = invested > EPSILON
+      ? (unrealizedGain / invested) * 100
+      : 0;
 
-    const firstDate   = remainingLots.length > 0 ? new Date(remainingLots[0].date) : new Date();
+    // FIX-B: use the earliest buy date across ALL lots (captured before FIFO)
+    const firstDate = earliestBuyDate ? new Date(earliestBuyDate) : new Date();
     const holdingDays = Math.max(0, Math.round((new Date() - firstDate) / (24 * 3600 * 1000)));
     const years       = Math.max(0.1, holdingDays / 365.25);
 
@@ -132,6 +172,9 @@ export function computeHoldings(trades, currentPrices = {}) {
       returnPct, unrealizedReturnPct,
       cagr, holdingDays, years,
       sells: sellRecords,
+      // FIX-A: expose data integrity flag so UI can surface a warning
+      hasDataError: unmatchedSellQty > EPSILON,
+      unmatchedSellQty,
       stats: {
         trades:            buys.length + sells.length,
         buyTrades:         buys.length,
@@ -225,7 +268,7 @@ export function computeRealizedSummary(holdings) {
   const ltcgGain = sells.filter(s => s.taxType === 'LTCG').reduce((sum, s) => sum + s.realized, 0);
   const stcgGain = sells.filter(s => s.taxType === 'STCG').reduce((sum, s) => sum + s.realized, 0);
 
-  // India FY2024+ rates
+  // India FY2024+ rates — ₹1.25L exemption applies ONCE per FY, not per holding
   const ltcgExemption = 125000;
   const ltcgTax = ltcgGain > ltcgExemption ? (ltcgGain - ltcgExemption) * 0.125 : 0;
   const stcgTax = stcgGain > 0 ? stcgGain * 0.20 : 0;
@@ -262,14 +305,20 @@ export function buildMonthlyFlow(trades) {
 }
 
 // ─── Tax computation ──────────────────────────────────────────────────────────
+// NOTE: LTCG ₹1.25L exemption is applied ONCE across the whole portfolio in
+// computeRealizedSummary (for realized gains).  For unrealized tax estimation
+// here, the exemption is intentionally omitted because we don't know whether
+// the user has already used it against realized gains in the same FY.
+// The Analytics view should display this as "pre-exemption estimate".
 
 export function computeTax(holdings) {
   return holdings.map(h => {
     const isLTCG      = h.years >= 1;
     const taxRate     = isLTCG ? 0.125 : 0.20;
     const taxableGain = Math.max(0, h.unrealizedGain ?? h.gain ?? 0);
-    const exemption   = isLTCG ? 125000 : 0;
-    const tax         = taxableGain > exemption ? (taxableGain - exemption) * taxRate : 0;
+    // Do NOT apply per-holding exemption — the ₹1.25L LTCG exemption is
+    // portfolio-wide per FY.  Show gross tax; Analytics view notes this.
+    const tax = taxableGain * taxRate;
     return { ...h, isLTCG, taxRate, taxableGain, tax };
   });
 }
@@ -298,11 +347,18 @@ function daysBetween(dateStrA, dateStrB) {
   return Math.round((new Date(dateStrB) - new Date(dateStrA)) / (24 * 3600 * 1000));
 }
 
+// FIX-D: use realized gain VALUE (not unit count) to determine dominant tax
+// type.  A sell of 9 high-value LTCG units vs 10 cheap STCG units should be
+// labelled LTCG because most of the money is LTCG.
 function dominantTaxType(matchedLots) {
   if (!matchedLots.length) return 'STCG';
-  const ltcgQty = matchedLots.filter(m => m.taxType === 'LTCG').reduce((s, m) => s + m.qty, 0);
-  const stcgQty = matchedLots.filter(m => m.taxType === 'STCG').reduce((s, m) => s + m.qty, 0);
-  return ltcgQty >= stcgQty ? 'LTCG' : 'STCG';
+  const ltcgGain = matchedLots
+    .filter(m => m.taxType === 'LTCG')
+    .reduce((s, m) => s + Math.abs(m.gain || m.costBasis), 0);
+  const stcgGain = matchedLots
+    .filter(m => m.taxType === 'STCG')
+    .reduce((s, m) => s + Math.abs(m.gain || m.costBasis), 0);
+  return ltcgGain >= stcgGain ? 'LTCG' : 'STCG';
 }
 
 // ─── Formatters ───────────────────────────────────────────────────────────────

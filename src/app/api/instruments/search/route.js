@@ -16,24 +16,30 @@ let _cache = null;           // { data: Array, mtime: number }
 const XLSX_PATH = join(process.cwd(), 'public', 'instruments_data.xlsx');
 const JSON_PATH = join(process.cwd(), 'public', 'instruments_data.json');
 
-function getStaticData() {
+// FIX (medium): replaced require('xlsx') — a CommonJS call inside an ES module
+// — with a proper dynamic import().  The old approach worked via Webpack shim
+// but was fragile and would break in edge runtime or stricter bundler configs.
+async function loadXlsx() {
+  // dynamic import returns the ES module namespace; xlsx exports default
+  const mod = await import('xlsx');
+  return mod.default ?? mod;
+}
+
+async function getStaticData() {
   // ── Try XLSX first ──────────────────────────────────────────────────────
   if (existsSync(XLSX_PATH)) {
     const mtime = statSync(XLSX_PATH).mtimeMs;
     if (_cache && _cache.mtime === mtime) return _cache.data;
 
     try {
-      // Dynamic require so Next.js build doesn't choke on the xlsx package
-      // when the file isn't present.  xlsx is already in package.json.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const XLSX = require('xlsx');
+      const XLSX = await loadXlsx();
       const wb = XLSX.readFile(XLSX_PATH, { cellDates: false, sheetRows: 0 });
 
       const SHEET_CFG = [
         // [sheetName, exchangeOverride, sectorOverride]
         ['NSE_Equity', 'NSE', null],
         ['BSE_Equity', 'BSE', null],
-        ['NSE_ETF', 'NSE', 'Index ETF'],
+        ['NSE_ETF',    'NSE', 'Index ETF'],
       ];
 
       const instruments = [];
@@ -44,12 +50,12 @@ function getStaticData() {
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
 
         for (const row of rows) {
-          const symbol = String(row['Symbol'] || '').trim().toUpperCase();
-          const name = String(row['Company Name'] || '').trim();
-          const isin = String(row['ISIN'] || '').trim() || null;
-          const exchange = String(row['Exchange'] || defaultExchange).trim() || defaultExchange;
-          const assetType = String(row['AssetType'] || 'STOCK').trim();
-          const sector = defaultSector
+          const symbol    = String(row['Symbol']       || '').trim().toUpperCase();
+          const name      = String(row['Company Name'] || '').trim();
+          const isin      = String(row['ISIN']         || '').trim() || null;
+          const exchange  = String(row['Exchange']     || defaultExchange).trim() || defaultExchange;
+          const assetType = String(row['AssetType']    || 'STOCK').trim();
+          const sector    = defaultSector
             || String(row['Sector'] || '').trim()
             || null;
 
@@ -91,10 +97,10 @@ async function fetchYahooSector(symbol, exchange) {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const json = await res.json();
-    const profile = json?.quoteSummary?.result?.[0];
-    const sector = profile?.summaryProfile?.sector || null;
+    const profile  = json?.quoteSummary?.result?.[0];
+    const sector   = profile?.summaryProfile?.sector   || null;
     const industry = profile?.summaryProfile?.industry || null;
-    const longName = profile?.quoteType?.longName || null;
+    const longName = profile?.quoteType?.longName      || null;
     return { sector, industry, longName };
   } catch {
     return null;
@@ -112,10 +118,10 @@ async function fetchYahooSector(symbol, exchange) {
  */
 export const GET = withErrorHandler('GET /api/instruments/search', async (request) => {
   const { searchParams } = new URL(request.url);
-  const q = searchParams.get('q')?.trim() || '';
-  const exchange = searchParams.get('exchange') || '';
-  const enrich = searchParams.get('enrich') === 'true';
-  const limit = Math.min(15, parseInt(searchParams.get('limit') || '10'));
+  const q        = searchParams.get('q')?.trim() || '';
+  const exchange = searchParams.get('exchange')  || '';
+  const enrich   = searchParams.get('enrich') === 'true';
+  const limit    = Math.min(15, parseInt(searchParams.get('limit') || '10'));
 
   if (q.length < 1) return NextResponse.json({ instruments: [] });
 
@@ -143,7 +149,8 @@ export const GET = withErrorHandler('GET /api/instruments/search', async (reques
   const dbKeys = new Set(dbResults.map(r => `${r.symbol}:${r.exchange}`));
 
   // 2. XLSX static data — fill remaining slots ─────────────────────────────
-  const staticData = getStaticData();
+  // getStaticData is now async because it uses dynamic import()
+  const staticData = await getStaticData();
   const staticMatches = staticData
     .filter(item => {
       if (exchange && item.e !== exchange) return false;
@@ -152,29 +159,29 @@ export const GET = withErrorHandler('GET /api/instruments/search', async (reques
     })
     .slice(0, Math.max(0, limit - dbResults.length))
     .map(item => ({
-      symbol: item.s,
-      name: item.n,
-      isin: item.i || null,
+      symbol:   item.s,
+      name:     item.n,
+      isin:     item.i || null,
       exchange: item.e,
       assetType: item.t,
-      sector: item.c || null,
-      price: null,
-      inDb: false,
+      sector:   item.c || null,
+      price:    null,
+      inDb:     false,
     }));
 
   // 3. Combine ──────────────────────────────────────────────────────────────
   const combined = [
     ...dbResults.map(r => ({
-      id: r.id,
-      symbol: r.symbol,
-      name: r.name,
-      isin: r.isin,
-      exchange: r.exchange,
-      assetType: r.assetType,
-      sector: r.sector,
-      price: r.price ? parseFloat(r.price) : null,
+      id:           r.id,
+      symbol:       r.symbol,
+      name:         r.name,
+      isin:         r.isin,
+      exchange:     r.exchange,
+      assetType:    r.assetType,
+      sector:       r.sector,
+      price:        r.price ? parseFloat(r.price) : null,
       priceUpdatedAt: r.priceUpdatedAt,
-      inDb: true,
+      inDb:         true,
     })),
     ...staticMatches,
   ].slice(0, limit);

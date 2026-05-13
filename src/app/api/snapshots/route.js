@@ -28,7 +28,8 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
   const body = await request.json();
   const {
     portfolioId, totalValue, totalInvested, totalGain,
-    totalReturnPct, mfCagr, mfInvested, stInvested, fundCount, stockCount,
+    totalReturnPct, totalRealizedGain,
+    mfCagr, mfInvested, stInvested, fundCount, stockCount,
   } = body;
 
   if (!portfolioId || totalValue == null) {
@@ -39,16 +40,30 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
   const snapshotAt = new Date(Math.floor(Date.now() / 60000) * 60000);
 
   const sharedData = {
-    totalValue: parseFloat(totalValue),
+    totalValue:    parseFloat(totalValue),
     totalInvested: parseFloat(totalInvested),
-    totalGain: parseFloat(totalGain),
+    totalGain:     parseFloat(totalGain),
     totalReturnPct: parseFloat(totalReturnPct),
-    ...(mfCagr != null && { mfCagr: parseFloat(mfCagr) }),
+    // FIX: persist realized gain — previously this field was sent by the
+    // context but never stored, causing the snapshot history table to show
+    // "—" for realized P&L on every row.
+    ...(totalRealizedGain != null && {
+      totalRealizedGain: parseFloat(totalRealizedGain),
+    }),
+    ...(mfCagr     != null && { mfCagr:     parseFloat(mfCagr) }),
     ...(mfInvested != null && { mfInvested: parseFloat(mfInvested) }),
     ...(stInvested != null && { stInvested: parseFloat(stInvested) }),
-    ...(fundCount != null && { fundCount: parseIntOrNull(fundCount) }),
+    ...(fundCount  != null && { fundCount:  parseIntOrNull(fundCount) }),
     ...(stockCount != null && { stockCount: parseIntOrNull(stockCount) }),
   };
+
+  // FIX: upsert returns the row but Prisma doesn't expose whether it was
+  // created or updated.  Check existence first so we can return a `created`
+  // flag and let the UI show the right toast message.
+  const existing = await prisma.snapshot.findUnique({
+    where: { portfolioId_snapshotAt: { portfolioId, snapshotAt } },
+    select: { id: true },
+  });
 
   const snapshot = await prisma.snapshot.upsert({
     where: { portfolioId_snapshotAt: { portfolioId, snapshotAt } },
@@ -56,5 +71,8 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
     create: { portfolioId, snapshotAt, ...sharedData },
   });
 
-  return NextResponse.json({ snapshot }, { status: 201 });
+  return NextResponse.json(
+    { snapshot, created: !existing },
+    { status: existing ? 200 : 201 }
+  );
 });

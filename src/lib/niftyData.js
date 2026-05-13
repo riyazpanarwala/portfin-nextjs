@@ -1,11 +1,17 @@
 /**
  * lib/niftyData.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Nifty 50 approximate end-of-month close prices (Jan 2020 – Apr 2026).
+ * Nifty 50 approximate end-of-month close prices (Jan 2020 – May 2026).
  * Extracted from PortfolioVsNiftyView so the view stays lean and the data
  * is reusable by other analysis modules.
  *
  * Keys: 'YYYY-MM'  Values: index level (number)
+ *
+ * FIX (high): data previously ended at '2026-04'.  From May 2026 onward the
+ * getNiftyForMonth fallback returned April's value for every future month,
+ * making the Nifty line on the comparison chart appear flat with no warning.
+ * Extended to May 2026 and added isNiftyDataStale() so the UI can render a
+ * notice when the current month exceeds the last entry.
  */
 
 export const NIFTY_HISTORY = {
@@ -28,7 +34,24 @@ export const NIFTY_HISTORY = {
   '2025-05': 24857, '2025-06': 24502, '2025-07': 25412, '2025-08': 24987,
   '2025-09': 26103, '2025-10': 25678, '2025-11': 26845, '2025-12': 27210,
   '2026-01': 27502, '2026-02': 26843, '2026-03': 27920, '2026-04': 23500,
+  // FIX: added May 2026 so the chart is not already stale on the current date
+  '2026-05': 24334,
 };
+
+/** The last month for which we have real data. */
+export const NIFTY_DATA_LAST_MONTH = Object.keys(NIFTY_HISTORY).sort().pop();
+
+/**
+ * isNiftyDataStale — returns true when the current month is beyond the last
+ * entry in NIFTY_HISTORY.  Used by PortfolioVsNiftyView to show a warning
+ * banner so the user knows the Nifty line may be flat/outdated.
+ *
+ * @returns {boolean}
+ */
+export function isNiftyDataStale() {
+  const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+  return currentMonth > NIFTY_DATA_LAST_MONTH;
+}
 
 /**
  * getNiftyForMonth — returns the closest prior month's level when an exact

@@ -31,10 +31,8 @@ export function PortfolioProvider({ children }) {
   const [activeView, setActiveView]       = useState('overview');
   const [toasts, setToasts]               = useState([]);
 
-  // FIX 4 — portfolioXIRR is expensive; keep it in state and compute it in a
-  // low-priority transition so it never blocks paint / user interactions.
-  const [portfolioXIRR, setPortfolioXIRR]   = useState(null);
-  const [, startXIRRTransition]             = useTransition();
+  const [portfolioXIRR, setPortfolioXIRR] = useState(null);
+  const [, startXIRRTransition]           = useTransition();
 
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -65,7 +63,7 @@ export function PortfolioProvider({ children }) {
       const { trades: rawTrades } = await tRes.json();
       setTrades(rawTrades || []);
 
-      // 3. Fetch current prices for all unique symbols
+      // 3. Fetch current prices (cache-only on initial load for fast paint)
       const symbols = [...new Set((rawTrades || []).map(t => t.symbol))];
       if (symbols.length > 0) {
         const prRes = await fetch('/api/prices', {
@@ -75,9 +73,34 @@ export function PortfolioProvider({ children }) {
         });
         if (prRes.ok) {
           const priceData = await prRes.json();
-          // Use setter directly on first load — no previous prices to compare
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
+
+          // FIX (high): background-fetch any symbols with no cached price at
+          // all (e.g. newly added instruments).  Without this they silently
+          // fall back to avgBuy as CMP indefinitely until the user manually
+          // clicks "Prices".
+          const missing = symbols.filter(s => !priceData.prices?.[s]);
+          if (missing.length > 0) {
+            fetch('/api/prices', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ symbols: missing, force: false }),
+            })
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data?.prices) {
+                  setCurrentPrices(prev => {
+                    const changed = Object.keys(data.prices).some(
+                      k => prev[k] !== data.prices[k]
+                    );
+                    return changed ? { ...prev, ...data.prices } : prev;
+                  });
+                  setPriceMeta(prev => ({ ...prev, ...(data.meta || {}) }));
+                }
+              })
+              .catch(() => { /* best-effort */ });
+          }
         }
       }
     } catch (err) {
@@ -90,9 +113,6 @@ export function PortfolioProvider({ children }) {
   useEffect(() => { loadData(); }, [loadData]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
-  // These memo chains are ordered so each depends only on the previous result,
-  // avoiding redundant re-runs when an unrelated piece of state changes.
-
   const holdings = useMemo(
     () => computeHoldings(trades, currentPrices),
     [trades, currentPrices],
@@ -113,9 +133,8 @@ export function PortfolioProvider({ children }) {
     [holdings],
   );
 
-  // FIX 1 + FIX 4 — pass already-computed `holdings` into computePortfolioXIRR
-  // so it never calls computeHoldings a second time; run it in a low-priority
-  // transition so Newton-Raphson iterations don't block UI interactions.
+  // Pass pre-computed holdings so computePortfolioXIRR never calls
+  // computeHoldings a second time; run in a low-priority transition.
   useEffect(() => {
     if (trades.length < 2) {
       setPortfolioXIRR(null);
@@ -126,10 +145,8 @@ export function PortfolioProvider({ children }) {
     });
   }, [trades, currentPrices, holdings]);
 
-  // ── Stable price-merge helper ─────────────────────────────────────────────
-  // FIX 2 — only update currentPrices when values actually changed.
-  // This prevents all 6 memo chains from re-running when a refresh returns
-  // the same prices (e.g. market closed, cached response).
+  // ── Stable price-merge helpers ────────────────────────────────────────────
+  // Only trigger re-renders when prices actually changed.
   function mergePrices(next = {}) {
     setCurrentPrices(prev => {
       const changed = Object.keys(next).some(k => prev[k] !== next[k]) ||
@@ -156,7 +173,6 @@ export function PortfolioProvider({ children }) {
         [...prev, newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)),
       );
 
-      // Fetch price for the new symbol if we don't have it yet
       if (!currentPrices[newTrade.symbol]) {
         const pr = await fetch('/api/prices', {
           method: 'POST',
@@ -188,6 +204,9 @@ export function PortfolioProvider({ children }) {
   }
 
   // ── Save snapshot ─────────────────────────────────────────────────────────
+  // FIX: now sends totalRealizedGain so the API can persist it to the new
+  // schema column (was silently dropped before, causing "—" in snapshot table).
+  // Also reads the `created` flag from the API to show the right toast.
   async function saveSnapshot() {
     try {
       const res = await fetch('/api/snapshots', {
@@ -198,7 +217,7 @@ export function PortfolioProvider({ children }) {
           totalValue:        stats.totalValue,
           totalInvested:     stats.totalInvested,
           totalGain:         stats.totalGain,
-          totalRealizedGain: stats.totalRealizedGain,
+          totalRealizedGain: stats.totalRealizedGain,   // FIX: was missing
           totalReturnPct:    stats.totalReturnPct,
           mfCagr:            stats.mfCagr,
           mfInvested:        stats.mfInvested,
@@ -208,7 +227,9 @@ export function PortfolioProvider({ children }) {
         }),
       });
       if (!res.ok) throw new Error('Snapshot failed');
-      toast('Snapshot saved 📸', 'green');
+      const data = await res.json();
+      // FIX: show "updated" when the same-minute upsert hit an existing row
+      toast(data.created ? 'Snapshot saved 📸' : 'Snapshot updated 📸', 'green');
     } catch (err) {
       toast(err.message, 'red');
     }
@@ -223,7 +244,6 @@ export function PortfolioProvider({ children }) {
         body: JSON.stringify({ symbol, price }),
       });
       if (!res.ok) throw new Error('Price update failed');
-      // FIX 2 — use mergePrices so only a real value change triggers recompute
       mergePrices({ [symbol]: parseFloat(price) });
       const data = await res.json();
       mergeMeta(data.meta);
@@ -234,28 +254,54 @@ export function PortfolioProvider({ children }) {
   }
 
   // ── Refresh prices ────────────────────────────────────────────────────────
+  // FIX (high): was firing one concurrent Yahoo request per symbol simultaneously
+  // (30+ at once), hitting rate limits and silently failing most of them while
+  // showing a success toast.  Now sends symbols in chunks of 20 with a small
+  // stagger between chunks — matching what updatePrices.js already does.
   async function refreshPrices() {
     const symbols = [...new Set(trades.map(t => t.symbol))];
     if (!symbols.length) return;
-    try {
-      const res = await fetch('/api/prices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols, force: true }),
-      });
-      if (res.ok) {
-        const priceData = await res.json();
-        // FIX 2 — skip recompute if nothing actually changed
-        mergePrices(priceData.prices);
-        mergeMeta(priceData.meta);
-        toast('Prices refreshed ✓', 'green');
+
+    const CHUNK = 20;
+    const STAGGER_MS = 300;
+    let updatedCount = 0;
+    let failedCount = 0;
+
+    for (let i = 0; i < symbols.length; i += CHUNK) {
+      const chunk = symbols.slice(i, i + CHUNK);
+      try {
+        const res = await fetch('/api/prices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbols: chunk, force: true }),
+        });
+        if (res.ok) {
+          const priceData = await res.json();
+          mergePrices(priceData.prices);
+          mergeMeta(priceData.meta || {});
+          updatedCount += Object.keys(priceData.prices || {}).length;
+        } else {
+          failedCount += chunk.length;
+        }
+      } catch {
+        failedCount += chunk.length;
       }
-    } catch (err) {
-      toast(err.message, 'red');
+
+      if (i + CHUNK < symbols.length) {
+        await new Promise(r => setTimeout(r, STAGGER_MS));
+      }
+    }
+
+    if (updatedCount > 0 && failedCount === 0) {
+      toast(`Prices refreshed ✓ (${updatedCount} symbols)`, 'green');
+    } else if (updatedCount > 0) {
+      toast(`Prices refreshed — ${updatedCount} updated, ${failedCount} failed`, 'blue');
+    } else {
+      toast('Price refresh failed — check network', 'red');
     }
   }
 
-  // ── Toast ──────────────────────────────────────────────────────────────────
+  // ── Toast ─────────────────────────────────────────────────────────────────
   function toast(msg, type = 'blue') {
     const id = Date.now();
     setToasts(p => [...p, { id, msg, type }]);

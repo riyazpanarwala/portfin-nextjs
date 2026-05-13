@@ -72,18 +72,19 @@ model Trade {
 }
 
 model Snapshot {
-  id             String   @id @default(uuid())
-  portfolioId    String   @map("portfolio_id")
-  totalValue     Decimal  @map("total_value") @db.Decimal(18, 2)
-  totalInvested  Decimal  @map("total_invested") @db.Decimal(18, 2)
-  totalGain      Decimal  @map("total_gain") @db.Decimal(18, 2)
-  totalReturnPct Decimal  @map("total_return_pct") @db.Decimal(8, 2)
-  mfCagr         Decimal? @map("mf_cagr") @db.Decimal(8, 2)
-  mfInvested     Decimal? @map("mf_invested") @db.Decimal(18, 2)
-  stInvested     Decimal? @map("st_invested") @db.Decimal(18, 2)
-  fundCount      Int?     @map("fund_count")
-  stockCount     Int?     @map("stock_count")
-  snapshotAt     DateTime @default(now()) @map("snapshot_at")
+  id                String   @id @default(uuid())
+  portfolioId       String   @map("portfolio_id")
+  totalValue        Decimal  @map("total_value") @db.Decimal(18, 2)
+  totalInvested     Decimal  @map("total_invested") @db.Decimal(18, 2)
+  totalGain         Decimal  @map("total_gain") @db.Decimal(18, 2)
+  totalReturnPct    Decimal  @map("total_return_pct") @db.Decimal(8, 2)
+  totalRealizedGain Decimal? @map("total_realized_gain") @db.Decimal(18, 2)
+  mfCagr            Decimal? @map("mf_cagr") @db.Decimal(8, 2)
+  mfInvested        Decimal? @map("mf_invested") @db.Decimal(18, 2)
+  stInvested        Decimal? @map("st_invested") @db.Decimal(18, 2)
+  fundCount         Int?     @map("fund_count")
+  stockCount        Int?     @map("stock_count")
+  snapshotAt        DateTime @default(now()) @map("snapshot_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
 
