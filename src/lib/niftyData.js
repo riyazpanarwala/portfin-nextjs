@@ -30,23 +30,23 @@ export const NIFTY_FALLBACK = {
 
 /**
  * fetchNiftyHistory
- * Calls the internal API route which proxies yahoo-finance2.
- * Returns a { [month: 'YYYY-MM']: number } map, or null on error.
+ * Calls the internal API route (Upstox primary, Yahoo fallback).
+ * Returns { history, source, warning } or null on total failure.
  *
  * @param {string} from  'YYYY-MM-DD' — earliest date needed (first snapshot date)
- * @returns {Promise<Record<string,number>|null>}
+ * @returns {Promise<{ history: Record<string,number>, source: string, warning?: string }|null>}
  */
 export async function fetchNiftyHistory(from) {
   try {
-    const res = await fetch(`/api/nifty-history?from=${from}`, {
-      // Cache for 6 hours in the browser — Nifty monthly data doesn't change intraday
-      next: { revalidate: 21600 },
-    });
+    const res = await fetch(`/api/nifty-history?from=${from}`);
     if (!res.ok) return null;
     const data = await res.json();
-    return data.history && Object.keys(data.history).length > 0
-      ? data.history
-      : null;
+    if (!data.history || Object.keys(data.history).length === 0) return null;
+    return {
+      history: data.history,
+      source:  data.source  || 'unknown',
+      warning: data.warning || null,
+    };
   } catch {
     return null;
   }

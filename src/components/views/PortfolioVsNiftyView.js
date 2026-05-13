@@ -130,10 +130,12 @@ export default function PortfolioVsNiftyView() {
   const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId, 100);
   const [mode, setMode] = useState('indexed');
 
-  // Live Nifty history fetched from Yahoo Finance via /api/nifty-history
+  // Live Nifty history fetched via /api/nifty-history (Upstox primary, Yahoo fallback)
   const [niftyHistory, setNiftyHistory] = useState(null);
+  const [niftySource,  setNiftySource]  = useState(null);  // 'upstox' | 'yahoo'
+  const [niftyWarning, setNiftyWarning] = useState(null);  // set when fallback was used
   const [niftyLoading, setNiftyLoading] = useState(false);
-  const [niftyError, setNiftyError]     = useState(false);
+  const [niftyError,   setNiftyError]   = useState(false);
 
   // Fetch Nifty data once we know the first snapshot date
   const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
@@ -144,13 +146,16 @@ export default function PortfolioVsNiftyView() {
     let cancelled = false;
     setNiftyLoading(true);
     setNiftyError(false);
+    setNiftyWarning(null);
 
-    fetchNiftyHistory(firstSnapshotDate).then(data => {
+    fetchNiftyHistory(firstSnapshotDate).then(result => {
       if (cancelled) return;
-      if (data) {
-        setNiftyHistory(data);
+      if (result) {
+        setNiftyHistory(result.history);
+        setNiftySource(result.source);
+        setNiftyWarning(result.warning || null);
       } else {
-        setNiftyError(true); // will fall back to NIFTY_FALLBACK
+        setNiftyError(true); // both sources failed — will use NIFTY_FALLBACK
       }
       setNiftyLoading(false);
     });
@@ -158,7 +163,7 @@ export default function PortfolioVsNiftyView() {
     return () => { cancelled = true; };
   }, [firstSnapshotDate]);
 
-  const dataStale  = isNiftyDataStale(niftyHistory);
+  const dataStale      = isNiftyDataStale(niftyHistory);
   const lastNiftyMonth = niftyDataLastMonth(niftyHistory);
 
   const loading = snapshotsLoading || niftyLoading;
@@ -245,8 +250,8 @@ export default function PortfolioVsNiftyView() {
         }}>
           <span>⚠</span>
           <span>
-            Could not fetch live Nifty 50 data from Yahoo Finance — using static fallback data (last entry: <strong>{lastNiftyMonth}</strong>).
-            Check your network or Yahoo Finance availability and reload to retry.
+            Could not fetch live Nifty 50 data — using static fallback (last entry: <strong>{lastNiftyMonth}</strong>).
+            Check your network and reload to retry.
           </span>
         </div>
       ) : dataStale ? (
@@ -258,7 +263,7 @@ export default function PortfolioVsNiftyView() {
           <span>⚠</span>
           <span>
             Nifty 50 fallback data only covers up to <strong>{lastNiftyMonth}</strong>.
-            The Nifty line may appear flat for recent months. Live fetch also failed — check network.
+            The Nifty line may appear flat for recent months.
           </span>
         </div>
       ) : (
@@ -268,7 +273,12 @@ export default function PortfolioVsNiftyView() {
           color: 'var(--green2)', display: 'flex', alignItems: 'center', gap: '8px',
         }}>
           <span className="live-dot" />
-          <span>Nifty 50 data loaded live from Yahoo Finance (^NSEI) — up to <strong>{lastNiftyMonth}</strong></span>
+          <span>
+            Nifty 50 data loaded live via{' '}
+            <strong>{niftySource === 'upstox' ? 'Upstox (^NSE_INDEX|Nifty 50)' : 'Yahoo Finance (^NSEI)'}</strong>
+            {' '}— up to <strong>{lastNiftyMonth}</strong>
+            {niftyWarning && <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>⚠ {niftyWarning}</span>}
+          </span>
         </div>
       )}
 
@@ -384,7 +394,7 @@ export default function PortfolioVsNiftyView() {
         background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', lineHeight: '1.7',
       }}>
         <strong style={{ color: 'var(--text2)' }}>Methodology:</strong> Portfolio values are from your saved snapshots.
-        Nifty 50 data is fetched live from Yahoo Finance (^NSEI, monthly closes{niftyError ? ', fallback to static data' : ''}).
+        Nifty 50 data is fetched live from {niftySource === 'upstox' ? 'Upstox V3 API (NSE_INDEX|Nifty 50, monthly closes)' : niftySource === 'yahoo' ? 'Yahoo Finance (^NSEI, monthly closes)' : 'static fallback data'}.
         Both series are rebased to 100 at your first snapshot date for fair comparison.
         Alpha = Portfolio indexed value − Nifty indexed value (index points).
         Save more snapshots regularly for better granularity.
