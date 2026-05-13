@@ -1,77 +1,87 @@
 /**
  * lib/niftyData.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Nifty 50 approximate end-of-month close prices (Jan 2020 – May 2026).
- * Extracted from PortfolioVsNiftyView so the view stays lean and the data
- * is reusable by other analysis modules.
+ * Nifty 50 utilities.
  *
- * Keys: 'YYYY-MM'  Values: index level (number)
+ * Live data is fetched from /api/nifty-history (yahoo-finance2 → ^NSEI).
+ * The NIFTY_FALLBACK below is a minimal safety net used only when the live
+ * fetch fails — it covers only a handful of anchor points so the chart can
+ * still render something rather than crashing.
  *
- * FIX (high): data previously ended at '2026-04'.  From May 2026 onward the
- * getNiftyForMonth fallback returned April's value for every future month,
- * making the Nifty line on the comparison chart appear flat with no warning.
- * Extended to May 2026 and added isNiftyDataStale() so the UI can render a
- * notice when the current month exceeds the last entry.
+ * Components should call fetchNiftyHistory() and pass the result to
+ * getNiftyForMonth() rather than importing NIFTY_FALLBACK directly.
  */
 
-export const NIFTY_HISTORY = {
-  '2020-01': 12282, '2020-02': 11633, '2020-03': 8598,  '2020-04': 9860,
-  '2020-05': 9580,  '2020-06': 10302, '2020-07': 11073, '2020-08': 11388,
-  '2020-09': 11248, '2020-10': 11642, '2020-11': 12968, '2020-12': 13982,
-  '2021-01': 13635, '2021-02': 14529, '2021-03': 14691, '2021-04': 14631,
-  '2021-05': 15582, '2021-06': 15722, '2021-07': 15763, '2021-08': 16706,
-  '2021-09': 17618, '2021-10': 17671, '2021-11': 16983, '2021-12': 17354,
-  '2022-01': 17340, '2022-02': 16658, '2022-03': 17465, '2022-04': 17103,
-  '2022-05': 16584, '2022-06': 15780, '2022-07': 17158, '2022-08': 17759,
-  '2022-09': 17094, '2022-10': 18012, '2022-11': 18758, '2022-12': 18105,
-  '2023-01': 17616, '2023-02': 17554, '2023-03': 17360, '2023-04': 18065,
-  '2023-05': 18534, '2023-06': 18935, '2023-07': 19754, '2023-08': 19265,
-  '2023-09': 19638, '2023-10': 19047, '2023-11': 19795, '2023-12': 21731,
-  '2024-01': 21725, '2024-02': 22040, '2024-03': 22326, '2024-04': 22147,
-  '2024-05': 22531, '2024-06': 23440, '2024-07': 24951, '2024-08': 25235,
-  '2024-09': 25811, '2024-10': 24205, '2024-11': 23911, '2024-12': 23645,
-  '2025-01': 23163, '2025-02': 22125, '2025-03': 23519, '2025-04': 24039,
-  '2025-05': 24857, '2025-06': 24502, '2025-07': 25412, '2025-08': 24987,
-  '2025-09': 26103, '2025-10': 25678, '2025-11': 26845, '2025-12': 27210,
-  '2026-01': 27502, '2026-02': 26843, '2026-03': 27920, '2026-04': 23500,
-  // FIX: added May 2026 so the chart is not already stale on the current date
+/**
+ * Minimal fallback covering ~5 years of year-end anchors.
+ * Used only when /api/nifty-history is unreachable.
+ */
+export const NIFTY_FALLBACK = {
+  '2020-03': 8598,
+  '2020-12': 13982,
+  '2021-12': 17354,
+  '2022-12': 18105,
+  '2023-12': 21731,
+  '2024-12': 23645,
+  '2025-12': 27210,
+  '2026-04': 23500,
   '2026-05': 24334,
 };
 
-/** The last month for which we have real data. */
-export const NIFTY_DATA_LAST_MONTH = Object.keys(NIFTY_HISTORY).sort().pop();
-
 /**
- * isNiftyDataStale — returns true when the current month is beyond the last
- * entry in NIFTY_HISTORY.  Used by PortfolioVsNiftyView to show a warning
- * banner so the user knows the Nifty line may be flat/outdated.
+ * fetchNiftyHistory
+ * Calls the internal API route which proxies yahoo-finance2.
+ * Returns a { [month: 'YYYY-MM']: number } map, or null on error.
  *
- * @returns {boolean}
+ * @param {string} from  'YYYY-MM-DD' — earliest date needed (first snapshot date)
+ * @returns {Promise<Record<string,number>|null>}
  */
-export function isNiftyDataStale() {
-  const currentMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
-  return currentMonth > NIFTY_DATA_LAST_MONTH;
+export async function fetchNiftyHistory(from) {
+  try {
+    const res = await fetch(`/api/nifty-history?from=${from}`, {
+      // Cache for 6 hours in the browser — Nifty monthly data doesn't change intraday
+      next: { revalidate: 21600 },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.history && Object.keys(data.history).length > 0
+      ? data.history
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * getNiftyForMonth — returns the closest prior month's level when an exact
- * match is unavailable (e.g. a snapshot taken mid-month).
+ * getNiftyForMonth
+ * Returns the closest prior month's level from the provided history map.
+ * Falls back to NIFTY_FALLBACK if history is null/empty.
  *
- * @param {string} month  'YYYY-MM'
+ * @param {string}                    month    'YYYY-MM'
+ * @param {Record<string,number>|null} history  from fetchNiftyHistory()
  * @returns {number|null}
  */
-export function getNiftyForMonth(month) {
-  if (NIFTY_HISTORY[month]) return NIFTY_HISTORY[month];
-  const prior = Object.keys(NIFTY_HISTORY).sort().filter(m => m <= month).pop();
-  return prior ? NIFTY_HISTORY[prior] : null;
+export function getNiftyForMonth(month, history) {
+  const source = (history && Object.keys(history).length > 0)
+    ? history
+    : NIFTY_FALLBACK;
+
+  if (source[month]) return source[month];
+
+  const prior = Object.keys(source)
+    .sort()
+    .filter(m => m <= month)
+    .pop();
+
+  return prior ? source[prior] : null;
 }
 
 /**
- * rebaseToIndex — normalises a value series so the first point = 100.
- * Each element gains an `indexed` field; all other fields are preserved.
+ * rebaseToIndex
+ * Normalises a value series so the first point = 100.
  *
  * @param {Array<{value: number}>} series
- * @param {number}                 baseValue  value at time-zero
+ * @param {number}                 baseValue
  * @returns {Array<{value: number, indexed: number}>}
  */
 export function rebaseToIndex(series, baseValue) {
@@ -79,4 +89,27 @@ export function rebaseToIndex(series, baseValue) {
     ...d,
     indexed: baseValue > 0 ? (d.value / baseValue) * 100 : 100,
   }));
+}
+
+/**
+ * isNiftyDataStale
+ * When using the fallback, checks whether today is beyond the last fallback entry.
+ * Always returns false when live data is available (it covers up to today by definition).
+ *
+ * @param {Record<string,number>|null} history  live history from fetchNiftyHistory()
+ * @returns {boolean}
+ */
+export function isNiftyDataStale(history) {
+  if (history && Object.keys(history).length > 0) return false;
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const lastKey = Object.keys(NIFTY_FALLBACK).sort().pop();
+  return currentMonth > lastKey;
+}
+
+/** Last month covered — useful for UI warnings when on fallback data. */
+export function niftyDataLastMonth(history) {
+  const source = (history && Object.keys(history).length > 0)
+    ? history
+    : NIFTY_FALLBACK;
+  return Object.keys(source).sort().pop();
 }

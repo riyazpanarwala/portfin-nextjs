@@ -4,10 +4,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import {
+  fetchNiftyHistory,
   getNiftyForMonth,
   rebaseToIndex,
   isNiftyDataStale,
-  NIFTY_DATA_LAST_MONTH,
+  niftyDataLastMonth,
 } from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
@@ -126,12 +127,41 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
 // ── Main View ─────────────────────────────────────────────────────────────────
 export default function PortfolioVsNiftyView() {
   const { portfolioId, stats, setActiveView } = usePortfolio();
-  const { snapshots, loading } = useSnapshots(portfolioId, 100);
+  const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId, 100);
   const [mode, setMode] = useState('indexed');
 
-  // FIX (high): check whether our hardcoded Nifty data is stale relative to
-  // today. If so, show a warning so users know the Nifty line may be flat.
-  const niftyStale = isNiftyDataStale();
+  // Live Nifty history fetched from Yahoo Finance via /api/nifty-history
+  const [niftyHistory, setNiftyHistory] = useState(null);
+  const [niftyLoading, setNiftyLoading] = useState(false);
+  const [niftyError, setNiftyError]     = useState(false);
+
+  // Fetch Nifty data once we know the first snapshot date
+  const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
+
+  useEffect(() => {
+    if (!firstSnapshotDate) return;
+
+    let cancelled = false;
+    setNiftyLoading(true);
+    setNiftyError(false);
+
+    fetchNiftyHistory(firstSnapshotDate).then(data => {
+      if (cancelled) return;
+      if (data) {
+        setNiftyHistory(data);
+      } else {
+        setNiftyError(true); // will fall back to NIFTY_FALLBACK
+      }
+      setNiftyLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [firstSnapshotDate]);
+
+  const dataStale  = isNiftyDataStale(niftyHistory);
+  const lastNiftyMonth = niftyDataLastMonth(niftyHistory);
+
+  const loading = snapshotsLoading || niftyLoading;
 
   const portfolioSeries = useMemo(() => {
     if (!snapshots.length) return [];
@@ -145,11 +175,12 @@ export default function PortfolioVsNiftyView() {
     }));
   }, [snapshots]);
 
+  // niftyHistory may still be null while loading; memoize once it's ready
   const niftySeries = useMemo(() =>
     portfolioSeries
-      .map(d => ({ month: d.month, value: getNiftyForMonth(d.month) || 0 }))
+      .map(d => ({ month: d.month, value: getNiftyForMonth(d.month, niftyHistory) || 0 }))
       .filter(d => d.value > 0),
-    [portfolioSeries]
+    [portfolioSeries, niftyHistory]
   );
 
   const rebasedPortfolio = useMemo(() => {
@@ -167,7 +198,6 @@ export default function PortfolioVsNiftyView() {
   const alpha = lastP && lastN ? lastP.indexed - lastN.indexed : null;
   const pTotal = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
   const nTotal = lastN ? ((lastN.indexed / 100) - 1) * 100 : 0;
-  const firstSnapshotDate  = snapshots[0]?.snapshotAt?.slice(0, 10);
   const latestSnapshotDate = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
 
   if (loading) return (
@@ -206,8 +236,8 @@ export default function PortfolioVsNiftyView() {
   return (
     <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-      {/* FIX: staleness warning — shown when current month exceeds our data */}
-      {niftyStale && (
+      {/* Nifty data source status */}
+      {niftyError ? (
         <div style={{
           padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
           background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
@@ -215,10 +245,30 @@ export default function PortfolioVsNiftyView() {
         }}>
           <span>⚠</span>
           <span>
-            Nifty 50 data is only available up to <strong>{NIFTY_DATA_LAST_MONTH}</strong>.
-            The Nifty line on the chart may appear flat for recent months.
-            Update <code style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>src/lib/niftyData.js</code> with the latest end-of-month closes to fix this.
+            Could not fetch live Nifty 50 data from Yahoo Finance — using static fallback data (last entry: <strong>{lastNiftyMonth}</strong>).
+            Check your network or Yahoo Finance availability and reload to retry.
           </span>
+        </div>
+      ) : dataStale ? (
+        <div style={{
+          padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
+          background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+          color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: '8px',
+        }}>
+          <span>⚠</span>
+          <span>
+            Nifty 50 fallback data only covers up to <strong>{lastNiftyMonth}</strong>.
+            The Nifty line may appear flat for recent months. Live fetch also failed — check network.
+          </span>
+        </div>
+      ) : (
+        <div style={{
+          padding: '8px 14px', borderRadius: '8px', fontSize: '11px',
+          background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
+          color: 'var(--green2)', display: 'flex', alignItems: 'center', gap: '8px',
+        }}>
+          <span className="live-dot" />
+          <span>Nifty 50 data loaded live from Yahoo Finance (^NSEI) — up to <strong>{lastNiftyMonth}</strong></span>
         </div>
       )}
 
@@ -334,7 +384,7 @@ export default function PortfolioVsNiftyView() {
         background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', lineHeight: '1.7',
       }}>
         <strong style={{ color: 'var(--text2)' }}>Methodology:</strong> Portfolio values are from your saved snapshots.
-        Nifty 50 data uses approximate end-of-month closes (last entry: {NIFTY_DATA_LAST_MONTH}).
+        Nifty 50 data is fetched live from Yahoo Finance (^NSEI, monthly closes{niftyError ? ', fallback to static data' : ''}).
         Both series are rebased to 100 at your first snapshot date for fair comparison.
         Alpha = Portfolio indexed value − Nifty indexed value (index points).
         Save more snapshots regularly for better granularity.
