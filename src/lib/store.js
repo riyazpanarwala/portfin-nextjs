@@ -21,6 +21,23 @@ import { xirr } from '@/lib/xirr';
 
 const EPSILON = 1e-6;
 
+/**
+ * Normalize a date string to YYYY-MM-DD format.
+ * Handles both ISO datetime strings ("2024-01-05T00:00:00.000Z") 
+ * and plain date strings ("2024-01-05").
+ * Returns null for invalid/empty dates.
+ */
+function normalizeDate(dateStr) {
+  if (!dateStr) return null;
+  // If it's already YYYY-MM-DD (10 chars), return as-is
+  if (dateStr.length === 10) return dateStr;
+  // Otherwise, extract YYYY-MM-DD from ISO datetime or other formats
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+
 // ─── FIFO Engine ─────────────────────────────────────────────────────────────
 
 /**
@@ -37,19 +54,20 @@ export function computeHoldings(trades, currentPrices = {}) {
     const key = t.symbol;
     if (!bySymbol[key]) bySymbol[key] = { meta: t, buys: [], sells: [] };
     if (t.tradeType === 'BUY') bySymbol[key].buys.push(t);
-    else                       bySymbol[key].sells.push(t);
+    else bySymbol[key].sells.push(t);
   }
 
   const holdings = [];
 
   for (const [symbol, { meta, buys, sells }] of Object.entries(bySymbol)) {
     const lotQueue = buys
-      .slice()
+      .map(t => ({ ...t, tradeDate: normalizeDate(t.tradeDate) }))
+      .filter(t => t.tradeDate !== null)
       .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate))
       .map(t => ({
-        date:      t.tradeDate,
-        qty:       parseFloat(t.quantity),
-        price:     parseFloat(t.price),
+        date: t.tradeDate,
+        qty: parseFloat(t.quantity),
+        price: parseFloat(t.price),
         remaining: parseFloat(t.quantity),
       }));
 
@@ -64,38 +82,39 @@ export function computeHoldings(trades, currentPrices = {}) {
     const totalEverInvested = lotQueue.reduce((s, l) => s + l.qty * l.price, 0);
 
     const sellRecords = [];
-    let realizedGain  = 0;
+    let realizedGain = 0;
     // FIX-A: track unmatched sell quantity for data-integrity alerting
     let unmatchedSellQty = 0;
 
     const sortedSells = sells
-      .slice()
+      .map(t => ({ ...t, tradeDate: normalizeDate(t.tradeDate) }))
+      .filter(t => t.tradeDate !== null)
       .sort((a, b) => a.tradeDate.localeCompare(b.tradeDate));
 
     for (const sellTrade of sortedSells) {
-      let sellQtyLeft   = parseFloat(sellTrade.quantity);
-      const sellPrice   = parseFloat(sellTrade.price);
-      const sellDate    = sellTrade.tradeDate;
+      let sellQtyLeft = parseFloat(sellTrade.quantity);
+      const sellPrice = parseFloat(sellTrade.price);
+      const sellDate = sellTrade.tradeDate;
       const matchedLots = [];
 
       for (const lot of lotQueue) {
         if (sellQtyLeft <= EPSILON) break;
         if (lot.remaining <= EPSILON) continue;
 
-        const consumed  = Math.min(lot.remaining, sellQtyLeft);
+        const consumed = Math.min(lot.remaining, sellQtyLeft);
         const costBasis = consumed * lot.price;
-        const proceeds  = consumed * sellPrice;
-        const lotGain   = proceeds - costBasis;
-        const holdDays  = daysBetween(lot.date, sellDate);
-        const taxType   = holdDays >= 365 ? 'LTCG' : 'STCG';
+        const proceeds = consumed * sellPrice;
+        const lotGain = proceeds - costBasis;
+        const holdDays = daysBetween(lot.date, sellDate);
+        const taxType = holdDays >= 365 ? 'LTCG' : 'STCG';
 
         matchedLots.push({
           buyDate: lot.date, qty: consumed, buyPrice: lot.price,
           holdDays, taxType, costBasis, gain: lotGain,
         });
         lot.remaining -= consumed;
-        sellQtyLeft   -= consumed;
-        realizedGain  += lotGain;
+        sellQtyLeft -= consumed;
+        realizedGain += lotGain;
       }
 
       // FIX-A: accumulate any quantity that couldn't be matched to buy lots
@@ -110,10 +129,10 @@ export function computeHoldings(trades, currentPrices = {}) {
       const actualQtySold = parseFloat(sellTrade.quantity) - Math.max(0, sellQtyLeft);
       if (actualQtySold > EPSILON) {
         sellRecords.push({
-          date:        sellDate,
-          qty:         actualQtySold,
+          date: sellDate,
+          qty: actualQtySold,
           sellPrice,
-          realized:    matchedLots.reduce((s, m) => s + m.gain, 0),
+          realized: matchedLots.reduce((s, m) => s + m.gain, 0),
           matchedLots,
           // FIX-D: use realized gain value (not unit count) to determine
           // the dominant tax type when a sell spans both LTCG and STCG lots
@@ -126,16 +145,16 @@ export function computeHoldings(trades, currentPrices = {}) {
       .filter(l => l.remaining > EPSILON)
       .map(l => ({ date: l.date, qty: l.remaining, price: l.price }));
 
-    const qty      = remainingLots.reduce((s, l) => s + l.qty, 0);
+    const qty = remainingLots.reduce((s, l) => s + l.qty, 0);
     const invested = remainingLots.reduce((s, l) => s + l.qty * l.price, 0);
 
     if (qty <= EPSILON && realizedGain === 0 && sellRecords.length === 0) continue;
 
-    const avgBuy         = qty > EPSILON ? invested / qty : 0;
-    const cmp            = currentPrices[symbol] ? parseFloat(currentPrices[symbol]) : avgBuy;
-    const marketValue    = qty * cmp;
+    const avgBuy = qty > EPSILON ? invested / qty : 0;
+    const cmp = currentPrices[symbol] ? parseFloat(currentPrices[symbol]) : avgBuy;
+    const marketValue = qty * cmp;
     const unrealizedGain = marketValue - invested;
-    const totalGain      = unrealizedGain + realizedGain;
+    const totalGain = unrealizedGain + realizedGain;
 
     // FIX-C: use totalEverInvested as the denominator so that return % is not
     // inflated for partially/fully sold positions where sold-lot costs are no
@@ -150,21 +169,21 @@ export function computeHoldings(trades, currentPrices = {}) {
     // FIX-B: use the earliest buy date across ALL lots (captured before FIFO)
     const firstDate = earliestBuyDate ? new Date(earliestBuyDate) : new Date();
     const holdingDays = Math.max(0, Math.round((new Date() - firstDate) / (24 * 3600 * 1000)));
-    const years       = Math.max(0.1, holdingDays / 365.25);
+    const years = Math.max(0.1, holdingDays / 365.25);
 
     const cagr = invested > EPSILON && marketValue > 0
       ? (Math.pow(marketValue / invested, 1 / years) - 1) * 100
       : 0;
 
-    const winCount  = sellRecords.filter(s => s.realized > 0).length;
+    const winCount = sellRecords.filter(s => s.realized > 0).length;
     const lossCount = sellRecords.filter(s => s.realized < 0).length;
 
     holdings.push({
       symbol,
-      name:      meta.name     || symbol,
+      name: meta.name || symbol,
       assetType: meta.assetType,
-      exchange:  meta.exchange,
-      sector:    meta.sector   || 'Other',
+      exchange: meta.exchange,
+      sector: meta.sector || 'Other',
       qty, invested, avgBuy,
       lots: remainingLots,
       cmp, marketValue,
@@ -176,9 +195,9 @@ export function computeHoldings(trades, currentPrices = {}) {
       hasDataError: unmatchedSellQty > EPSILON,
       unmatchedSellQty,
       stats: {
-        trades:            buys.length + sells.length,
-        buyTrades:         buys.length,
-        sellTrades:        sells.length,
+        trades: buys.length + sells.length,
+        buyTrades: buys.length,
+        sellTrades: sells.length,
         winCount,
         lossCount,
         totalSellProceeds: sellRecords.reduce((s, sr) => s + sr.qty * sr.sellPrice, 0),
@@ -194,20 +213,20 @@ export function computeHoldings(trades, currentPrices = {}) {
 export function computePortfolioStats(holdings) {
   const active = holdings.filter(h => h.qty > EPSILON);
 
-  const totalValue          = active.reduce((s, h) => s + h.marketValue, 0);
-  const totalInvested       = active.reduce((s, h) => s + h.invested,    0);
+  const totalValue = active.reduce((s, h) => s + h.marketValue, 0);
+  const totalInvested = active.reduce((s, h) => s + h.invested, 0);
   const totalUnrealizedGain = active.reduce((s, h) => s + h.unrealizedGain, 0);
-  const totalRealizedGain   = holdings.reduce((s, h) => s + h.realizedGain, 0);
-  const totalGain           = totalUnrealizedGain + totalRealizedGain;
-  const totalReturnPct      = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
+  const totalRealizedGain = holdings.reduce((s, h) => s + h.realizedGain, 0);
+  const totalGain = totalUnrealizedGain + totalRealizedGain;
+  const totalReturnPct = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
 
   const mfH = active.filter(h => h.assetType === 'MF');
   const stH = active.filter(h => h.assetType === 'STOCK');
 
-  const mfValue    = mfH.reduce((s, h) => s + h.marketValue, 0);
-  const stValue    = stH.reduce((s, h) => s + h.marketValue, 0);
-  const mfInvested = mfH.reduce((s, h) => s + h.invested,    0);
-  const stInvested = stH.reduce((s, h) => s + h.invested,    0);
+  const mfValue = mfH.reduce((s, h) => s + h.marketValue, 0);
+  const stValue = stH.reduce((s, h) => s + h.marketValue, 0);
+  const mfInvested = mfH.reduce((s, h) => s + h.invested, 0);
+  const stInvested = stH.reduce((s, h) => s + h.invested, 0);
 
   const mfCagr = mfInvested > 0
     ? mfH.reduce((s, h) => s + h.cagr * h.invested, 0) / mfInvested
@@ -225,7 +244,7 @@ export function computePortfolioStats(holdings) {
     totalUnrealizedGain, totalRealizedGain, totalReturnPct,
     mfValue, stValue, mfInvested, stInvested,
     mfCagr, overallCagr,
-    fundCount:  mfH.length,
+    fundCount: mfH.length,
     stockCount: stH.length,
     mfPct: totalValue > 0 ? (mfValue / totalValue) * 100 : 0,
     stPct: totalValue > 0 ? (stValue / totalValue) * 100 : 0,
@@ -238,12 +257,12 @@ export function computePortfolioXIRR(trades, currentPrices = {}, precomputedHold
   const holdings = precomputedHoldings ?? computeHoldings(trades, currentPrices);
 
   const cashflows = trades.map(t => {
-    const qty       = parseFloat(t.quantity);
-    const price     = parseFloat(t.price);
+    const qty = parseFloat(t.quantity);
+    const price = parseFloat(t.price);
     const brokerage = t.brokerage ? parseFloat(t.brokerage) : 0;
-    const amount    = t.tradeType === 'BUY'
+    const amount = t.tradeType === 'BUY'
       ? -(qty * price + brokerage)
-      :   qty * price - brokerage;
+      : qty * price - brokerage;
     return { date: t.tradeDate, amount };
   });
 
@@ -313,8 +332,8 @@ export function buildMonthlyFlow(trades) {
 
 export function computeTax(holdings) {
   return holdings.map(h => {
-    const isLTCG      = h.years >= 1;
-    const taxRate     = isLTCG ? 0.125 : 0.20;
+    const isLTCG = h.years >= 1;
+    const taxRate = isLTCG ? 0.125 : 0.20;
     const taxableGain = Math.max(0, h.unrealizedGain ?? h.gain ?? 0);
     // Do NOT apply per-holding exemption — the ₹1.25L LTCG exemption is
     // portfolio-wide per FY.  Show gross tax; Analytics view notes this.

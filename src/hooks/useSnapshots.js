@@ -1,71 +1,73 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-/**
- * useSnapshots — fetches snapshot history for a portfolio.
- * Shared between SnapshotView and PortfolioVsNiftyView.
- *
- * Fix: removed hasFetchedRef guard that permanently blocked reload() after
- * the first fetch.  An AbortController is used instead to cancel in-flight
- * requests on unmount / portfolioId change, which is the right way to
- * prevent duplicate fetches in StrictMode without locking out manual reloads.
- *
- * @param {string|null} portfolioId
- * @param {number}      limit       max snapshots to load (default 100)
- * @returns {{ snapshots, loading, reload }}
- */
 export function useSnapshots(portfolioId, limit = 100) {
   const [snapshots, setSnapshots] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  const load = useCallback(async (signal) => {
+  const controllerRef = useRef(null);
+
+  const load = useCallback(async () => {
     if (!portfolioId) {
+      setSnapshots([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
+
+    // Abort previous request
+    controllerRef.current?.abort();
+
+    const controller = new AbortController();
+    controllerRef.current = controller;
+
     try {
+      setLoading(true);
+      setError(null);
+
       const res = await fetch(
         `/api/snapshots?portfolioId=${portfolioId}&limit=${limit}`,
-        { signal }
+        { signal: controller.signal }
       );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
       const data = await res.json();
-      // Return chronologically ascending for charts; callers can reverse if needed
-      setSnapshots(
-        (data.snapshots || []).sort((a, b) =>
-          a.snapshotAt.localeCompare(b.snapshotAt)
-        )
-      );
+
+      if (!controller.signal.aborted) {
+        setSnapshots(
+          [...(data.snapshots || [])].sort((a, b) =>
+            a.snapshotAt.localeCompare(b.snapshotAt)
+          )
+        );
+      }
     } catch (err) {
       if (err.name !== 'AbortError') {
+        setError(err);
         setSnapshots([]);
       }
     } finally {
-      // Only clear loading if not aborted
-      if (!signal?.aborted) {
+      if (!controller.signal.aborted) {
         setLoading(false);
       }
     }
   }, [portfolioId, limit]);
 
-  // Auto-load when portfolioId or limit changes; cancel on cleanup
   useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal);
-    return () => controller.abort();
+    load();
+
+    return () => {
+      controllerRef.current?.abort();
+    };
   }, [load]);
 
-  // Manual reload exposed to callers (e.g. after saving a snapshot)
-  // Creates a fresh AbortController so it can't be cancelled by the
-  // effect cleanup of the previous auto-load.
-  const reload = useCallback(() => {
-    const controller = new AbortController();
-    load(controller.signal);
-    // Return a cleanup in case the caller wants to cancel (rare)
-    return () => controller.abort();
-  }, [load]);
-
-  return { snapshots, loading, reload };
+  return {
+    snapshots,
+    loading,
+    error,
+    reload: load,
+  };
 }

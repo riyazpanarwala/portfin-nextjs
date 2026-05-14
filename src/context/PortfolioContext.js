@@ -22,17 +22,17 @@ const PortfolioCtx = createContext(null);
 const DEFAULT_USER_ID = 'user-default-001';
 
 export function PortfolioProvider({ children }) {
-  const [trades, setTrades]               = useState([]);
-  const [portfolioId, setPortfolioId]     = useState(null);
+  const [trades, setTrades] = useState([]);
+  const [portfolioId, setPortfolioId] = useState(null);
   const [currentPrices, setCurrentPrices] = useState({});
-  const [priceMeta, setPriceMeta]         = useState({});
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState(null);
-  const [activeView, setActiveView]       = useState('overview');
-  const [toasts, setToasts]               = useState([]);
+  const [priceMeta, setPriceMeta] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [activeView, setActiveView] = useState('overview');
+  const [toasts, setToasts] = useState([]);
 
   const [portfolioXIRR, setPortfolioXIRR] = useState(null);
-  const [, startXIRRTransition]           = useTransition();
+  const [, startXIRRTransition] = useTransition();
 
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -123,10 +123,10 @@ export function PortfolioProvider({ children }) {
     [holdings],
   );
 
-  const mfHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'MF'),    [holdings]);
-  const stHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
-  const monthlyFlow = useMemo(() => buildMonthlyFlow(trades),                       [trades]);
-  const taxData     = useMemo(() => computeTax(holdings),                           [holdings]);
+  const mfHoldings = useMemo(() => holdings.filter(h => h.assetType === 'MF'), [holdings]);
+  const stHoldings = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
+  const monthlyFlow = useMemo(() => buildMonthlyFlow(trades), [trades]);
+  const taxData = useMemo(() => computeTax(holdings), [holdings]);
 
   const realizedSummary = useMemo(
     () => computeRealizedSummary(holdings),
@@ -140,17 +140,27 @@ export function PortfolioProvider({ children }) {
       setPortfolioXIRR(null);
       return;
     }
-    startXIRRTransition(() => {
-      setPortfolioXIRR(computePortfolioXIRR(trades, currentPrices, holdings));
-    });
-  }, [trades, currentPrices, holdings]);
+    const timeoutId = setTimeout(() => {
+      const xirr = computePortfolioXIRR(
+        trades,
+        currentPrices,
+        holdings,
+      );
+
+      startXIRRTransition(() => {
+        setPortfolioXIRR(xirr);
+      });
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [trades, currentPrices, holdings, startXIRRTransition]);
 
   // ── Stable price-merge helpers ────────────────────────────────────────────
   // Only trigger re-renders when prices actually changed.
   function mergePrices(next = {}) {
     setCurrentPrices(prev => {
       const changed = Object.keys(next).some(k => prev[k] !== next[k]) ||
-                      Object.keys(prev).some(k => !(k in next));
+        Object.keys(prev).some(k => !(k in next));
       return changed ? { ...prev, ...next } : prev;
     });
   }
@@ -214,16 +224,16 @@ export function PortfolioProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           portfolioId,
-          totalValue:        stats.totalValue,
-          totalInvested:     stats.totalInvested,
-          totalGain:         stats.totalGain,
+          totalValue: stats.totalValue,
+          totalInvested: stats.totalInvested,
+          totalGain: stats.totalGain,
           totalRealizedGain: stats.totalRealizedGain,   // FIX: was missing
-          totalReturnPct:    stats.totalReturnPct,
-          mfCagr:            stats.mfCagr,
-          mfInvested:        stats.mfInvested,
-          stInvested:        stats.stInvested,
-          fundCount:         stats.fundCount,
-          stockCount:        stats.stockCount,
+          totalReturnPct: stats.totalReturnPct,
+          mfCagr: stats.mfCagr,
+          mfInvested: stats.mfInvested,
+          stInvested: stats.stInvested,
+          fundCount: stats.fundCount,
+          stockCount: stats.stockCount,
         }),
       });
       if (!res.ok) throw new Error('Snapshot failed');
