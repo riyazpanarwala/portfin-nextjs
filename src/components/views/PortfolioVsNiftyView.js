@@ -9,6 +9,7 @@ import {
   rebaseToIndex,
   isNiftyDataStale,
   niftyDataLastMonth,
+  NIFTY_FALLBACK,
 } from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
@@ -124,29 +125,124 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
   );
 }
 
+// ── Nifty data status banner ──────────────────────────────────────────────────
+// FIX (Issue 9): extracted into its own component so the correct banner is
+// rendered on the VERY FIRST paint.  Previously the banner was chosen based on
+// `niftyHistory` state (initially null), so `isNiftyDataStale(null)` returned
+// false and the "live data" green banner flashed briefly before the actual
+// fetch result arrived — misleading the user into thinking live data was loaded
+// when NIFTY_FALLBACK was actually powering the chart.
+//
+// Now we derive the banner from THREE distinct states:
+//   1. loading  — fetch in progress, show neutral "Fetching…" pill
+//   2. error    — both sources failed, show amber "using fallback" warning
+//   3. resolved — show green (live) or amber (stale fallback) based on result
+function NiftyStatusBanner({ loading, error, niftyHistory, niftySource, niftyWarning }) {
+  const lastNiftyMonth = niftyDataLastMonth(niftyHistory);
+  const dataStale      = isNiftyDataStale(niftyHistory);
+
+  if (loading) {
+    return (
+      <div style={{
+        padding: '8px 14px', borderRadius: '8px', fontSize: '11px',
+        background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.2)',
+        color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: '8px',
+      }}>
+        {/* Simple spinner */}
+        <svg width="12" height="12" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}>
+          <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(148,169,196,0.3)" strokeWidth="2.5" />
+          <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="var(--accent2)" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+        Fetching live Nifty 50 data… chart is using static fallback until complete.
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{
+        padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
+        background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+        color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: '8px',
+      }}>
+        <span>⚠</span>
+        <span>
+          Could not fetch live Nifty 50 data — using static fallback (last entry: <strong>{lastNiftyMonth}</strong>).
+          Check your network and reload to retry.
+        </span>
+      </div>
+    );
+  }
+
+  if (dataStale) {
+    return (
+      <div style={{
+        padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
+        background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
+        color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: '8px',
+      }}>
+        <span>⚠</span>
+        <span>
+          Nifty 50 fallback data only covers up to <strong>{lastNiftyMonth}</strong>.
+          The Nifty line may appear flat for recent months.
+        </span>
+      </div>
+    );
+  }
+
+  // Live data successfully loaded
+  return (
+    <div style={{
+      padding: '8px 14px', borderRadius: '8px', fontSize: '11px',
+      background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
+      color: 'var(--green2)', display: 'flex', alignItems: 'center', gap: '8px',
+    }}>
+      <span className="live-dot" />
+      <span>
+        Nifty 50 data loaded live via{' '}
+        <strong>
+          {niftySource === 'upstox'
+            ? 'Upstox (^NSE_INDEX|Nifty 50)'
+            : 'Yahoo Finance (^NSEI)'}
+        </strong>
+        {' '}— up to <strong>{lastNiftyMonth}</strong>
+        {niftyWarning && (
+          <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>⚠ {niftyWarning}</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 // ── Main View ─────────────────────────────────────────────────────────────────
 export default function PortfolioVsNiftyView() {
   const { portfolioId, stats, setActiveView } = usePortfolio();
   const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId, 100);
   const [mode, setMode] = useState('indexed');
 
-  // Live Nifty history fetched via /api/nifty-history (Upstox primary, Yahoo fallback)
+  // FIX (Issue 9): initialise niftyHistory to null (not an empty object) so
+  // we can distinguish "not yet fetched" from "fetched but empty".
+  // The niftySeries memo and NiftyStatusBanner both key off this being null
+  // to show the correct "loading/fallback" state on the first render.
   const [niftyHistory, setNiftyHistory] = useState(null);
-  const [niftySource,  setNiftySource]  = useState(null);  // 'upstox' | 'yahoo'
-  const [niftyWarning, setNiftyWarning] = useState(null);  // set when fallback was used
+  const [niftySource,  setNiftySource]  = useState(null);
+  const [niftyWarning, setNiftyWarning] = useState(null);
   const [niftyLoading, setNiftyLoading] = useState(false);
   const [niftyError,   setNiftyError]   = useState(false);
 
-  // Fetch Nifty data once we know the first snapshot date
   const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
 
   useEffect(() => {
     if (!firstSnapshotDate) return;
 
     let cancelled = false;
+    // Reset to loading state — this also makes NiftyStatusBanner show the
+    // "Fetching…" pill on every re-fetch, not just the first one.
     setNiftyLoading(true);
     setNiftyError(false);
+    setNiftyHistory(null);   // null = "not yet resolved" — banner shows loading
     setNiftyWarning(null);
+    setNiftySource(null);
 
     fetchNiftyHistory(firstSnapshotDate).then(result => {
       if (cancelled) return;
@@ -155,7 +251,9 @@ export default function PortfolioVsNiftyView() {
         setNiftySource(result.source);
         setNiftyWarning(result.warning || null);
       } else {
-        setNiftyError(true); // both sources failed — will use NIFTY_FALLBACK
+        // Both sources failed — niftyHistory stays null → getNiftyForMonth
+        // will fall back to NIFTY_FALLBACK automatically; banner shows error.
+        setNiftyError(true);
       }
       setNiftyLoading(false);
     });
@@ -180,7 +278,9 @@ export default function PortfolioVsNiftyView() {
     }));
   }, [snapshots]);
 
-  // niftyHistory may still be null while loading; memoize once it's ready
+  // niftyHistory is null while loading — getNiftyForMonth falls back to
+  // NIFTY_FALLBACK automatically, so the chart always has something to show.
+  // The NiftyStatusBanner communicates this clearly (see above).
   const niftySeries = useMemo(() =>
     portfolioSeries
       .map(d => ({ month: d.month, value: getNiftyForMonth(d.month, niftyHistory) || 0 }))
@@ -205,7 +305,7 @@ export default function PortfolioVsNiftyView() {
   const nTotal = lastN ? ((lastN.indexed / 100) - 1) * 100 : 0;
   const latestSnapshotDate = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
 
-  if (loading) return (
+  if (snapshotsLoading) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="fade-up">
       {[140, 260, 100].map((h, i) => (
         <div key={i} className="skeleton" style={{ height: h, borderRadius: '12px' }} />
@@ -241,46 +341,18 @@ export default function PortfolioVsNiftyView() {
   return (
     <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-      {/* Nifty data source status */}
-      {niftyError ? (
-        <div style={{
-          padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
-          background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
-          color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span>⚠</span>
-          <span>
-            Could not fetch live Nifty 50 data — using static fallback (last entry: <strong>{lastNiftyMonth}</strong>).
-            Check your network and reload to retry.
-          </span>
-        </div>
-      ) : dataStale ? (
-        <div style={{
-          padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
-          background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
-          color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span>⚠</span>
-          <span>
-            Nifty 50 fallback data only covers up to <strong>{lastNiftyMonth}</strong>.
-            The Nifty line may appear flat for recent months.
-          </span>
-        </div>
-      ) : (
-        <div style={{
-          padding: '8px 14px', borderRadius: '8px', fontSize: '11px',
-          background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
-          color: 'var(--green2)', display: 'flex', alignItems: 'center', gap: '8px',
-        }}>
-          <span className="live-dot" />
-          <span>
-            Nifty 50 data loaded live via{' '}
-            <strong>{niftySource === 'upstox' ? 'Upstox (^NSE_INDEX|Nifty 50)' : 'Yahoo Finance (^NSEI)'}</strong>
-            {' '}— up to <strong>{lastNiftyMonth}</strong>
-            {niftyWarning && <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>⚠ {niftyWarning}</span>}
-          </span>
-        </div>
-      )}
+      {/* FIX (Issue 9): NiftyStatusBanner is always rendered — it shows
+          "Fetching…" during load, "error/fallback" on failure, and "live" on
+          success.  The old inline ternary only checked niftyError / dataStale
+          after the fetch resolved, so the very first render flashed "live data"
+          green even though NIFTY_FALLBACK was still powering the chart. */}
+      <NiftyStatusBanner
+        loading={niftyLoading}
+        error={niftyError}
+        niftyHistory={niftyHistory}
+        niftySource={niftySource}
+        niftyWarning={niftyWarning}
+      />
 
       {/* Header stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
@@ -347,6 +419,11 @@ export default function PortfolioVsNiftyView() {
             <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>Portfolio vs Nifty 50</div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
               Indexed to 100 at start — shows relative performance irrespective of portfolio size
+              {niftyLoading && (
+                <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
+                  (Nifty line uses static data while live fetch completes)
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -394,8 +471,13 @@ export default function PortfolioVsNiftyView() {
         background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', lineHeight: '1.7',
       }}>
         <strong style={{ color: 'var(--text2)' }}>Methodology:</strong> Portfolio values are from your saved snapshots.
-        Nifty 50 data is fetched live from {niftySource === 'upstox' ? 'Upstox V3 API (NSE_INDEX|Nifty 50, monthly closes)' : niftySource === 'yahoo' ? 'Yahoo Finance (^NSEI, monthly closes)' : 'static fallback data'}.
-        Both series are rebased to 100 at your first snapshot date for fair comparison.
+        Nifty 50 data is fetched live from{' '}
+        {niftySource === 'upstox'
+          ? 'Upstox V3 API (NSE_INDEX|Nifty 50, monthly closes)'
+          : niftySource === 'yahoo'
+          ? 'Yahoo Finance (^NSEI, monthly closes)'
+          : 'static fallback data (live fetch pending or unavailable)'}.
+        {' '}Both series are rebased to 100 at your first snapshot date for fair comparison.
         Alpha = Portfolio indexed value − Nifty indexed value (index points).
         Save more snapshots regularly for better granularity.
       </div>

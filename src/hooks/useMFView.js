@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { fmtCr, fmt } from '@/lib/store';
 
 export function useMFView({ mfHoldings, stats }) {
   const [sort, setSort]         = useState({ key: 'returnPct', dir: -1 });
@@ -35,13 +36,50 @@ export function useMFView({ mfHoldings, stats }) {
     [mfHoldings]
   );
 
+  // FIX (Issue 8): each item now carries an explicit `format` function so the
+  // render loop never needs to infer the type of `v`.  Previously MFView used
+  // `typeof m.v === 'number' && m.l !== 'Funds'` as a guard — fragile because
+  // any label rename silently passes a plain integer into fmtCr(), which would
+  // produce "₹5" instead of "5" for fund count.
   const summaryItems = useMemo(() => [
-    { l: 'MF Value',      v: stats.mfValue,    c: 'var(--teal)'    },
-    { l: 'Invested',      v: stats.mfInvested, c: 'var(--text)'    },
-    { l: 'Unrealized',    v: mfGain,            c: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'Realized P&L', v: mfRealized,        c: mfRealized >= 0 ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'Wtd CAGR',      v: stats.mfCagr,      c: 'var(--green2)' },
-    { l: 'Funds',         v: stats.fundCount,   c: 'var(--accent2)' },
+    {
+      l: 'MF Value',
+      v: stats.mfValue,
+      c: 'var(--teal)',
+      format: (v) => fmtCr(v),
+    },
+    {
+      l: 'Invested',
+      v: stats.mfInvested,
+      c: 'var(--text)',
+      format: (v) => fmtCr(v),
+    },
+    {
+      l: 'Unrealized',
+      v: mfGain,
+      c: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)',
+      format: (v) => fmtCr(v),
+    },
+    {
+      l: 'Realized P&L',
+      v: mfRealized,
+      c: mfRealized >= 0 ? 'var(--green2)' : 'var(--red2)',
+      format: (v) => fmtCr(v),
+    },
+    {
+      l: 'Wtd CAGR',
+      v: stats.mfCagr,
+      c: 'var(--green2)',
+      // CAGR is a percentage, not a currency amount
+      format: (v) => `${v >= 0 ? '+' : ''}${fmt(v)}%`,
+    },
+    {
+      l: 'Funds',
+      v: stats.fundCount,
+      c: 'var(--accent2)',
+      // Plain integer — no currency or percentage formatting
+      format: (v) => String(v),
+    },
   ], [stats, mfGain, mfRealized]);
 
   function toggleSort(k) {

@@ -22,17 +22,17 @@ const PortfolioCtx = createContext(null);
 const DEFAULT_USER_ID = 'user-default-001';
 
 export function PortfolioProvider({ children }) {
-  const [trades, setTrades] = useState([]);
-  const [portfolioId, setPortfolioId] = useState(null);
+  const [trades, setTrades]               = useState([]);
+  const [portfolioId, setPortfolioId]     = useState(null);
   const [currentPrices, setCurrentPrices] = useState({});
-  const [priceMeta, setPriceMeta] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [activeView, setActiveView] = useState('overview');
-  const [toasts, setToasts] = useState([]);
+  const [priceMeta, setPriceMeta]         = useState({});
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState(null);
+  const [activeView, setActiveView]       = useState('overview');
+  const [toasts, setToasts]               = useState([]);
 
   const [portfolioXIRR, setPortfolioXIRR] = useState(null);
-  const [, startXIRRTransition] = useTransition();
+  const [, startXIRRTransition]           = useTransition();
 
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -76,10 +76,8 @@ export function PortfolioProvider({ children }) {
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
 
-          // FIX (high): background-fetch any symbols with no cached price at
-          // all (e.g. newly added instruments).  Without this they silently
-          // fall back to avgBuy as CMP indefinitely until the user manually
-          // clicks "Prices".
+          // Background-fetch any symbols with no cached price at all
+          // (e.g. newly added instruments that have never been priced).
           const missing = symbols.filter(s => !priceData.prices?.[s]);
           if (missing.length > 0) {
             fetch('/api/prices', {
@@ -123,10 +121,10 @@ export function PortfolioProvider({ children }) {
     [holdings],
   );
 
-  const mfHoldings = useMemo(() => holdings.filter(h => h.assetType === 'MF'), [holdings]);
-  const stHoldings = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
-  const monthlyFlow = useMemo(() => buildMonthlyFlow(trades), [trades]);
-  const taxData = useMemo(() => computeTax(holdings), [holdings]);
+  const mfHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'MF'),    [holdings]);
+  const stHoldings  = useMemo(() => holdings.filter(h => h.assetType === 'STOCK'), [holdings]);
+  const monthlyFlow = useMemo(() => buildMonthlyFlow(trades),                       [trades]);
+  const taxData     = useMemo(() => computeTax(holdings),                           [holdings]);
 
   const realizedSummary = useMemo(
     () => computeRealizedSummary(holdings),
@@ -159,8 +157,7 @@ export function PortfolioProvider({ children }) {
   // Only trigger re-renders when prices actually changed.
   function mergePrices(next = {}) {
     setCurrentPrices(prev => {
-      const changed = Object.keys(next).some(k => prev[k] !== next[k]) ||
-        Object.keys(prev).some(k => !(k in next));
+      const changed = Object.keys(next).some(k => prev[k] !== next[k]);
       return changed ? { ...prev, ...next } : prev;
     });
   }
@@ -214,9 +211,6 @@ export function PortfolioProvider({ children }) {
   }
 
   // ── Save snapshot ─────────────────────────────────────────────────────────
-  // FIX: now sends totalRealizedGain so the API can persist it to the new
-  // schema column (was silently dropped before, causing "—" in snapshot table).
-  // Also reads the `created` flag from the API to show the right toast.
   async function saveSnapshot() {
     try {
       const res = await fetch('/api/snapshots', {
@@ -224,21 +218,20 @@ export function PortfolioProvider({ children }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           portfolioId,
-          totalValue: stats.totalValue,
-          totalInvested: stats.totalInvested,
-          totalGain: stats.totalGain,
-          totalRealizedGain: stats.totalRealizedGain,   // FIX: was missing
-          totalReturnPct: stats.totalReturnPct,
-          mfCagr: stats.mfCagr,
-          mfInvested: stats.mfInvested,
-          stInvested: stats.stInvested,
-          fundCount: stats.fundCount,
-          stockCount: stats.stockCount,
+          totalValue:        stats.totalValue,
+          totalInvested:     stats.totalInvested,
+          totalGain:         stats.totalGain,
+          totalRealizedGain: stats.totalRealizedGain,
+          totalReturnPct:    stats.totalReturnPct,
+          mfCagr:            stats.mfCagr,
+          mfInvested:        stats.mfInvested,
+          stInvested:        stats.stInvested,
+          fundCount:         stats.fundCount,
+          stockCount:        stats.stockCount,
         }),
       });
       if (!res.ok) throw new Error('Snapshot failed');
       const data = await res.json();
-      // FIX: show "updated" when the same-minute upsert hit an existing row
       toast(data.created ? 'Snapshot saved 📸' : 'Snapshot updated 📸', 'green');
     } catch (err) {
       toast(err.message, 'red');
@@ -264,18 +257,23 @@ export function PortfolioProvider({ children }) {
   }
 
   // ── Refresh prices ────────────────────────────────────────────────────────
-  // FIX (high): was firing one concurrent Yahoo request per symbol simultaneously
-  // (30+ at once), hitting rate limits and silently failing most of them while
-  // showing a success toast.  Now sends symbols in chunks of 20 with a small
-  // stagger between chunks — matching what updatePrices.js already does.
+  // FIX (Issue 6): collect ALL chunk results into local accumulators first,
+  // then call setCurrentPrices / setPriceMeta exactly ONCE at the end.
+  // The previous implementation called mergePrices inside the loop, which
+  // created stale closures — each chunk's setState captured a snapshot of
+  // `prev` that could be superseded before React processed it.
   async function refreshPrices() {
     const symbols = [...new Set(trades.map(t => t.symbol))];
     if (!symbols.length) return;
 
-    const CHUNK = 20;
+    const CHUNK      = 20;
     const STAGGER_MS = 300;
+
+    // Accumulate across chunks — no setState inside the loop
+    const allPrices = {};
+    const allMeta   = {};
     let updatedCount = 0;
-    let failedCount = 0;
+    let failedCount  = 0;
 
     for (let i = 0; i < symbols.length; i += CHUNK) {
       const chunk = symbols.slice(i, i + CHUNK);
@@ -287,8 +285,9 @@ export function PortfolioProvider({ children }) {
         });
         if (res.ok) {
           const priceData = await res.json();
-          mergePrices(priceData.prices);
-          mergeMeta(priceData.meta || {});
+          // Merge into local accumulators — no React state touched yet
+          Object.assign(allPrices, priceData.prices  || {});
+          Object.assign(allMeta,   priceData.meta    || {});
           updatedCount += Object.keys(priceData.prices || {}).length;
         } else {
           failedCount += chunk.length;
@@ -300,6 +299,15 @@ export function PortfolioProvider({ children }) {
       if (i + CHUNK < symbols.length) {
         await new Promise(r => setTimeout(r, STAGGER_MS));
       }
+    }
+
+    // Single atomic state update — no stale-closure risk
+    if (Object.keys(allPrices).length > 0) {
+      setCurrentPrices(prev => {
+        const changed = Object.keys(allPrices).some(k => prev[k] !== allPrices[k]);
+        return changed ? { ...prev, ...allPrices } : prev;
+      });
+      setPriceMeta(prev => ({ ...prev, ...allMeta }));
     }
 
     if (updatedCount > 0 && failedCount === 0) {

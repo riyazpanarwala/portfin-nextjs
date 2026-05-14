@@ -41,17 +41,19 @@ export default function MFView() {
   return (
     <div className={`fade-up ${styles.wrapper}`}>
 
-      {/* Summary strip */}
+      {/* Summary strip
+          FIX (Issue 8): each summaryItem now carries a `fmt` function so the
+          render loop never has to guess the type of `m.v`.  Previously the
+          component used `typeof m.v === 'number' && m.l !== 'Funds'` as a
+          guard, but any label change would silently break it and pass a plain
+          integer (e.g. fund count = 5) into fmtCr(), producing "₹5". */}
       <div className={styles.summaryStrip}>
         {summaryItems.map((m, i) => (
           <div key={i} className={styles.summaryCell}>
             <div className={styles.summaryCellLabel}>{m.l}</div>
             <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 18 }}>
-              {typeof m.v === 'number' && m.l !== 'Funds'
-                ? m.l === 'Wtd CAGR'
-                  ? `${mfGain >= 0 ? '+' : ''}${fmt(m.v)}%`
-                  : fmtCr(m.v)
-                : m.v}
+              {/* Each item carries its own formatter — no type-sniffing needed */}
+              {m.format ? m.format(m.v) : m.v}
             </div>
           </div>
         ))}

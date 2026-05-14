@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { Upload, FileSpreadsheet, X, CheckCircle2, AlertTriangle, ChevronDown, ChevronRight, Download, Trash2, Play } from 'lucide-react';
+import { Upload, FileSpreadsheet, X, CheckCircle2, AlertTriangle, Download, Trash2, Play } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 
 // ─── Broker format definitions ────────────────────────────────────────────────
@@ -44,7 +44,6 @@ function parseZerodha(rows) {
       const instrumentType = r['Instrument Type'] || r['Series'] || 'EQ';
       const assetType = /^(MF|mutual)/i.test(instrumentType) ? 'MF' : 'STOCK';
       const exchange = r['Exchange'] || (assetType === 'MF' ? 'AMFI' : 'NSE');
-
       return { symbol, tradeDate, tradeType, quantity: qty, price, brokerage, assetType, exchange, isin, name: r['Security Name'] || symbol };
     })
     .filter(r => r.symbol && r.quantity > 0 && r.price > 0 && r.tradeDate);
@@ -62,7 +61,6 @@ function parseGroww(rows) {
       const qty = parseFloat(r['Units'] || r['Quantity'] || 0);
       const price = parseFloat(r['NAV'] || r['Price'] || r['Average Price'] || 0);
       const isin = (r['ISIN'] || '').trim() || null;
-
       return {
         symbol, tradeDate, tradeType, quantity: qty, price,
         assetType: isMF ? 'MF' : 'STOCK',
@@ -87,20 +85,20 @@ function parseGeneric(rows) {
         const key = keys.find(k => patterns.some(p => new RegExp(p, 'i').test(k)));
         return key ? String(r[key] || '').trim() : '';
       };
-
       const symbol = normalizeSymbol(get('symbol', 'ticker', 'stock', 'fund', 'scheme', 'scrip'));
       const rawDate = get('date', 'trade.?date', 'order.?date', 'execution');
       const tradeDate = normalizeDate(rawDate);
-      const typeStr = get('type', 'trade.?type', 'transaction', 'order.?type', 'side', 'buy.?sell');
-      const tradeType = /sell|redemption|s$/i.test(typeStr) ? 'SELL' : 'BUY';
+      // Use a narrow pattern that matches trade direction columns only —
+      // avoids accidentally matching AssetType / InstrumentType columns.
+      const typeStr = get('^type$', '^trade.?type$', '^transaction.?type$', '^order.?type$', '^side$', '^buy.?sell$');
+      const tradeType = /sell|redemption/i.test(typeStr) ? 'SELL' : 'BUY';
       const qty = parseFloat(get('qty', 'quantity', 'units', 'shares') || 0);
       const price = parseFloat(get('price', 'nav', 'rate', 'avg') || 0);
       const brokerage = parseFloat(get('brokerage', 'commission', 'charges') || 0) || null;
       const isin = get('isin').toUpperCase() || null;
-      const assetTypeHint = get('asset.?type', 'instrument', 'series', 'segment');
+      const assetTypeHint = get('^asset.?type$', '^instrument.?type$', '^series$', '^segment$');
       const assetType = /^MF|mutual|fund/i.test(assetTypeHint) ? 'MF' : 'STOCK';
       const exchange = get('exchange') || (assetType === 'MF' ? 'AMFI' : 'NSE');
-
       return { symbol, tradeDate, tradeType, quantity: qty, price, brokerage, assetType, exchange, isin, name: symbol };
     })
     .filter(r => r.symbol && r.quantity > 0 && r.price > 0 && r.tradeDate);
@@ -115,21 +113,17 @@ function normalizeSymbol(raw) {
 function normalizeDate(raw) {
   if (!raw) return '';
   const s = String(raw).trim();
-  // ISO
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  // DD/MM/YYYY or DD-MM-YYYY
   const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
   if (m1) return `${m1[3]}-${m1[2].padStart(2, '0')}-${m1[1].padStart(2, '0')}`;
-  // MM/DD/YYYY
   const m2 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
   if (m2) {
     const yr = m2[3].length === 2 ? '20' + m2[3] : m2[3];
     return `${yr}-${m2[1].padStart(2, '0')}-${m2[2].padStart(2, '0')}`;
   }
-  // Natural dates like "01 Jan 2024"
   const m3 = s.match(/(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
   if (m3) {
-    const months = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+    const months = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
     const mo = months[m3[2].toLowerCase().slice(0, 3)];
     if (mo) return `${m3[3]}-${String(mo).padStart(2, '0')}-${m3[1].padStart(2, '0')}`;
   }
@@ -163,19 +157,14 @@ function splitCSVLine(line) {
 async function parseExcel(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
-        // Dynamic import approach - use SheetJS if available
-        if (typeof window !== 'undefined' && window.XLSX) {
-          const wb = window.XLSX.read(e.target.result, { type: 'array' });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          resolve(window.XLSX.utils.sheet_to_json(ws, { defval: '' }));
-        } else {
-          // Fallback: try to read as CSV (some xlsx files are actually CSV)
-          const text = new TextDecoder().decode(new Uint8Array(e.target.result));
-          resolve(parseCSV(text));
-        }
-      } catch {
+        // Dynamically import xlsx so it doesn't bloat the initial bundle
+        const XLSX = await import('xlsx').then(m => m.default ?? m);
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        resolve(XLSX.utils.sheet_to_json(ws, { defval: '' }));
+      } catch (err) {
         reject(new Error('Could not parse Excel file. Try saving as CSV first.'));
       }
     };
@@ -208,7 +197,7 @@ function validateTrade(t) {
 
 export default function TradeImporter({ onClose }) {
   const { addTrade, portfolioId, toast } = usePortfolio();
-  const [phase, setPhase] = useState('upload'); // upload | review | importing | done
+  const [phase, setPhase] = useState('upload');
   const [dragging, setDragging] = useState(false);
   const [fileName, setFileName] = useState('');
   const [detectedBroker, setDetectedBroker] = useState(null);
@@ -299,7 +288,6 @@ export default function TradeImporter({ onClose }) {
       } catch (err) {
         errors.push(`${t.symbol} (${t.tradeDate}): ${err.message}`);
       }
-      // Small delay so the progress bar animates visibly
       await new Promise(r => setTimeout(r, 40));
     }
 
@@ -308,6 +296,26 @@ export default function TradeImporter({ onClose }) {
   }, [editedTrades, selectedIds, addTrade, portfolioId]);
 
   // ── Field edit ───────────────────────────────────────────────────────────────
+  // FIX (Issue 4): editField is unchanged — it still updates the parent array.
+  // The key fix is in the EditCell component below: instead of keeping local
+  // useState for the edit value, EditCell is now a pure controlled input.
+  // The parent holds a single `activeEdit` cursor { id, field, value } so only
+  // ONE cell is ever in edit mode at a time, and it survives parent re-renders
+  // because the state lives here, not inside a child that remounts.
+  const [activeEdit, setActiveEdit] = useState(null); // { id, field, value }
+
+  const commitEdit = useCallback((id, field, value) => {
+    setEditedTrades(prev => prev.map(t => {
+      if (t._id !== id) return t;
+      const updated = {
+        ...t,
+        [field]: field === 'quantity' || field === 'price' ? parseFloat(value) || 0 : value,
+      };
+      return { ...updated, _errors: validateTrade(updated) };
+    }));
+    setActiveEdit(null);
+  }, []);
+
   const editField = useCallback((id, field, value) => {
     setEditedTrades(prev => prev.map(t => {
       if (t._id !== id) return t;
@@ -333,9 +341,9 @@ export default function TradeImporter({ onClose }) {
   const removeRow = useCallback((id) => {
     setEditedTrades(prev => prev.filter(t => t._id !== id));
     setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
-  }, []);
+    if (activeEdit?.id === id) setActiveEdit(null);
+  }, [activeEdit]);
 
-  // ── Template download ────────────────────────────────────────────────────────
   function downloadTemplate() {
     const csv = [
       'Symbol,Trade Date,Trade Type,Asset Type,Exchange,Quantity,Price,Brokerage,ISIN,Name',
@@ -405,10 +413,9 @@ export default function TradeImporter({ onClose }) {
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: phase === 'review' ? '0' : '24px' }}>
 
-          {/* ── UPLOAD ────────────────────────────────────────────────────── */}
+          {/* ── UPLOAD ── */}
           {phase === 'upload' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Drop zone */}
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
@@ -427,8 +434,7 @@ export default function TradeImporter({ onClose }) {
                   background: dragging ? 'rgba(59,130,246,0.2)' : 'var(--bg3)',
                   border: `1px solid ${dragging ? 'rgba(59,130,246,0.4)' : 'var(--border)'}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 16px',
-                  transition: 'all 0.2s',
+                  margin: '0 auto 16px', transition: 'all 0.2s',
                 }}>
                   <Upload size={24} color={dragging ? 'var(--accent2)' : 'var(--text3)'} />
                 </div>
@@ -442,8 +448,7 @@ export default function TradeImporter({ onClose }) {
                   {Object.entries(BROKER_FORMATS).map(([id, fmt]) => (
                     <span key={id} style={{
                       fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '20px',
-                      background: `${fmt.color}18`, color: fmt.color,
-                      border: `1px solid ${fmt.color}40`,
+                      background: `${fmt.color}18`, color: fmt.color, border: `1px solid ${fmt.color}40`,
                     }}>{fmt.name}</span>
                   ))}
                 </div>
@@ -464,11 +469,7 @@ export default function TradeImporter({ onClose }) {
                 </div>
               )}
 
-              {/* Template download + format docs */}
-              <div style={{
-                background: 'var(--bg3)', borderRadius: '10px', padding: '16px',
-                border: '1px solid var(--border)',
-              }}>
+              <div style={{ background: 'var(--bg3)', borderRadius: '10px', padding: '16px', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text2)' }}>Expected Columns</span>
                   <button onClick={downloadTemplate} className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: '11px' }}>
@@ -497,7 +498,7 @@ export default function TradeImporter({ onClose }) {
             </div>
           )}
 
-          {/* ── REVIEW ────────────────────────────────────────────────────── */}
+          {/* ── REVIEW ── */}
           {phase === 'review' && (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {/* Stats bar */}
@@ -508,21 +509,19 @@ export default function TradeImporter({ onClose }) {
                 flexShrink: 0,
               }}>
                 <div style={{ display: 'flex', gap: '16px', flex: 1, flexWrap: 'wrap' }}>
-                  <Stat label="Total" value={editedTrades.length} color="var(--text)" />
-                  <Stat label="Valid" value={validCount} color="var(--green2)" />
+                  <Stat label="Total"     value={editedTrades.length} color="var(--text)" />
+                  <Stat label="Valid"     value={validCount}          color="var(--green2)" />
                   {errorCount > 0 && <Stat label="Needs fix" value={errorCount} color="var(--yellow)" />}
-                  <Stat label="Selected" value={selectedCount} color="var(--accent2)" />
+                  <Stat label="Selected" value={selectedCount}        color="var(--accent2)" />
                 </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                  <span style={{
-                    fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px',
-                    background: `${BROKER_FORMATS[detectedBroker]?.color}20`,
-                    color: BROKER_FORMATS[detectedBroker]?.color,
-                    border: `1px solid ${BROKER_FORMATS[detectedBroker]?.color}40`,
-                  }}>
-                    {BROKER_FORMATS[detectedBroker]?.name} detected
-                  </span>
-                </div>
+                <span style={{
+                  fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px',
+                  background: `${BROKER_FORMATS[detectedBroker]?.color}20`,
+                  color: BROKER_FORMATS[detectedBroker]?.color,
+                  border: `1px solid ${BROKER_FORMATS[detectedBroker]?.color}40`,
+                }}>
+                  {BROKER_FORMATS[detectedBroker]?.name} detected
+                </span>
               </div>
 
               {/* Table */}
@@ -550,8 +549,9 @@ export default function TradeImporter({ onClose }) {
                   </thead>
                   <tbody>
                     {editedTrades.map((t) => {
-                      const hasError = t._errors.length > 0;
+                      const hasError  = t._errors.length > 0;
                       const isExpanded = expandedRows.has(t._id);
+
                       return (
                         <>
                           <tr
@@ -573,18 +573,36 @@ export default function TradeImporter({ onClose }) {
                                 style={{ accentColor: 'var(--accent)' }}
                               />
                             </td>
+
+                            {/* FIX (Issue 4): EditCell is now a controlled component driven by
+                                `activeEdit` state that lives in the parent.  When a cell is
+                                activated the parent stores { id, field, value }; all other cells
+                                read from editedTrades directly.  This means a setEditedTrades
+                                call for row B no longer causes row A's in-progress input to
+                                remount and lose its value — the active-edit cursor is preserved
+                                across parent re-renders. */}
                             <td style={TD_STYLE}>
                               <EditCell
+                                cellKey={`${t._id}:symbol`}
                                 value={t.symbol}
-                                onChange={v => editField(t._id, 'symbol', v)}
+                                activeEdit={activeEdit}
+                                onActivate={(v) => setActiveEdit({ id: t._id, field: 'symbol', value: v })}
+                                onChangeActive={(v) => setActiveEdit(a => ({ ...a, value: v }))}
+                                onCommit={(v) => commitEdit(t._id, 'symbol', v)}
+                                onCancel={() => setActiveEdit(null)}
                                 mono
                                 highlight={!t.symbol}
                               />
                             </td>
                             <td style={TD_STYLE}>
                               <EditCell
+                                cellKey={`${t._id}:tradeDate`}
                                 value={t.tradeDate}
-                                onChange={v => editField(t._id, 'tradeDate', v)}
+                                activeEdit={activeEdit}
+                                onActivate={(v) => setActiveEdit({ id: t._id, field: 'tradeDate', value: v })}
+                                onChangeActive={(v) => setActiveEdit(a => ({ ...a, value: v }))}
+                                onCommit={(v) => commitEdit(t._id, 'tradeDate', v)}
+                                onCancel={() => setActiveEdit(null)}
                                 placeholder="YYYY-MM-DD"
                                 highlight={!t.tradeDate}
                               />
@@ -594,19 +612,25 @@ export default function TradeImporter({ onClose }) {
                                 value={t.tradeType}
                                 onChange={e => editField(t._id, 'tradeType', e.target.value)}
                                 style={{
-                                  background: 'transparent', border: 'none', color: t.tradeType === 'BUY' ? 'var(--green2)' : 'var(--red2)',
+                                  background: 'transparent', border: 'none',
+                                  color: t.tradeType === 'BUY' ? 'var(--green2)' : 'var(--red2)',
                                   fontWeight: '700', fontSize: '11px', cursor: 'pointer', padding: '2px 0',
                                   fontFamily: 'var(--font-mono)',
                                 }}
                               >
-                                <option value="BUY" style={{ background: 'var(--bg2)', color: 'var(--green2)' }}>BUY</option>
+                                <option value="BUY"  style={{ background: 'var(--bg2)', color: 'var(--green2)' }}>BUY</option>
                                 <option value="SELL" style={{ background: 'var(--bg2)', color: 'var(--red2)' }}>SELL</option>
                               </select>
                             </td>
                             <td style={{ ...TD_STYLE, textAlign: 'right' }}>
                               <EditCell
+                                cellKey={`${t._id}:quantity`}
                                 value={t.quantity}
-                                onChange={v => editField(t._id, 'quantity', v)}
+                                activeEdit={activeEdit}
+                                onActivate={(v) => setActiveEdit({ id: t._id, field: 'quantity', value: String(v) })}
+                                onChangeActive={(v) => setActiveEdit(a => ({ ...a, value: v }))}
+                                onCommit={(v) => commitEdit(t._id, 'quantity', v)}
+                                onCancel={() => setActiveEdit(null)}
                                 type="number"
                                 highlight={!t.quantity || t.quantity <= 0}
                                 right
@@ -614,8 +638,13 @@ export default function TradeImporter({ onClose }) {
                             </td>
                             <td style={{ ...TD_STYLE, textAlign: 'right' }}>
                               <EditCell
+                                cellKey={`${t._id}:price`}
                                 value={t.price}
-                                onChange={v => editField(t._id, 'price', v)}
+                                activeEdit={activeEdit}
+                                onActivate={(v) => setActiveEdit({ id: t._id, field: 'price', value: String(v) })}
+                                onChangeActive={(v) => setActiveEdit(a => ({ ...a, value: v }))}
+                                onCommit={(v) => commitEdit(t._id, 'price', v)}
+                                onCancel={() => setActiveEdit(null)}
                                 type="number"
                                 highlight={!t.price || t.price <= 0}
                                 right
@@ -628,7 +657,7 @@ export default function TradeImporter({ onClose }) {
                                 style={{ background: 'transparent', border: 'none', color: t.assetType === 'MF' ? 'var(--teal)' : 'var(--purple)', fontWeight: '600', fontSize: '11px', cursor: 'pointer', padding: '2px 0' }}
                               >
                                 <option value="STOCK" style={{ background: 'var(--bg2)', color: 'var(--purple)' }}>STOCK</option>
-                                <option value="MF" style={{ background: 'var(--bg2)', color: 'var(--teal)' }}>MF</option>
+                                <option value="MF"    style={{ background: 'var(--bg2)', color: 'var(--teal)' }}>MF</option>
                               </select>
                             </td>
                             <td style={TD_STYLE}>
@@ -637,8 +666,8 @@ export default function TradeImporter({ onClose }) {
                                 onChange={e => editField(t._id, 'exchange', e.target.value)}
                                 style={{ background: 'transparent', border: 'none', color: 'var(--text2)', fontSize: '11px', cursor: 'pointer', padding: '2px 0' }}
                               >
-                                <option value="NSE" style={{ background: 'var(--bg2)' }}>NSE</option>
-                                <option value="BSE" style={{ background: 'var(--bg2)' }}>BSE</option>
+                                <option value="NSE"  style={{ background: 'var(--bg2)' }}>NSE</option>
+                                <option value="BSE"  style={{ background: 'var(--bg2)' }}>BSE</option>
                                 <option value="AMFI" style={{ background: 'var(--bg2)' }}>AMFI</option>
                               </select>
                             </td>
@@ -692,15 +721,14 @@ export default function TradeImporter({ onClose }) {
             </div>
           )}
 
-          {/* ── IMPORTING ───────────────────────────────────────────────────── */}
+          {/* ── IMPORTING ── */}
           {phase === 'importing' && (
             <div style={{ textAlign: 'center', padding: '16px 0' }}>
               <div style={{
                 width: '60px', height: '60px', borderRadius: '50%',
                 background: 'rgba(59,130,246,0.1)', border: '2px solid rgba(59,130,246,0.3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                margin: '0 auto 20px',
-                animation: 'spin 1s linear infinite',
+                margin: '0 auto 20px', animation: 'spin 1s linear infinite',
               }}>
                 <FileSpreadsheet size={24} color="var(--accent2)" />
               </div>
@@ -721,7 +749,7 @@ export default function TradeImporter({ onClose }) {
             </div>
           )}
 
-          {/* ── DONE ─────────────────────────────────────────────────────────── */}
+          {/* ── DONE ── */}
           {phase === 'done' && (
             <div style={{ textAlign: 'center', padding: '16px 0' }}>
               <div style={{
@@ -773,7 +801,7 @@ export default function TradeImporter({ onClose }) {
               <>
                 <button
                   className="btn btn-ghost"
-                  onClick={() => { setPhase('upload'); setParsedTrades([]); setEditedTrades([]); setParseError(''); }}
+                  onClick={() => { setPhase('upload'); setParsedTrades([]); setEditedTrades([]); setParseError(''); setActiveEdit(null); }}
                   style={{ padding: '7px 16px' }}
                 >
                   ← Back
@@ -811,19 +839,40 @@ function Stat({ label, value, color }) {
   );
 }
 
-function EditCell({ value, onChange, type = 'text', placeholder, mono, highlight, right }) {
-  const [editing, setEditing] = useState(false);
-  const [localVal, setLocalVal] = useState('');
+/**
+ * EditCell — FIX (Issue 4)
+ *
+ * Previously each cell kept its own `useState({ editing, localVal })`.
+ * Because EditCell is rendered inside `editedTrades.map(...)`, ANY call to
+ * `setEditedTrades` (including for a completely different row) could cause
+ * React to remount the component if the array identity changed, blowing away
+ * the `editing` and `localVal` state mid-keystroke.
+ *
+ * The fix: EditCell is now a pure controlled display/input.  All edit state
+ * lives in the parent's `activeEdit` cursor.  A cell is "active" when
+ * `activeEdit` matches its `cellKey`.  Switching from display→input mode is
+ * driven by the parent, so no local state can be lost.
+ */
+function EditCell({
+  cellKey, value, activeEdit,
+  onActivate, onChangeActive, onCommit, onCancel,
+  type = 'text', placeholder, mono, highlight, right,
+}) {
+  const isActive = activeEdit?.id != null &&
+    cellKey === `${activeEdit.id}:${activeEdit.field}`;
 
-  if (editing) {
+  if (isActive) {
     return (
       <input
         autoFocus
         type={type}
-        value={localVal}
-        onChange={e => setLocalVal(e.target.value)}
-        onBlur={() => { onChange(localVal); setEditing(false); }}
-        onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Tab') { onChange(localVal); setEditing(false); } if (e.key === 'Escape') setEditing(false); }}
+        value={activeEdit.value}
+        onChange={e => onChangeActive(e.target.value)}
+        onBlur={() => onCommit(activeEdit.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); onCommit(activeEdit.value); }
+          if (e.key === 'Escape') onCancel();
+        }}
         style={{
           background: 'var(--bg)',
           border: '1px solid var(--accent)',
@@ -839,7 +888,7 @@ function EditCell({ value, onChange, type = 'text', placeholder, mono, highlight
 
   return (
     <span
-      onClick={() => { setLocalVal(String(value)); setEditing(true); }}
+      onClick={() => onActivate(String(value ?? ''))}
       title="Click to edit"
       style={{
         display: 'block',
