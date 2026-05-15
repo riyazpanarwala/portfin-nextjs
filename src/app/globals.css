@@ -103,28 +103,6 @@ body {
   gap: 12px;
 }
 
-.top-header {
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-  padding: 0 24px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  flex-shrink: 0;
-}
-
-.top-metrics {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  flex: 1;
-  overflow: hidden;
-}
-
 .sidebar {
   width: 220px;
   min-width: 220px;
@@ -255,17 +233,6 @@ select option { background: var(--bg2); }
   grid-template-columns: minmax(320px, 460px) minmax(0, 1fr);
 }
 
-@media (max-width: 1100px) {
-  .top-metrics {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .top-metrics::-webkit-scrollbar {
-    display: none;
-  }
-}
-
 @media (max-width: 760px) {
   body {
     font-size: 13px;
@@ -328,20 +295,6 @@ select option { background: var(--bg2); }
     min-width: 18px;
   }
 
-  .top-header {
-    height: auto;
-    padding: 10px 14px;
-    gap: 12px;
-  }
-
-  .top-metrics {
-    gap: 14px;
-  }
-
-  .top-header .btn {
-    padding: 7px 9px !important;
-  }
-
   .page-titlebar {
     padding: 12px 14px;
     align-items: flex-start;
@@ -389,10 +342,6 @@ select option { background: var(--bg2); }
 }
 
 @media (max-width: 520px) {
-  .top-header {
-    align-items: flex-start;
-  }
-
   .page-titlebar h1 {
     font-size: 16px !important;
   }

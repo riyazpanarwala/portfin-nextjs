@@ -36,14 +36,64 @@ const VIEW_TITLES = {
   trade:        'Add Trade',
 };
 
+/**
+ * VIEWS_BYPASS_EMPTY_GUARD
+ *
+ * Views listed here are shown even when the portfolio has no trades.
+ * Every view NOT in this set will render the EmptyState prompt instead.
+ *
+ * Inclusion criteria — a view belongs here if it is:
+ *   (a) genuinely useful before any trades exist, OR
+ *   (b) has its own internal zero-guard that shows a correct empty state
+ *
+ * FIX (Issue 13): 'analytics', 'rebalancer', and 'vs-nifty' were previously
+ * reachable with 0 trades.  They rendered misleading content:
+ *   • analytics  — Sharpe ratio of -0.46 and benchmark comparison at 0%
+ *                  made the portfolio look like it was performing badly
+ *   • rebalancer — action plan showed "Buy more MF: +₹0" for all categories
+ *   • vs-nifty   — fired a useSnapshots() API call, then flashed
+ *                  "₹0.00L invested" before its own EmptyState rendered
+ *
+ * These three are now excluded from the bypass set so the shared EmptyState
+ * is shown instead, directing new users to add trades first.
+ *
+ * Views that remain in the bypass set and why:
+ *   trade        — the primary data-entry screen; always accessible
+ *   ai-advisor   — works with empty context, shows helpful onboarding
+ *   instruments  — instrument management is pre-trade setup work
+ *   goal         — pure SIP calculator, no trade data required
+ *   snapshots    — "Save Snapshot" is valid even on a zero portfolio
+ *   timeline     — internal guard: renders its own EmptyState ✓
+ *   waterfall    — internal guard: renders its own EmptyState ✓
+ *   action       — internal guard: renders its own EmptyState ✓
+ */
+const VIEWS_BYPASS_EMPTY_GUARD = new Set([
+  'trade',
+  'ai-advisor',
+  'instruments',
+  'goal',
+  'snapshots',
+  'timeline',
+  'waterfall',
+  'action',
+]);
+
 export default function Dashboard() {
   const { activeView, loading, error, trades, refreshData, refreshPrices } = usePortfolio();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showImporter, setShowImporter]         = useState(false);
 
+  // Derive once — used both in the render guard and in the title bar
+  const noTrades        = trades.length === 0;
+  const bypassEmptyGuard = VIEWS_BYPASS_EMPTY_GUARD.has(activeView);
+
   return (
     <div className="app-shell grid-bg">
-      <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} onImport={() => setShowImporter(true)} />
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed(v => !v)}
+        onImport={() => setShowImporter(true)}
+      />
 
       <div className="app-content">
         <Header onRefreshPrices={refreshPrices} />
@@ -51,28 +101,37 @@ export default function Dashboard() {
         {/* Title bar */}
         <div className="page-titlebar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h1 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)', letterSpacing: '-0.02em' }}>
+            <h1 style={{
+              fontSize: '18px', fontWeight: '700',
+              color: 'var(--text)', letterSpacing: '-0.02em',
+            }}>
               {VIEW_TITLES[activeView] || 'Dashboard'}
             </h1>
+
             {activeView === 'ai-advisor' && (
               <span className="title-badge" style={{
-                fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '5px',
+                fontSize: '10px', fontWeight: '700', padding: '3px 8px',
+                borderRadius: '5px',
                 background: 'linear-gradient(135deg, rgba(59,130,246,0.25), rgba(139,92,246,0.2))',
-                border: '1px solid rgba(59,130,246,0.4)', color: 'var(--accent2)',
-                letterSpacing: '0.04em',
+                border: '1px solid rgba(59,130,246,0.4)',
+                color: 'var(--accent2)', letterSpacing: '0.04em',
               }}>POWERED BY OLLAMA</span>
             )}
             {activeView === 'vs-nifty' && (
               <span className="title-badge" style={{
-                fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '5px',
-                background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.35)',
+                fontSize: '10px', fontWeight: '700', padding: '3px 8px',
+                borderRadius: '5px',
+                background: 'rgba(16,185,129,0.15)',
+                border: '1px solid rgba(16,185,129,0.35)',
                 color: 'var(--green2)', letterSpacing: '0.04em',
               }}>BENCHMARK COMPARISON</span>
             )}
             {activeView === 'instruments' && (
               <span className="title-badge" style={{
-                fontSize: '10px', fontWeight: '700', padding: '3px 8px', borderRadius: '5px',
-                background: 'rgba(251,146,60,0.15)', border: '1px solid rgba(251,146,60,0.35)',
+                fontSize: '10px', fontWeight: '700', padding: '3px 8px',
+                borderRadius: '5px',
+                background: 'rgba(251,146,60,0.15)',
+                border: '1px solid rgba(251,146,60,0.35)',
                 color: 'var(--orange)', letterSpacing: '0.04em',
               }}>NSE · BSE · AMFI</span>
             )}
@@ -89,16 +148,36 @@ export default function Dashboard() {
               <Upload size={13} /> Import
             </button>
             <div style={{ fontSize: '11px', color: 'var(--text3)' }}>
-              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {new Date().toLocaleDateString('en-IN', {
+                weekday: 'long', day: 'numeric',
+                month: 'long', year: 'numeric',
+              })}
             </div>
           </div>
         </div>
 
+        {/* Main content area */}
         <main className="app-main">
-          {error ? <ErrorState message={error} onRetry={refreshData} /> :
-           loading ? <LoadingState /> :
-           trades.length === 0 && activeView !== 'trade' && activeView !== 'ai-advisor' && activeView !== 'instruments' ? <EmptyState onImport={() => setShowImporter(true)} /> :
-           <ViewRenderer view={activeView} />}
+          {error ? (
+            <ErrorState message={error} onRetry={refreshData} />
+          ) : loading ? (
+            <LoadingState />
+          ) : noTrades && !bypassEmptyGuard ? (
+            /*
+             * FIX (Issue 13): condition changed from:
+             *   trades.length === 0
+             *     && activeView !== 'trade'
+             *     && activeView !== 'ai-advisor'
+             *     && activeView !== 'instruments'
+             *
+             * To a Set-based lookup that also excludes 'analytics',
+             * 'rebalancer', and 'vs-nifty' from rendering with zero data.
+             * The Set makes future additions/removals explicit and reviewable.
+             */
+            <EmptyState onImport={() => setShowImporter(true)} />
+          ) : (
+            <ViewRenderer view={activeView} />
+          )}
         </main>
       </div>
 
@@ -107,6 +186,8 @@ export default function Dashboard() {
     </div>
   );
 }
+
+// ─── View router ──────────────────────────────────────────────────────────────
 
 function ViewRenderer({ view }) {
   switch (view) {
@@ -128,9 +209,14 @@ function ViewRenderer({ view }) {
   }
 }
 
+// ─── Loading skeleton ─────────────────────────────────────────────────────────
+
 function Spinner() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text3)' }}>
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '6px',
+      fontSize: '12px', color: 'var(--text3)',
+    }}>
       <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
       Loading...
     </div>
@@ -140,7 +226,12 @@ function Spinner() {
 function LoadingState() {
   return (
     <div className="fade-up">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: '12px', marginBottom: '20px' }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+        gap: '12px',
+        marginBottom: '20px',
+      }}>
         {[...Array(6)].map((_, i) => (
           <div key={i} className="metric-card">
             <div className="skeleton" style={{ height: '11px', width: '60%', marginBottom: '10px' }} />
@@ -151,45 +242,101 @@ function LoadingState() {
       </div>
       <div className="glass" style={{ padding: '20px' }}>
         <div className="skeleton" style={{ height: '13px', width: '200px', marginBottom: '16px' }} />
-        {[...Array(5)].map((_, i) => <div key={i} className="skeleton" style={{ height: '40px', marginBottom: '8px' }} />)}
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: '40px', marginBottom: '8px' }} />
+        ))}
       </div>
     </div>
   );
 }
 
+// ─── Error state ──────────────────────────────────────────────────────────────
+
 function ErrorState({ message, onRetry }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '60vh', gap: '16px',
+    }}>
       <AlertTriangle size={42} color="var(--yellow)" />
-      <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)' }}>Failed to connect to database</div>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--red2)', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '12px 16px', maxWidth: '480px', wordBreak: 'break-all' }}>
+      <div style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text)' }}>
+        Failed to connect to database
+      </div>
+      <div style={{
+        fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--red2)',
+        background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+        borderRadius: '8px', padding: '12px 16px',
+        maxWidth: '480px', wordBreak: 'break-all',
+      }}>
         {message}
       </div>
-      <div style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '400px', textAlign: 'center' }}>
-        Set <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>DATABASE_URL</code> in <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>.env</code> then run <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>npx prisma db push</code> and <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>npm run db:seed</code>
+      <div style={{
+        fontSize: '13px', color: 'var(--text2)',
+        maxWidth: '400px', textAlign: 'center',
+      }}>
+        Set{' '}
+        <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>
+          DATABASE_URL
+        </code>{' '}
+        in{' '}
+        <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>
+          .env
+        </code>{' '}
+        then run{' '}
+        <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>
+          npx prisma db push
+        </code>{' '}
+        and{' '}
+        <code style={{ background: 'var(--bg3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--accent2)' }}>
+          npm run db:seed
+        </code>
       </div>
-      <button className="btn btn-primary" onClick={onRetry}><RefreshCw size={15} /> Retry Connection</button>
+      <button className="btn btn-primary" onClick={onRetry}>
+        <RefreshCw size={15} /> Retry Connection
+      </button>
     </div>
   );
 }
+
+// ─── Empty state (no trades yet) ─────────────────────────────────────────────
 
 function EmptyState({ onImport }) {
   const { setActiveView } = usePortfolio();
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '16px' }}>
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '60vh', gap: '16px',
+    }}>
       <BarChart3 size={48} color="var(--accent2)" />
-      <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)' }}>Database connected — no trades yet</div>
-      <div style={{ fontSize: '13px', color: 'var(--text2)', maxWidth: '400px', textAlign: 'center' }}>
+      <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text)' }}>
+        Database connected — no trades yet
+      </div>
+      <div style={{
+        fontSize: '13px', color: 'var(--text2)',
+        maxWidth: '400px', textAlign: 'center',
+      }}>
         Import from a broker CSV, upload your own Excel, or add trades manually.
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <button className="btn btn-primary" onClick={() => setActiveView('trade')} style={{ padding: '10px 24px' }}>
+        <button
+          className="btn btn-primary"
+          onClick={() => setActiveView('trade')}
+          style={{ padding: '10px 24px' }}
+        >
           <Plus size={16} /> Add Trade Manually
         </button>
-        <button className="btn btn-ghost" onClick={onImport} style={{ padding: '10px 24px' }}>
+        <button
+          className="btn btn-ghost"
+          onClick={onImport}
+          style={{ padding: '10px 24px' }}
+        >
           <Upload size={15} /> Import from CSV / Excel
         </button>
-        <button className="btn btn-ghost" onClick={() => setActiveView('instruments')} style={{ padding: '10px 24px' }}>
+        <button
+          className="btn btn-ghost"
+          onClick={() => setActiveView('instruments')}
+          style={{ padding: '10px 24px' }}
+        >
           📂 Manage Instruments
         </button>
       </div>

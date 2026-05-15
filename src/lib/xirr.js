@@ -7,7 +7,37 @@
  * where it was duplicated under different names (newtonXIRR / computeXIRR).
  *
  * All XIRR computations across the app import from here.
+ *
+ * ── Issue-12 fixes ───────────────────────────────────────────────────────────
+ * The original solver had four problems that could silently produce garbage
+ * values displayed raw in the UI:
+ *
+ *  1. Clamp ceiling was 100 (= 10,000% p.a.).  A non-converging run would
+ *     hit the limit and return "+10000.00%" as a valid-looking XIRR.
+ *     Fix: tighten ceiling to 50 (5,000% p.a.) and add a post-solve
+ *     reasonableness cap: anything above MAX_REASONABLE_RATE is rejected.
+ *
+ *  2. No convergence flag — the loop always returned `rate` whether it
+ *     converged or not, passing the iteration-limit value straight to the UI.
+ *     Fix: track `converged` boolean; return null when false.
+ *
+ *  3. No oscillation detection — the solver could bounce between two values
+ *     forever (e.g. +50% / -50%) across all 200 iterations.
+ *     Fix: record the previous rate each iteration; if |Δrate| stops
+ *     decreasing for STALL_PATIENCE consecutive steps, bail out early.
+ *
+ *  4. Newton step from a near-zero derivative produced ±Infinity which was
+ *     clamped and then treated as a normal rate.
+ *     Fix: explicit Infinity / NaN guard before the clamp.
  */
+
+/** Annualised rates outside this range are treated as non-convergent. */
+const MAX_REASONABLE_RATE = 5.0;   // 500% p.a. as a decimal fraction
+const MIN_REASONABLE_RATE = -0.99; // -99% p.a.
+
+/** If the step size hasn't shrunk for this many consecutive iterations,
+ *  assume oscillation and abort. */
+const STALL_PATIENCE = 12;
 
 /**
  * xirr — money-weighted annualised return for an arbitrary cash-flow series.
@@ -28,17 +58,75 @@ export function xirr(cashflows) {
   const npv  = r => amounts.reduce((s, a, i) => s + a / Math.pow(1 + r, yr(i)), 0);
   const dnpv = r => amounts.reduce((s, a, i) => s - yr(i) * a / Math.pow(1 + r, yr(i) + 1), 0);
 
-  let rate = 0.1;
+  // Try multiple starting points so the solver is less sensitive to the
+  // initial guess.  For most real portfolios one of these will converge.
+  const SEEDS = [0.1, 0.5, -0.1, 2.0];
+
+  for (const seed of SEEDS) {
+    const result = _solve(seed, npv, dnpv);
+    if (result !== null) return result * 100; // convert to percentage
+  }
+
+  return null; // all seeds failed to converge to a reasonable value
+}
+
+/**
+ * _solve — run the Newton-Raphson loop from a single starting rate.
+ * Returns the converged rate as a decimal fraction, or null.
+ */
+function _solve(seed, npv, dnpv) {
+  let rate     = seed;
+  let converged = false;
+  let prevDelta = Infinity;
+  let stall     = 0;
+
   for (let k = 0; k < 200; k++) {
     const f = npv(rate);
     const d = dnpv(rate);
+
+    // Derivative too small → division would be meaningless
     if (Math.abs(d) < 1e-12) break;
-    const nr = rate - f / d;
-    if (Math.abs(nr - rate) < 1e-8) { rate = nr; break; }
-    rate = Math.max(Math.min(nr, 100), -0.9999);
+
+    const step = f / d;
+
+    // Infinite / NaN step means the function is not well-behaved here
+    if (!isFinite(step)) break;
+
+    const nr = rate - step;
+
+    // Convergence check
+    const delta = Math.abs(nr - rate);
+    if (delta < 1e-8) {
+      rate      = nr;
+      converged = true;
+      break;
+    }
+
+    // Oscillation / stall detection: if the improvement in delta has stopped
+    // shrinking, we're likely bouncing between two values.
+    if (delta >= prevDelta) {
+      stall++;
+      if (stall >= STALL_PATIENCE) break;
+    } else {
+      stall = 0;
+    }
+    prevDelta = delta;
+
+    // Clamp to a range that keeps the math stable.
+    // Use a tighter ceiling than the original 100 — if we haven't converged
+    // to something below 50x (5,000%) by now, the cash flows are degenerate.
+    rate = Math.max(Math.min(nr, MAX_REASONABLE_RATE), MIN_REASONABLE_RATE);
   }
 
-  return isFinite(rate) ? rate * 100 : null;
+  if (!converged) return null;
+
+  // Reasonableness guard: reject rates outside the plausible investment range.
+  // This catches the edge-case where the solver "converges" at the clamp boundary
+  // because the actual root is at ±∞ (e.g. trivially profitable one-day trade).
+  if (rate > MAX_REASONABLE_RATE || rate < MIN_REASONABLE_RATE) return null;
+  if (!isFinite(rate) || isNaN(rate)) return null;
+
+  return rate;
 }
 
 /**
