@@ -411,9 +411,16 @@ export function SellHistoryTable({ h, qtyDecimals = 0 }) {
 // ── Holding detail panel shell ────────────────────────────────────────────────
 export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirrLabel }) {
   const [tab, setTab] = useState('lots');
-  const xirrVal       = useMemo(() => calcHoldingXIRR(h.lots, h.sells, h.cmp), [h.symbol, h.cmp]);
-  const meta          = priceMeta?.[h.symbol];
-  const hasSells      = h.sells && h.sells.length > 0;
+
+  // FIX (Bug 16): h.lots and h.sells were missing from deps, causing stale
+  // XIRR to persist after trades were added/removed for this holding.
+  const xirrVal = useMemo(
+    () => calcHoldingXIRR(h.lots, h.sells, h.cmp),
+    [h.symbol, h.cmp, h.lots, h.sells],
+  );
+
+  const meta    = priceMeta?.[h.symbol];
+  const hasSells = h.sells && h.sells.length > 0;
 
   const tabs = [
     ['lots',    'Lot-wise breakup'],

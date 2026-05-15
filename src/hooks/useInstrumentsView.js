@@ -56,21 +56,11 @@ export function detectFileType(filename, text) {
   return 'nse';
 }
 
-/**
- * parseXlsxFile — reads an XLSX/XLS file as ArrayBuffer and converts each
- * sheet row to the instrument shape expected by the bulk import API.
- *
- * FIX (high): the old readFiles() called f.text() on every file including
- * binary XLSX files, producing garbled output that the CSV parsers turned
- * into 0 instruments with no error shown to the user.
- */
 async function parseXlsxFile(file) {
   const XLSX = await import('xlsx').then(m => m.default ?? m);
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array' });
 
-  // Accept sheets named NSE_Equity / BSE_Equity / NSE_ETF (matching the
-  // instruments_data.xlsx convention), or fall back to the first sheet.
   const SHEET_CFG = [
     ['NSE_Equity', 'NSE', 'STOCK', null],
     ['BSE_Equity', 'BSE', 'STOCK', null],
@@ -81,7 +71,6 @@ async function parseXlsxFile(file) {
   const seen = new Set();
 
   const sheetsToProcess = SHEET_CFG.filter(([name]) => wb.SheetNames.includes(name));
-  // If none of the known sheet names match, process all sheets with NSE defaults
   const targets = sheetsToProcess.length > 0
     ? sheetsToProcess
     : wb.SheetNames.map(name => [name, 'NSE', 'STOCK', null]);
@@ -89,7 +78,6 @@ async function parseXlsxFile(file) {
   for (const [sheetName, exchange, assetType, sector] of targets) {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
     for (const row of rows) {
-      // Support both the instruments_data.xlsx column names and common broker exports
       const symbol = String(
         row['Symbol'] || row['SYMBOL'] || row['Scrip Code'] || ''
       ).trim().toUpperCase();
@@ -251,11 +239,6 @@ export function useBulkImport({ onImported, toast }) {
   const [result, setResult]       = useState(null);
   const [dragOver, setDragOver]   = useState(false);
 
-  // FIX (high): XLSX/XLS files are binary — reading them with f.text() produces
-  // garbled output and 0 imported instruments with no error shown to the user.
-  // Now detects the file extension and uses the correct read strategy:
-  //   .csv  → f.text() + existing CSV parsers
-  //   .xlsx / .xls → f.arrayBuffer() + xlsx library
   async function readFiles(fileList) {
     const fileArr = Array.from(fileList);
     setFiles(fileArr.map(f => ({ name: f.name, size: f.size, status: 'parsing' })));
@@ -272,11 +255,9 @@ export function useBulkImport({ onImported, toast }) {
 
       try {
         if (ext === 'xlsx' || ext === 'xls') {
-          // Binary format — must use ArrayBuffer + xlsx library
           instruments = await parseXlsxFile(f);
           type = 'xlsx';
         } else {
-          // CSV / TXT — text is fine
           const text = await f.text();
           type = detectFileType(f.name, text);
           instruments = type === 'bse' ? parseBSE(text)
@@ -343,12 +324,21 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
   const [activeIdx, setActiveIdx] = useState(-1);
   const debounce = useRef(null);
 
-  // Reset query only when assetType changes (switching between MF/STOCK is a
-  // meaningfully different search context).  Changing exchange alone does NOT
-  // reset the query — the user may be looking for the same stock on BSE.
+  // FIX (Bug 19): reset query when EITHER assetType OR exchange changes.
+  // The previous code only reset on assetType change; switching exchange (e.g.
+  // NSE → BSE) left the old query populated, which could cause the user to
+  // accidentally select the wrong exchange's listing until they started typing.
+  // We do NOT reset `selected` here so the parent form retains its filled
+  // values when the user changes exchange after picking an instrument — only
+  // the dropdown query and suggestions are cleared.
   useEffect(() => {
-    setQuery(''); setSugs([]); setSelected(null); setOpen(false);
-  }, [assetType]); // FIX (medium): removed `exchange` from deps
+    setQuery('');
+    setSugs([]);
+    setOpen(false);
+    setActiveIdx(-1);
+    // Note: intentionally do NOT reset `selected` here — the parent form
+    // keeps its values. Only the search input is cleared.
+  }, [assetType, exchange]);
 
   useEffect(() => {
     if (query.length < 1) { setSugs([]); setOpen(false); return; }

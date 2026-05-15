@@ -40,7 +40,6 @@ export function PortfolioProvider({ children }) {
       setLoading(true);
       setError(null);
 
-      // 1. Get or create portfolio
       let pfRes = await fetch(`/api/portfolio?userId=${DEFAULT_USER_ID}`);
       if (!pfRes.ok) throw new Error(await pfRes.text());
       let pfData = await pfRes.json();
@@ -57,13 +56,11 @@ export function PortfolioProvider({ children }) {
       }
       setPortfolioId(pid);
 
-      // 2. Fetch trades
       const tRes = await fetch(`/api/trades?portfolioId=${pid}`);
       if (!tRes.ok) throw new Error(await tRes.text());
       const { trades: rawTrades } = await tRes.json();
       setTrades(rawTrades || []);
 
-      // 3. Fetch current prices (cache-only on initial load for fast paint)
       const symbols = [...new Set((rawTrades || []).map(t => t.symbol))];
       if (symbols.length > 0) {
         const prRes = await fetch('/api/prices', {
@@ -76,8 +73,6 @@ export function PortfolioProvider({ children }) {
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
 
-          // Background-fetch any symbols with no cached price at all
-          // (e.g. newly added instruments that have never been priced).
           const missing = symbols.filter(s => !priceData.prices?.[s]);
           if (missing.length > 0) {
             fetch('/api/prices', {
@@ -97,7 +92,7 @@ export function PortfolioProvider({ children }) {
                   setPriceMeta(prev => ({ ...prev, ...(data.meta || {}) }));
                 }
               })
-              .catch(() => { /* best-effort */ });
+              .catch(() => { });
           }
         }
       }
@@ -131,30 +126,19 @@ export function PortfolioProvider({ children }) {
     [holdings],
   );
 
-  // Pass pre-computed holdings so computePortfolioXIRR never calls
-  // computeHoldings a second time; run in a low-priority transition.
   useEffect(() => {
     if (trades.length < 2) {
       setPortfolioXIRR(null);
       return;
     }
     const timeoutId = setTimeout(() => {
-      const xirr = computePortfolioXIRR(
-        trades,
-        currentPrices,
-        holdings,
-      );
-
-      startXIRRTransition(() => {
-        setPortfolioXIRR(xirr);
-      });
+      const xirr = computePortfolioXIRR(trades, currentPrices, holdings);
+      startXIRRTransition(() => { setPortfolioXIRR(xirr); });
     }, 0);
-
     return () => clearTimeout(timeoutId);
   }, [trades, currentPrices, holdings, startXIRRTransition]);
 
   // ── Stable price-merge helpers ────────────────────────────────────────────
-  // Only trigger re-renders when prices actually changed.
   function mergePrices(next = {}) {
     setCurrentPrices(prev => {
       const changed = Object.keys(next).some(k => prev[k] !== next[k]);
@@ -232,7 +216,16 @@ export function PortfolioProvider({ children }) {
       });
       if (!res.ok) throw new Error('Snapshot failed');
       const data = await res.json();
-      toast(data.created ? 'Snapshot saved 📸' : 'Snapshot updated 📸', 'green');
+
+      // FIX (Bug 18): show a distinct, accurate message when the save within
+      // the same minute updated an existing entry rather than creating a new one.
+      if (data.duplicateMinute) {
+        toast('Snapshot updated (same minute — save again in a new minute for a fresh entry) 📸', 'blue');
+      } else if (data.created) {
+        toast('Snapshot saved 📸', 'green');
+      } else {
+        toast('Snapshot updated 📸', 'blue');
+      }
     } catch (err) {
       toast(err.message, 'red');
     }
@@ -257,11 +250,6 @@ export function PortfolioProvider({ children }) {
   }
 
   // ── Refresh prices ────────────────────────────────────────────────────────
-  // FIX (Issue 6): collect ALL chunk results into local accumulators first,
-  // then call setCurrentPrices / setPriceMeta exactly ONCE at the end.
-  // The previous implementation called mergePrices inside the loop, which
-  // created stale closures — each chunk's setState captured a snapshot of
-  // `prev` that could be superseded before React processed it.
   async function refreshPrices() {
     const symbols = [...new Set(trades.map(t => t.symbol))];
     if (!symbols.length) return;
@@ -269,7 +257,6 @@ export function PortfolioProvider({ children }) {
     const CHUNK      = 20;
     const STAGGER_MS = 300;
 
-    // Accumulate across chunks — no setState inside the loop
     const allPrices = {};
     const allMeta   = {};
     let updatedCount = 0;
@@ -285,7 +272,6 @@ export function PortfolioProvider({ children }) {
         });
         if (res.ok) {
           const priceData = await res.json();
-          // Merge into local accumulators — no React state touched yet
           Object.assign(allPrices, priceData.prices  || {});
           Object.assign(allMeta,   priceData.meta    || {});
           updatedCount += Object.keys(priceData.prices || {}).length;
@@ -301,7 +287,6 @@ export function PortfolioProvider({ children }) {
       }
     }
 
-    // Single atomic state update — no stale-closure risk
     if (Object.keys(allPrices).length > 0) {
       setCurrentPrices(prev => {
         const changed = Object.keys(allPrices).some(k => prev[k] !== allPrices[k]);

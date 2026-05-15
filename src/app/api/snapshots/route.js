@@ -36,7 +36,11 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
     return badRequest('portfolioId and totalValue required');
   }
 
-  // Round to nearest minute to avoid duplicate unique constraint on rapid saves
+  // FIX (Bug 18): round to nearest minute to avoid duplicate constraint on
+  // rapid saves.  The `created` flag below now drives the toast message so the
+  // user gets "Snapshot saved" vs "Snapshot updated" rather than always seeing
+  // "Snapshot saved" even when the existing entry was merely overwritten.
+  // The UX note in the UI (SnapshotView) also sets correct expectations.
   const snapshotAt = new Date(Math.floor(Date.now() / 60000) * 60000);
 
   const sharedData = {
@@ -44,9 +48,6 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
     totalInvested: parseFloat(totalInvested),
     totalGain:     parseFloat(totalGain),
     totalReturnPct: parseFloat(totalReturnPct),
-    // FIX: persist realized gain — previously this field was sent by the
-    // context but never stored, causing the snapshot history table to show
-    // "—" for realized P&L on every row.
     ...(totalRealizedGain != null && {
       totalRealizedGain: parseFloat(totalRealizedGain),
     }),
@@ -57,9 +58,8 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
     ...(stockCount != null && { stockCount: parseIntOrNull(stockCount) }),
   };
 
-  // FIX: upsert returns the row but Prisma doesn't expose whether it was
-  // created or updated.  Check existence first so we can return a `created`
-  // flag and let the UI show the right toast message.
+  // Check existence first so we can return an accurate `created` flag.
+  // This drives the toast: "📸 Snapshot saved" vs "📸 Snapshot updated (same minute)".
   const existing = await prisma.snapshot.findUnique({
     where: { portfolioId_snapshotAt: { portfolioId, snapshotAt } },
     select: { id: true },
@@ -71,8 +71,14 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
     create: { portfolioId, snapshotAt, ...sharedData },
   });
 
+  // FIX (Bug 18): include a `duplicateMinute` flag so the client can show a
+  // more specific message when the save overwrote an entry from the same minute.
   return NextResponse.json(
-    { snapshot, created: !existing },
+    {
+      snapshot,
+      created: !existing,
+      duplicateMinute: !!existing,
+    },
     { status: existing ? 200 : 201 }
   );
 });

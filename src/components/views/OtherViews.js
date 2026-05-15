@@ -12,32 +12,24 @@ import styles from './OtherViews.module.css';
 
 // ── TimelineView ──────────────────────────────────────────────────────────────
 
-// ─── Timeline View ────────────────────────────────────────────────────────────
-// Drop-in replacement for the TimelineView function in OtherViews.js
-// Changes:
-//   • Trade history table shows only the last 3 months (performance fix for 600+ trades)
-//   • Cumulative chart and monthly heatmap still use ALL trades (unchanged)
-//   • A small info pill shows total trade count vs displayed count
-
 export function TimelineView() {
   const { trades, monthlyFlow, setActiveView } = usePortfolio();
 
-  // ── All months → for chart + heatmap (no change) ──────────────────────────
   const cumFlow = [];
   let cum = 0;
+  // `amount` = buy-only invested capital (correct for the cumulative chart)
   monthlyFlow.forEach(m => { cum += m.amount; cumFlow.push({ ...m, cum }); });
 
-  // ── Last-3-months filter for the trade history table ───────────────────────
   const now = new Date();
-  const cutoff = new Date(now.getFullYear(), now.getMonth() - 2, 1); // start of 3 months ago
-  const cutoffKey = cutoff.toISOString().slice(0, 7);                   // 'YYYY-MM'
+  const cutoff = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const cutoffKey = cutoff.toISOString().slice(0, 7);
 
   const byMonth = {};
   [...trades]
     .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
     .forEach(t => {
       const key = t.tradeDate.slice(0, 7);
-      if (key < cutoffKey) return;          // skip older than 3 months
+      if (key < cutoffKey) return;
       if (!byMonth[key]) byMonth[key] = [];
       byMonth[key].push(t);
     });
@@ -63,7 +55,9 @@ export function TimelineView() {
       </div>
 
       <div className={`glass ${styles.chartPanel}`}>
-        <div className={styles.panelTitle}>Monthly Investment Heatmap</div>
+        {/* FIX (Bug 17): title updated to reflect that heatmap now shows
+            buy + sell activity, not just invested capital. */}
+        <div className={styles.panelTitle}>Monthly Activity Heatmap (buys + sells)</div>
         <MonthlyHeatmap data={monthlyFlow} />
       </div>
 
@@ -71,7 +65,6 @@ export function TimelineView() {
         <div className={styles.tradeHistoryHeader}>
           <span className={styles.tradeHistoryTitle}>Trade History</span>
           <span className={styles.tradeHistoryCount}>· {trades.length} total trades</span>
-          {/* Info pill — explains the 3-month window */}
           <span style={{
             marginLeft: 'auto',
             fontSize: '10px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px',
@@ -121,17 +114,23 @@ export function TimelineView() {
   );
 }
 
+// FIX (Bug 17): MonthlyHeatmap now uses `d.activity` (buy + sell volume) for
+// cell intensity so that months with large redemptions are not shown as quiet.
+// `d.amount` (buy-only) is still used by the cumulative chart above.
 function MonthlyHeatmap({ data }) {
   if (!data || !data.length) return <div style={{ color: 'var(--text3)', fontSize: 12 }}>No data</div>;
 
-  const max = Math.max(...data.map(d => d.amount));
+  // Use total activity (buys + sells) for heatmap intensity.
+  // Fall back to `amount` (old field) when upgrading from a cached context
+  // that hasn't re-computed monthlyFlow with the new shape yet.
+  const max = Math.max(...data.map(d => d.activity ?? d.amount));
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   const byYear = {};
   data.forEach(d => {
     const [y, m] = d.month.split('-');
     if (!byYear[y]) byYear[y] = {};
-    byYear[y][parseInt(m) - 1] = d.amount;
+    byYear[y][parseInt(m) - 1] = d.activity ?? d.amount;
   });
 
   return (
@@ -140,13 +139,11 @@ function MonthlyHeatmap({ data }) {
         className={styles.heatmapGrid}
         style={{ gridTemplateColumns: '50px repeat(12, 1fr)' }}
       >
-        {/* Header row */}
         <div />
         {MONTHS.map(m => (
           <div key={m} className={styles.heatmapMonthLabel}>{m}</div>
         ))}
 
-        {/* Data rows */}
         {Object.entries(byYear).sort().map(([year, mdata]) => ([
           <div key={`${year}_l`} className={styles.heatmapYearLabel}>{year}</div>,
           ...MONTHS.map((_, mi) => {
@@ -155,7 +152,7 @@ function MonthlyHeatmap({ data }) {
             return (
               <div
                 key={`${year}_${mi}`}
-                title={val ? `₹${fmt(val, 0)}` : 'No investment'}
+                title={val ? `₹${fmt(val, 0)}` : 'No activity'}
                 className={styles.heatmapCell}
                 style={{
                   background: val > 0
@@ -277,7 +274,6 @@ export function ActionView() {
   return (
     <div className={`fade-up ${styles.actionWrapper}`}>
 
-      {/* Signal banner */}
       <div className={`glass ${styles.signalBanner}`}>
         <div className={styles.signalBannerLabel}>⚡ Today's Signal</div>
         <div className={styles.signalBannerTitle}>
@@ -290,7 +286,6 @@ export function ActionView() {
         </div>
       </div>
 
-      {/* Pulse cards */}
       <div className={`glass ${styles.pulsePanel}`}>
         <div className={styles.pulsePanelTitle}>Portfolio Pulse</div>
         <div className={styles.pulseGrid}>
@@ -304,7 +299,6 @@ export function ActionView() {
         </div>
       </div>
 
-      {/* Checklist */}
       <div className={`glass ${styles.checklistPanel}`}>
         <div className={styles.checklistTitle}>Weekly Investor Checklist</div>
         <div className={styles.checklistSub}>Tap to mark done</div>
@@ -359,6 +353,10 @@ export function SnapshotView() {
           <div className={styles.snapshotHeaderTitle}>Portfolio Snapshots</div>
           <div className={styles.snapshotHeaderSub}>
             Save a snapshot of today's portfolio value to track progress over time.
+            {/* FIX (Bug 18): inform user that rapid duplicate saves within the same
+                minute will update the existing snapshot rather than adding a new one. */}
+            {' '}Each snapshot is unique per minute — saving twice within the same minute
+            updates the existing entry.
           </div>
         </div>
         <button
