@@ -29,7 +29,7 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
   const {
     portfolioId, totalValue, totalInvested, totalGain,
     totalReturnPct, totalRealizedGain,
-    mfCagr, mfInvested, stInvested, fundCount, stockCount,
+    mfCagr, stCagr, mfInvested, stInvested, fundCount, stockCount,
   } = body;
 
   if (!portfolioId || totalValue == null) {
@@ -52,6 +52,7 @@ export const POST = withErrorHandler('POST /api/snapshots', async (request) => {
       totalRealizedGain: parseFloat(totalRealizedGain),
     }),
     ...(mfCagr     != null && { mfCagr:     parseFloat(mfCagr) }),
+    ...(stCagr     != null && { stCagr:     parseFloat(stCagr) }),
     ...(mfInvested != null && { mfInvested: parseFloat(mfInvested) }),
     ...(stInvested != null && { stInvested: parseFloat(stInvested) }),
     ...(fundCount  != null && { fundCount:  parseIntOrNull(fundCount) }),

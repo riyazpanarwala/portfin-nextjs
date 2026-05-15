@@ -186,6 +186,9 @@ export function computePortfolioStats(holdings) {
   const mfCagr = mfInvested > 0
     ? mfH.reduce((s, h) => s + h.cagr * h.invested, 0) / mfInvested
     : 0;
+  const stCagr = stInvested > 0
+    ? stH.reduce((s, h) => s + h.cagr * h.invested, 0) / stInvested
+    : 0;
 
   const allYears = totalInvested > 0
     ? active.reduce((s, h) => s + h.years * h.invested, 0) / totalInvested
@@ -198,7 +201,7 @@ export function computePortfolioStats(holdings) {
     totalValue, totalInvested, totalGain,
     totalUnrealizedGain, totalRealizedGain, totalReturnPct,
     mfValue, stValue, mfInvested, stInvested,
-    mfCagr, overallCagr,
+    mfCagr, stCagr, overallCagr,
     fundCount:  mfH.length,
     stockCount: stH.length,
     mfPct: totalValue > 0 ? (mfValue / totalValue) * 100 : 0,

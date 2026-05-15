@@ -31,7 +31,7 @@ PORTFOLIO SUMMARY (Indian Equity & Mutual Fund Portfolio):
   • Overall Gain/Loss: ₹${fmt(stats.totalGain, 0)} (${fmt(stats.totalReturnPct, 2)}%)
   • Overall CAGR: ${fmt(stats.overallCagr, 2)}%
   • MF Value: ${fmtCr(stats.mfValue)} (${fmt(stats.mfPct, 1)}% of portfolio), CAGR ${fmt(stats.mfCagr, 2)}%
-  • Stock Value: ${fmtCr(stats.stValue)} (${fmt(stats.stPct, 1)}% of portfolio)
+  • Stock Value: ${fmtCr(stats.stValue)} (${fmt(stats.stPct, 1)}% of portfolio), CAGR ${fmt(stats.stCagr, 2)}%
   • Holdings: ${stats.fundCount} mutual funds + ${stats.stockCount} stocks
 
 TOP MUTUAL FUNDS:
@@ -297,6 +297,7 @@ Guidelines:
     { label: 'Return',    value: `${stats.totalReturnPct >= 0 ? '+' : ''}${fmt(stats.totalReturnPct, 1)}%` },
     { label: 'CAGR',      value: `${fmt(stats.overallCagr, 1)}%` },
     { label: 'MF CAGR',   value: `${fmt(stats.mfCagr, 1)}%` },
+    { label: 'Stock CAGR', value: `${fmt(stats.stCagr, 1)}%` },
     { label: 'Holdings',  value: `${stats.fundCount + stats.stockCount}` },
   ];
 

@@ -12,7 +12,7 @@ import {
   NIFTY_FALLBACK,
 } from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
-import { ComparisonChart, AbsoluteChart } from '@/components/charts/Charts';
+import { ComparisonChart, AbsoluteChart, CagrTrendChart } from '@/components/charts/Charts';
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 
 // ── Rolling return comparison ─────────────────────────────────────────────────
@@ -274,6 +274,8 @@ export default function PortfolioVsNiftyView() {
       invested:  parseFloat(s.totalInvested),
       gain:      parseFloat(s.totalGain),
       returnPct: parseFloat(s.totalReturnPct),
+      mfCagr:    s.mfCagr != null ? parseFloat(s.mfCagr) : null,
+      stCagr:    s.stCagr != null ? parseFloat(s.stCagr) : null,
       date:      s.snapshotAt,
     }));
   }, [snapshots]);
@@ -416,10 +418,14 @@ export default function PortfolioVsNiftyView() {
       <div className="glass" style={{ padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
-            <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>Portfolio vs Nifty 50</div>
+            <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>
+              {mode === 'cagr' ? 'Sub-portfolio CAGR Trend' : 'Portfolio vs Nifty 50'}
+            </div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
-              Indexed to 100 at start — shows relative performance irrespective of portfolio size
-              {niftyLoading && (
+              {mode === 'cagr'
+                ? 'MF and stock CAGR captured in each saved snapshot'
+                : 'Indexed to 100 at start — shows relative performance irrespective of portfolio size'}
+              {mode !== 'cagr' && niftyLoading && (
                 <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
                   (Nifty line uses static data while live fetch completes)
                 </span>
@@ -427,7 +433,7 @@ export default function PortfolioVsNiftyView() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
-            {[['indexed', 'Indexed'], ['absolute', 'Absolute']].map(([v, l]) => (
+            {[['indexed', 'Indexed'], ['absolute', 'Absolute'], ['cagr', 'CAGR']].map(([v, l]) => (
               <button key={v} onClick={() => setMode(v)} style={{
                 padding: '4px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '600', cursor: 'pointer',
                 background: mode === v ? 'rgba(59,130,246,0.2)' : 'transparent',
@@ -439,7 +445,9 @@ export default function PortfolioVsNiftyView() {
         </div>
         {mode === 'indexed'
           ? <ComparisonChart portfolioSeries={rebasedPortfolio} niftySeries={rebasedNifty} />
-          : <AbsoluteChart portfolioSeries={portfolioSeries} />
+          : mode === 'absolute'
+          ? <AbsoluteChart portfolioSeries={portfolioSeries} />
+          : <CagrTrendChart series={portfolioSeries} />
         }
       </div>
 

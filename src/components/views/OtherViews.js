@@ -395,6 +395,7 @@ export function SnapshotView() {
                 <th>Gain</th>
                 <th>Return %</th>
                 <th>MF CAGR</th>
+                <th>Stock CAGR</th>
                 <th>Funds</th>
                 <th>Stocks</th>
               </tr>
@@ -420,6 +421,9 @@ export function SnapshotView() {
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>
                     {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '—'}
+                  </td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>
+                    {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : '—'}
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '—'}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '—'}</td>

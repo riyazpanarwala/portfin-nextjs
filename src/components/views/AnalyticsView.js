@@ -448,6 +448,7 @@ export default function AnalyticsView() {
     { label: 'Unrealized Return', value: fmtPct(stats.totalReturnPct),                               color: colorPnl(stats.totalReturnPct), sub: 'Open positions'  },
     { label: 'Total Realized',    value: fmtCr(realizedSummary.totalRealized),                       color: colorPnl(realizedSummary.totalRealized), sub: 'Closed positions' },
     { label: 'MF CAGR',           value: fmtPct(stats.mfCagr),                                      color: 'var(--purple)',           sub: 'Weighted avg'        },
+    { label: 'Stock CAGR',        value: fmtPct(stats.stCagr),                                      color: 'var(--teal)',             sub: 'Weighted avg'        },
   ];
 
   return (

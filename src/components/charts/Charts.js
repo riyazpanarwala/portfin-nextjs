@@ -440,6 +440,28 @@ export function ComparisonChart({ portfolioSeries, niftySeries }) {
   );
 }
 
+export function CagrTrendChart({ series }) {
+  if (!series.length) return null;
+
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <ReLineChart data={series} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
+        <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+        <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+        <YAxis tickFormatter={v => `${v.toFixed(0)}%`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={42} />
+        <Tooltip formatter={(v, name) => [v != null ? `${v.toFixed(2)}%` : '—', name]} contentStyle={TOOLTIP_STYLE} />
+        <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
+        <Line type="monotone" dataKey="mfCagr" name="MF CAGR"
+          stroke="#8b5cf6" strokeWidth={2.5} dot={false} connectNulls
+          activeDot={{ r: 5, fill: '#a78bfa', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
+        <Line type="monotone" dataKey="stCagr" name="Stock CAGR"
+          stroke="#14b8a6" strokeWidth={2.5} dot={false} connectNulls
+          activeDot={{ r: 5, fill: '#2dd4bf', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
+      </ReLineChart>
+    </ResponsiveContainer>
+  );
+}
+
 // ─── AbsoluteChart (Portfolio value + invested) ───────────────────────────────
 export function AbsoluteChart({ portfolioSeries }) {
   if (!portfolioSeries.length) return null;

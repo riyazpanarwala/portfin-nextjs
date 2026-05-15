@@ -208,6 +208,7 @@ export function PortfolioProvider({ children }) {
           totalRealizedGain: stats.totalRealizedGain,
           totalReturnPct:    stats.totalReturnPct,
           mfCagr:            stats.mfCagr,
+          stCagr:            stats.stCagr,
           mfInvested:        stats.mfInvested,
           stInvested:        stats.stInvested,
           fundCount:         stats.fundCount,
