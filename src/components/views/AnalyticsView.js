@@ -170,13 +170,13 @@ function SectorDonut({ sectors, totalVal }) {
   const size = 230, cx = 115, cy = 115, r = 95, ir = 60;
 
   const slices = useMemo(() => {
-    let angle = -Math.PI / 2;
-    return sectors.map(s => {
-      const start = angle;
+    const initialAngle = -Math.PI / 2;
+    return sectors.reduce((acc, s) => {
+      const start = acc.angle;
       const sweep = (s.pct / 100) * 2 * Math.PI;
-      angle += sweep;
-      return { ...s, start, sweep, end: angle };
-    });
+      const end = start + sweep;
+      return { angle: end, slices: [...acc.slices, { ...s, start, sweep, end }] };
+    }, { angle: initialAngle, slices: [] }).slices;
   }, [sectors]);
 
   function arcPath(startA, endA, outerR, innerR) {
@@ -310,6 +310,17 @@ function RadarChart({ sectors, equalWeight }) {
 
 // ── Sector Rotation Section ───────────────────────────────────────────────────
 
+function RadarChartEmptyState({ sectorCount }) {
+  return (
+    <div className={styles.radarEmptyState}>
+      <div className={styles.radarEmptyTitle}>Radar unlocks at 3 sectors</div>
+      <div className={styles.radarEmptyText}>
+        {sectorCount ? `${sectorCount} sector${sectorCount === 1 ? '' : 's'} tracked so far` : 'No sector exposure yet'}
+      </div>
+    </div>
+  );
+}
+
 function SectorRotationWheel({ holdings, stats }) {
   const { sectors, equalWeight, sectorCount } = useAnalyticsView({ stats, holdings, taxData: [], monthlyFlow: [], realizedSummary: { sells: [] }, portfolioXIRR: null }).sectorData;
 
@@ -317,6 +328,7 @@ function SectorRotationWheel({ holdings, stats }) {
   const underweightSectors = sectors.filter(s => s.delta < -2);
   const largestSector      = sectors[0];
   const maxVal             = sectors[0]?.val || 1;
+  const canRenderRadar     = sectors.length >= 3;
 
   if (!holdings.length) return null;
 
@@ -358,7 +370,13 @@ function SectorRotationWheel({ holdings, stats }) {
 
       <div className={styles.chartsRow}>
         <div className={`glass ${styles.chartPanel}`}><SectorDonut sectors={sectors} totalVal={stats.totalValue || 1} /></div>
-        <div className={`glass ${styles.chartPanel}`}><RadarChart sectors={sectors} equalWeight={equalWeight} /></div>
+        <div className={`glass ${styles.chartPanel}`}>
+          {canRenderRadar ? (
+            <RadarChart sectors={sectors} equalWeight={equalWeight} />
+          ) : (
+            <RadarChartEmptyState sectorCount={sectorCount} />
+          )}
+        </div>
       </div>
 
       <div className={styles.legendRow}>

@@ -384,7 +384,36 @@
 .chartPanel {
   padding: 18px;
   display: flex;
+  align-items: center;
   justify-content: center;
+  min-height: 377px;
+}
+
+.radarEmptyState {
+  width: 100%;
+  min-height: 337px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  border: 1px dashed rgba(96, 165, 250, 0.28);
+  border-radius: 8px;
+  background: rgba(96, 165, 250, 0.04);
+}
+
+.radarEmptyTitle {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.radarEmptyText {
+  font-size: 11px;
+  color: var(--text3);
 }
 
 .legendRow {
