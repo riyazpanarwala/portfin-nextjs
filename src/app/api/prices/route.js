@@ -5,7 +5,9 @@ import YahooFinance from 'yahoo-finance2';
 
 export const dynamic = 'force-dynamic';
 
-const yahooFinance = new YahooFinance();
+const yahooFinance = new YahooFinance({
+  suppressNotices: ['ripHistorical', 'yahooSurvey'],
+});
 const PRICE_STALE_MS = 6 * 60 * 60 * 1000;
 
 function yahooSymbol(symbol, exchange) {

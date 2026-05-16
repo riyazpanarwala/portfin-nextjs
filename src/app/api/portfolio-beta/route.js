@@ -5,7 +5,9 @@ import YahooFinance from 'yahoo-finance2';
 
 export const dynamic = 'force-dynamic';
 
-const yahooFinance = new YahooFinance();
+const yahooFinance = new YahooFinance({
+  suppressNotices: ['ripHistorical', 'yahooSurvey'],
+});
 const MARKET_SYMBOL = '^NSEI';
 const BETA_LOOKBACK_DAYS = 365 * 3;
 const BETA_INTERVAL = '1wk';
@@ -29,7 +31,7 @@ function toReturnMap(history) {
   const rows = history
     .map(row => ({
       date: toDateKey(row.date),
-      close: asFiniteNumber(row.adjClose) ?? asFiniteNumber(row.close),
+      close: asFiniteNumber(row.adjClose) ?? asFiniteNumber(row.adjclose) ?? asFiniteNumber(row.close),
     }))
     .filter(row => row.date && row.close != null && row.close > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -47,17 +49,18 @@ async function fetchReturnMap(symbol) {
   const period1 = new Date();
   period1.setDate(period1.getDate() - BETA_LOOKBACK_DAYS);
 
-  const history = await yahooFinance.historical(
+  const history = await yahooFinance.chart(
     symbol,
     {
       period1: period1.toISOString().slice(0, 10),
       period2: new Date().toISOString().slice(0, 10),
       interval: BETA_INTERVAL,
+      return: 'array',
     },
     { timeout: 15000 },
   );
 
-  return toReturnMap(history);
+  return toReturnMap(history.quotes ?? []);
 }
 
 function calculateBeta(stockReturns, marketReturns) {
@@ -97,7 +100,7 @@ async function fetchCalculatedBeta(inst, marketReturns) {
       };
     }
   } catch (e) {
-    console.warn(`[portfolio-beta] historical beta failed for ${yfSymbol}:`, e.message);
+    console.warn(`[portfolio-beta] chart beta failed for ${yfSymbol}:`, e.message);
   }
 
   return { beta: null, source: 'unavailable', yahooSymbol: yfSymbol };

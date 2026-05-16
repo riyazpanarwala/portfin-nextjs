@@ -19,7 +19,9 @@
 import { PrismaClient } from "@prisma/client";
 import YahooFinance from "yahoo-finance2";
 
-const yahooFinance = new YahooFinance();
+const yahooFinance = new YahooFinance({
+  suppressNotices: ["ripHistorical", "yahooSurvey"],
+});
 
 const prisma = new PrismaClient();
 
