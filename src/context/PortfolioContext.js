@@ -20,6 +20,18 @@ import {
 
 const PortfolioCtx = createContext(null);
 const DEFAULT_USER_ID = 'user-default-001';
+const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v1';
+
+function portfolioBetaCacheSignature(holdings) {
+  return holdings
+    .map(h => `${h.symbol}:${h.assetType}:${Number(h.qty || 0).toFixed(6)}`)
+    .sort()
+    .join('|');
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function PortfolioProvider({ children }) {
   const [trades, setTrades]               = useState([]);
@@ -143,8 +155,24 @@ export function PortfolioProvider({ children }) {
   useEffect(() => {
     const activeHoldings = holdings.filter(h => h.qty > 0 && h.marketValue > 0);
     if (!activeHoldings.length) {
-      setPortfolioBeta(null);
-      return;
+      const timeoutId = setTimeout(() => setPortfolioBeta(null), 0);
+      return () => clearTimeout(timeoutId);
+    }
+
+    const cacheDate = todayKey();
+    const cacheSignature = portfolioBetaCacheSignature(activeHoldings);
+    try {
+      const cached = JSON.parse(localStorage.getItem(PORTFOLIO_BETA_CACHE_KEY) || 'null');
+      if (
+        cached?.date === cacheDate &&
+        cached?.signature === cacheSignature &&
+        cached?.data
+      ) {
+        const timeoutId = setTimeout(() => setPortfolioBeta(cached.data), 0);
+        return () => clearTimeout(timeoutId);
+      }
+    } catch {
+      localStorage.removeItem(PORTFOLIO_BETA_CACHE_KEY);
     }
 
     const controller = new AbortController();
@@ -163,7 +191,12 @@ export function PortfolioProvider({ children }) {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error('Portfolio beta fetch failed');
-        setPortfolioBeta(await res.json());
+        const data = await res.json();
+        setPortfolioBeta(data);
+        localStorage.setItem(
+          PORTFOLIO_BETA_CACHE_KEY,
+          JSON.stringify({ date: cacheDate, signature: cacheSignature, data }),
+        );
       } catch (err) {
         if (err.name !== 'AbortError') setPortfolioBeta(null);
       }
