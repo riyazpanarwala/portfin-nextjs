@@ -195,23 +195,29 @@ export const POST = withErrorHandler('POST /api/portfolio-beta', async (request)
   const instBySymbol = new Map(instruments.map(inst => [inst.symbol, inst]));
   const rows = [];
   const missing = [];
+  const betaCandidates = [];
   let marketReturns = new Map();
 
-  try {
-    marketReturns = await fetchReturnMap(MARKET_SYMBOL);
-  } catch (e) {
-    console.warn(`[portfolio-beta] market history failed for ${MARKET_SYMBOL}:`, e.message);
-  }
-
-  const betaRows = await mapWithConcurrency(stockHoldings, BETA_CONCURRENCY, async (holding) => {
+  for (const holding of stockHoldings) {
     const inst = instBySymbol.get(holding.symbol);
     if (!inst) {
-      return { missing: { symbol: holding.symbol, reason: 'instrument-not-found' } };
+      missing.push({ symbol: holding.symbol, reason: 'instrument-not-found' });
+    } else if (!inst.isin) {
+      missing.push({ symbol: holding.symbol, reason: 'missing-isin-skipped' });
+    } else {
+      betaCandidates.push({ holding, inst });
     }
-    if (!inst.isin) {
-      return { missing: { symbol: holding.symbol, reason: 'missing-isin-skipped' } };
-    }
+  }
 
+  if (betaCandidates.length > 0) {
+    try {
+      marketReturns = await fetchReturnMap(MARKET_SYMBOL);
+    } catch (e) {
+      console.warn(`[portfolio-beta] market history failed for ${MARKET_SYMBOL}:`, e.message);
+    }
+  }
+
+  const betaRows = await mapWithConcurrency(betaCandidates, BETA_CONCURRENCY, async ({ holding, inst }) => {
     const betaInfo = await fetchBeta(inst, marketReturns);
     if (betaInfo.beta == null) {
       return { missing: { symbol: holding.symbol, reason: 'beta-unavailable' } };

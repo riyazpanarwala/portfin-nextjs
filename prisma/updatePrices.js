@@ -69,7 +69,7 @@ async function updateStockPrices() {
 
   const instruments = await prisma.instrument.findMany({
     where: { assetType: "STOCK" },
-    select: { id: true, symbol: true, exchange: true, name: true },
+    select: { id: true, symbol: true, exchange: true, name: true, isin: true },
   });
 
   if (instruments.length === 0) {
@@ -91,6 +91,11 @@ async function updateStockPrices() {
     // Build Yahoo symbol list
     const symbolMap = new Map(); // yahooSym → instrument
     for (const instr of batch) {
+      if (!instr.isin) {
+        process.stdout.write("s");
+        skip++;
+        continue;
+      }
       symbolMap.set(yahooSymbol(instr.symbol, instr.exchange), instr);
     }
 
@@ -138,7 +143,7 @@ async function updateStockPrices() {
       }
     }
 
-    console.log(` (${ok} ok, ${fail} failed so far)`);
+    console.log(` (${ok} ok, ${fail} failed, ${skip} skipped so far)`);
     if (bi < batches.length - 1) await sleep(BATCH_DELAY_MS);
   }
 
@@ -260,7 +265,7 @@ async function main() {
   console.log("✅ Price update complete!");
   if (DO_STOCKS)
     console.log(
-      `   Stocks/ETFs : ${stockResult.ok} updated, ${stockResult.fail} failed`,
+      `   Stocks/ETFs : ${stockResult.ok} updated, ${stockResult.fail} failed, ${stockResult.skip ?? 0} skipped`,
     );
   if (DO_MF)
     console.log(

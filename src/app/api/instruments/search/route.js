@@ -192,7 +192,7 @@ export const GET = withErrorHandler('GET /api/instruments/search', async (reques
       r.symbol.toUpperCase() === qUp &&
       (r.exchange === 'NSE' || r.exchange === 'BSE')
     );
-    if (exact && !exact.sector) {
+    if (exact && !exact.sector && exact.inDb && exact.isin) {
       const yInfo = await fetchYahooSector(exact.symbol, exact.exchange);
       if (yInfo) {
         exact.sector = yInfo.sector || exact.sector;

@@ -61,6 +61,16 @@ export const POST = withErrorHandler('POST /api/prices', async (request) => {
       continue;
     }
 
+    if (!inst.isin) {
+      if (cachedPrice) {
+        prices[inst.symbol] = cachedPrice;
+        meta[inst.symbol] = { source: 'cache-missing-isin', updatedAt: inst.priceUpdatedAt };
+      } else {
+        meta[inst.symbol] = { source: 'missing-isin-skipped', updatedAt: null };
+      }
+      continue;
+    }
+
     try {
       const quote = await yahooFinance.quote(yahooSymbol(inst.symbol, inst.exchange), {}, { timeout: 10000 });
       const livePrice = quote?.regularMarketPrice ?? quote?.postMarketPrice ?? quote?.previousClose ?? null;
