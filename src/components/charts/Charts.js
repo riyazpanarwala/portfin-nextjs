@@ -26,6 +26,7 @@ const CSS_VAR_MAP = {
   'var(--red2)':    '#f87171',
   'var(--yellow)':  '#f59e0b',
   'var(--purple)':  '#8b5cf6',
+  'var(--orange)':  '#f97316',
   'var(--teal)':    '#14b8a6',
   'var(--text)':    '#e8eef8',
   'var(--text2)':   '#94a9c4',
@@ -49,8 +50,8 @@ const CHART_STYLE = {
   fontFamily: "'JetBrains Mono', monospace",
 };
 
-const GRID_COLOR   = 'rgba(45,64,96,0.4)';
-const TICK_COLOR   = '#5c7a9a';
+const GRID_COLOR    = 'rgba(45,64,96,0.4)';
+const TICK_COLOR    = '#5c7a9a';
 const TOOLTIP_STYLE = {
   background: '#111827',
   border: '1px solid #2d4060',
@@ -61,9 +62,6 @@ const TOOLTIP_STYLE = {
 };
 
 // ─── DonutChart ───────────────────────────────────────────────────────────────
-// Pure SVG — Recharts PieChart has awkward inner-label support, so we keep the
-// existing SVG arc approach but drop the Chart.js dependency entirely.
-
 export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = true }) {
   if (!data || !data.length) return null;
 
@@ -212,7 +210,6 @@ export function LineChart({ data, width = 300, height = 120, color = '#3b82f6', 
 }
 
 // ─── HBar (horizontal progress bar) ──────────────────────────────────────────
-// Pure CSS — no chart lib needed.
 export function HBar({ value, max, color, label, sub }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
@@ -301,9 +298,6 @@ export function HoldingPerformanceChart({ lots, cmp }) {
 }
 
 // ─── WaterfallChart ───────────────────────────────────────────────────────────
-// Recharts doesn't have a native waterfall; we build it with stacked BarChart
-// using a transparent "spacer" bar + a visible "value" bar.
-
 const CSS_VAR_COLORS = {
   'var(--teal)':   '#14b8a6',
   'var(--purple)': '#8b5cf6',
@@ -349,9 +343,7 @@ export function WaterfallChart({ steps }) {
           contentStyle={TOOLTIP_STYLE}
           cursor={{ fill: 'rgba(59,130,246,0.06)' }}
         />
-        {/* Invisible spacer */}
         <Bar dataKey="spacer" stackId="wf" fill="transparent" legendType="none" />
-        {/* Visible value bar */}
         <Bar dataKey="bar" stackId="wf" radius={[4, 4, 0, 0]} maxBarSize={60}>
           {chartData.map((d, i) => (
             <Cell key={i} fill={d.color} fillOpacity={0.85} />
@@ -374,17 +366,9 @@ export function WealthProjectionChart({ data, stepData, goal }) {
     goal:     goal,
   }));
 
-  const maxVal = Math.max(...merged.map(d => Math.max(d.flatSIP, d.stepUp, d.goal)), 1);
-
   return (
     <ResponsiveContainer width="100%" height={220}>
       <ReLineChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
-        <defs>
-          <linearGradient id="wp-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.15} />
-            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}    />
-          </linearGradient>
-        </defs>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey="year" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval={Math.floor(merged.length / 10)} />
         <YAxis tickFormatter={v => v >= 1e7 ? `₹${(v / 1e7).toFixed(1)}Cr` : `₹${(v / 1e5).toFixed(0)}L`}
@@ -403,38 +387,79 @@ export function WealthProjectionChart({ data, stepData, goal }) {
   );
 }
 
-// ─── ComparisonChart (Portfolio vs Nifty 50) ──────────────────────────────────
-export function ComparisonChart({ portfolioSeries, niftySeries }) {
-  if (!portfolioSeries.length || !niftySeries.length) return null;
+// ─── ComparisonChart ──────────────────────────────────────────────────────────
+// Supports one portfolio series + N benchmark series.
+//
+// Props:
+//   portfolioSeries  Array<{ month, indexed }>
+//   benchmarkSeries  Array<{ key, label, color, data: Array<{ month, indexed }> }>
+//
+// The old two-prop signature (portfolioSeries, niftySeries) is still accepted
+// for backward compatibility; when niftySeries is passed it is wrapped
+// automatically into the new benchmarkSeries format.
 
-  // Merge the two series by month
-  const niftyMap = Object.fromEntries(niftySeries.map(d => [d.month, d.indexed]));
-  const merged = portfolioSeries.map(d => ({
-    month:     d.month,
-    portfolio: d.indexed,
-    nifty:     niftyMap[d.month] ?? null,
-  }));
+export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries }) {
+  // Backward-compat: wrap old niftySeries into new format
+  const benchmarks = benchmarkSeries ?? (niftySeries ? [{
+    key:   'nifty50',
+    label: 'Nifty 50',
+    color: '#f59e0b',
+    data:  niftySeries,
+  }] : []);
+
+  if (!portfolioSeries.length) return null;
+
+  // Build merged dataset keyed by month
+  const monthSet = new Set(portfolioSeries.map(d => d.month));
+  benchmarks.forEach(b => b.data.forEach(d => monthSet.add(d.month)));
+
+  const benchMaps = benchmarks.map(b =>
+    Object.fromEntries(b.data.map(d => [d.month, d.indexed]))
+  );
+
+  const merged = portfolioSeries.map(d => {
+    const row = { month: d.month, portfolio: d.indexed };
+    benchmarks.forEach((b, i) => {
+      row[b.key] = benchMaps[i][d.month] ?? null;
+    });
+    return row;
+  });
 
   return (
     <ResponsiveContainer width="100%" height={260}>
       <ReLineChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
-        <defs>
-          <linearGradient id="cmp-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.12} />
-            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}    />
-          </linearGradient>
-        </defs>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
         <YAxis tickFormatter={v => v.toFixed(0)} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={38} />
         <Tooltip formatter={(v, name) => [v?.toFixed(1), name]} contentStyle={TOOLTIP_STYLE} />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
-        <Line type="monotone" dataKey="portfolio" name="Your Portfolio"
-          stroke="#3b82f6" strokeWidth={2.5} dot={false}
-          activeDot={{ r: 5, fill: '#60a5fa', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
-        <Line type="monotone" dataKey="nifty" name="Nifty 50"
-          stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 3" dot={false}
-          activeDot={{ r: 5, fill: '#f59e0b', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
+
+        {/* Portfolio line — always first and most prominent */}
+        <Line
+          type="monotone"
+          dataKey="portfolio"
+          name="Your Portfolio"
+          stroke="#3b82f6"
+          strokeWidth={2.5}
+          dot={false}
+          activeDot={{ r: 5, fill: '#60a5fa', stroke: '#0b0f1a', strokeWidth: 1.5 }}
+        />
+
+        {/* One line per benchmark */}
+        {benchmarks.map((b, i) => (
+          <Line
+            key={b.key}
+            type="monotone"
+            dataKey={b.key}
+            name={b.label}
+            stroke={b.color}
+            strokeWidth={1.8}
+            strokeDasharray={i === 0 ? '6 3' : i === 1 ? '3 3' : '8 2 2 2'}
+            dot={false}
+            connectNulls
+            activeDot={{ r: 4, fill: b.color, stroke: '#0b0f1a', strokeWidth: 1.5 }}
+          />
+        ))}
       </ReLineChart>
     </ResponsiveContainer>
   );
@@ -442,6 +467,21 @@ export function ComparisonChart({ portfolioSeries, niftySeries }) {
 
 export function CagrTrendChart({ series }) {
   if (!series.length) return null;
+
+  // Check whether we have any non-null values to show
+  const hasMF = series.some(d => d.mfCagr != null);
+  const hasST = series.some(d => d.stCagr != null);
+
+  if (!hasMF && !hasST) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: 260, color: 'var(--text3)', fontSize: 13,
+      }}>
+        No CAGR data available — save more snapshots over time.
+      </div>
+    );
+  }
 
   return (
     <ResponsiveContainer width="100%" height={260}>
@@ -451,12 +491,16 @@ export function CagrTrendChart({ series }) {
         <YAxis tickFormatter={v => `${v.toFixed(0)}%`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={42} />
         <Tooltip formatter={(v, name) => [v != null ? `${v.toFixed(2)}%` : '—', name]} contentStyle={TOOLTIP_STYLE} />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
-        <Line type="monotone" dataKey="mfCagr" name="MF CAGR"
-          stroke="#8b5cf6" strokeWidth={2.5} dot={false} connectNulls
-          activeDot={{ r: 5, fill: '#a78bfa', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
-        <Line type="monotone" dataKey="stCagr" name="Stock CAGR"
-          stroke="#14b8a6" strokeWidth={2.5} dot={false} connectNulls
-          activeDot={{ r: 5, fill: '#2dd4bf', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
+        {hasMF && (
+          <Line type="monotone" dataKey="mfCagr" name="MF CAGR"
+            stroke="#8b5cf6" strokeWidth={2.5} dot={false} connectNulls
+            activeDot={{ r: 5, fill: '#a78bfa', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
+        )}
+        {hasST && (
+          <Line type="monotone" dataKey="stCagr" name="Stock CAGR"
+            stroke="#14b8a6" strokeWidth={2.5} dot={false} connectNulls
+            activeDot={{ r: 5, fill: '#2dd4bf', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
+        )}
       </ReLineChart>
     </ResponsiveContainer>
   );

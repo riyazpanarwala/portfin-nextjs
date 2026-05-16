@@ -1,77 +1,159 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import {
-  fetchNiftyHistory,
-  getNiftyForMonth,
+  BENCHMARKS,
+  fetchBenchmarkHistory,
+  getBenchmarkForMonth,
   rebaseToIndex,
-  isNiftyDataStale,
-  niftyDataLastMonth,
-  NIFTY_FALLBACK,
+  isBenchmarkDataStale,
+  benchmarkDataLastMonth,
+  getFDSeries,
 } from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart, CagrTrendChart } from '@/components/charts/Charts';
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 
-// ── Rolling return comparison ─────────────────────────────────────────────────
-function RollingReturns({ portfolioSeries, niftySeries }) {
+// ─── Benchmark selector ───────────────────────────────────────────────────────
+// Users can toggle any subset of benchmarks to overlay on the chart.
+// FD is always available (synthetic, no fetch needed).
+
+const BENCH_KEYS = Object.keys(BENCHMARKS);
+
+function BenchmarkSelector({ active, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', letterSpacing: '0.07em', textTransform: 'uppercase', flexShrink: 0 }}>
+        Compare vs
+      </span>
+      {BENCH_KEYS.map(key => {
+        const bench = BENCHMARKS[key];
+        const on    = active.includes(key);
+        return (
+          <button
+            key={key}
+            onClick={() => onChange(key)}
+            style={{
+              padding:    '4px 11px',
+              borderRadius: 20,
+              fontSize:   11,
+              fontWeight: 600,
+              cursor:     'pointer',
+              fontFamily: 'var(--font-main)',
+              border:     `1px solid ${on ? bench.color : 'var(--border)'}`,
+              background: on ? `${bench.color}22` : 'transparent',
+              color:      on ? bench.color : 'var(--text3)',
+              transition: 'all 0.15s',
+            }}
+          >
+            {/* colour swatch */}
+            <span style={{
+              display: 'inline-block', width: 7, height: 7,
+              borderRadius: 2, background: bench.color,
+              marginRight: 5, verticalAlign: 'middle',
+              opacity: on ? 1 : 0.35,
+            }} />
+            {bench.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Rolling return comparison ────────────────────────────────────────────────
+// FIX Bug 1: niftyLoading/benchLoading prop added so these cells show a loading
+//            state rather than silently reading fallback numbers.
+// FIX Bug 2: nStart guard changed to `!= null` so undefined doesn't produce NaN.
+
+function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
   const periods = [
-    { label: '6M', months: 6 },
-    { label: '1Y', months: 12 },
-    { label: '2Y', months: 24 },
-    { label: '3Y', months: 36 },
+    { label: '6M',  months: 6  },
+    { label: '1Y',  months: 12 },
+    { label: '2Y',  months: 24 },
+    { label: '3Y',  months: 36 },
   ];
-  const pMap = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
-  const nMap = Object.fromEntries(niftySeries.map(d => [d.month, d.value]));
+
+  const pMap      = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
   const allMonths = portfolioSeries.map(d => d.month).sort();
   const lastMonth = allMonths[allMonths.length - 1];
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
       {periods.map(({ label, months }) => {
-        const fromIdx = allMonths.length - 1 - months;
+        const fromIdx   = allMonths.length - 1 - months;
         if (fromIdx < 0) return (
           <div key={label} style={{ background: 'var(--bg3)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
             <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text3)' }}>{label}</div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>Insufficient data</div>
           </div>
         );
+
         const fromMonth = allMonths[fromIdx];
-        const pStart = pMap[fromMonth], pEnd = pMap[lastMonth];
-        const nStart = nMap[fromMonth], nEnd = nMap[lastMonth];
-        const pRet = pStart > 0 ? ((pEnd / pStart) - 1) * 100 : null;
-        const nRet = nStart > 0 ? ((nEnd / nStart) - 1) * 100 : null;
-        const alpha = pRet != null && nRet != null ? pRet - nRet : null;
+        const pStart    = pMap[fromMonth];
+        const pEnd      = pMap[lastMonth];
+        // FIX Bug 2: explicit != null guard prevents NaN when a month is missing
+        const pRet = (pStart != null && pEnd != null && pStart > 0)
+          ? ((pEnd / pStart) - 1) * 100 : null;
+
         return (
           <div key={label} style={{
-            background: 'var(--bg3)', borderRadius: '8px', padding: '14px',
-            border: `1px solid ${alpha != null && alpha > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+            background:  'var(--bg3)',
+            borderRadius: '8px',
+            padding:      '14px',
+            border:       `1px solid ${benchLoading ? 'var(--border)' : 'rgba(59,130,246,0.15)'}`,
           }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text3)', letterSpacing: '0.06em', marginBottom: '8px' }}>{label} RETURN</div>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text3)', letterSpacing: '0.06em', marginBottom: '8px' }}>
+              {label} RETURN
+            </div>
+
+            {/* Portfolio row */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text3)' }}>Portfolio</span>
+              <span style={{ fontSize: '10px', color: '#60a5fa' }}>● Portfolio</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: '700', color: colorPnl(pRet) }}>
                 {pRet != null ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%` : '—'}
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ fontSize: '10px', color: 'var(--text3)' }}>Nifty 50</span>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: '700', color: colorPnl(nRet) }}>
-                {nRet != null ? `${nRet > 0 ? '+' : ''}${fmt(nRet, 1)}%` : '—'}
-              </span>
-            </div>
-            {alpha != null && (
-              <div style={{
-                padding: '4px 8px', borderRadius: '5px', textAlign: 'center',
-                background: alpha > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                border: `1px solid ${alpha > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-              }}>
-                <span style={{ fontSize: '11px', fontWeight: '700', color: alpha > 0 ? 'var(--green2)' : 'var(--red2)' }}>
-                  {alpha > 0 ? '▲' : '▼'} Alpha: {alpha > 0 ? '+' : ''}{fmt(alpha, 1)}%
-                </span>
+
+            {/* FIX Bug 1: show loading state instead of fallback numbers silently */}
+            {benchLoading ? (
+              <div style={{ fontSize: '10px', color: 'var(--text3)', fontStyle: 'italic', marginTop: 4 }}>
+                Loading benchmark data…
               </div>
+            ) : (
+              activeBenchSeries.map(b => {
+                const bMap   = Object.fromEntries(b.data.map(d => [d.month, d.value]));
+                const bStart = bMap[fromMonth];
+                const bEnd   = bMap[lastMonth];
+                // FIX Bug 2: same null guard
+                const bRet   = (bStart != null && bEnd != null && bStart > 0)
+                  ? ((bEnd / bStart) - 1) * 100 : null;
+                const alpha  = pRet != null && bRet != null ? pRet - bRet : null;
+
+                return (
+                  <div key={b.key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '10px', color: b.color }}>● {b.label}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: '700', color: colorPnl(bRet) }}>
+                        {bRet != null ? `${bRet > 0 ? '+' : ''}${fmt(bRet, 1)}%` : '—'}
+                      </span>
+                    </div>
+                    {alpha != null && (
+                      <div style={{
+                        padding: '3px 7px', borderRadius: '5px', textAlign: 'center', marginBottom: 6,
+                        background: alpha > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                        border: `1px solid ${alpha > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                      }}>
+                        <span style={{ fontSize: '11px', fontWeight: '700', color: alpha > 0 ? 'var(--green2)' : 'var(--red2)' }}>
+                          {alpha > 0 ? '▲' : '▼'} vs {b.shortLabel ?? b.label}: {alpha > 0 ? '+' : ''}{fmt(alpha, 1)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         );
@@ -80,42 +162,92 @@ function RollingReturns({ portfolioSeries, niftySeries }) {
   );
 }
 
-// ── Hypothetical growth table ─────────────────────────────────────────────────
-function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
+// ─── Hypothetical growth table ────────────────────────────────────────────────
+// FIX Bug 3: milestones are now calendar-spaced (every 6 months) instead of
+//            array-index-spaced (i % 6 === 0), so the table row count is
+//            independent of snapshot frequency.
+
+function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, benchLoading }) {
   if (!portfolioSeries.length) return null;
-  const baseP = portfolioSeries[0]?.value || 1;
-  const baseN = niftySeries[0]?.value || 1;
+
+  const baseP   = portfolioSeries[0]?.value || 1;
   const baseAmt = totalInvested || 100000;
-  const milestones = portfolioSeries.filter((_, i) => i === 0 || i % 6 === 0 || i === portfolioSeries.length - 1);
+
+  // FIX Bug 3: pick milestones by calendar month, not by array index
+  const milestones = useMemo(() => {
+    if (!portfolioSeries.length) return [];
+    const result = [portfolioSeries[0]];
+    for (let i = 1; i < portfolioSeries.length - 1; i++) {
+      const [, mm] = portfolioSeries[i].month.split('-');
+      // Keep entries at Jan (01) and Jul (07) = roughly every 6 months
+      if (mm === '01' || mm === '07') result.push(portfolioSeries[i]);
+    }
+    result.push(portfolioSeries[portfolioSeries.length - 1]);
+    // Deduplicate by month
+    return result.filter((d, i, a) => i === 0 || d.month !== a[i - 1].month);
+  }, [portfolioSeries]);
+
+  const benchMaps = activeBenchSeries.map(b =>
+    Object.fromEntries(b.data.map(d => [d.month, d.value]))
+  );
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table>
         <thead>
           <tr>
             <th>Period</th>
-            <th>Portfolio Index</th>
-            <th>Nifty 50 Index</th>
+            <th>Portfolio index</th>
+            {activeBenchSeries.map(b => <th key={b.key}>{b.label} index</th>)}
             <th>₹{fmt(baseAmt / 100000, 1)}L in Portfolio</th>
-            <th>₹{fmt(baseAmt / 100000, 1)}L in Nifty</th>
-            <th>Alpha</th>
+            {activeBenchSeries.map(b => <th key={b.key}>₹{fmt(baseAmt / 100000, 1)}L in {b.shortLabel ?? b.label}</th>)}
           </tr>
         </thead>
         <tbody>
           {milestones.map((d, i) => {
-            const niftyD = niftySeries.find(n => n.month === d.month) || niftySeries[niftySeries.length - 1];
             const portVal = baseAmt * (d.value / baseP);
-            const niftyVal = baseAmt * (niftyD.value / baseN);
-            const alpha = portVal - niftyVal;
             return (
               <tr key={i}>
                 <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.month}</td>
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: '600' }}>{(d.value / baseP * 100).toFixed(1)}</td>
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--yellow)', fontWeight: '600' }}>{(niftyD.value / baseN * 100).toFixed(1)}</td>
-                <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(portVal)}</td>
-                <td style={{ fontFamily: 'var(--font-mono)' }}>{fmtCr(niftyVal)}</td>
-                <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: colorPnl(alpha) }}>
-                  {alpha >= 0 ? '+' : ''}{fmtCr(alpha)}
+                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: '600' }}>
+                  {(d.value / baseP * 100).toFixed(1)}
                 </td>
+
+                {/* FIX Bug 1: show dash while benchmark data is loading */}
+                {activeBenchSeries.map((b, bi) => {
+                  const bVal = benchMaps[bi][d.month] ?? null;
+                  const base = b.data[0]?.value || 1;
+                  return (
+                    <td key={b.key} style={{ fontFamily: 'var(--font-mono)', color: b.color, fontWeight: '600' }}>
+                      {benchLoading ? '…' : bVal != null ? (bVal / base * 100).toFixed(1) : '—'}
+                    </td>
+                  );
+                })}
+
+                <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(portVal)}</td>
+
+                {activeBenchSeries.map((b, bi) => {
+                  const bVal = benchMaps[bi][d.month] ?? null;
+                  const base = b.data[0]?.value || 1;
+                  const bAmt = bVal != null ? baseAmt * (bVal / base) : null;
+                  const alpha = bAmt != null ? portVal - bAmt : null;
+                  return (
+                    <td key={b.key}>
+                      {benchLoading ? (
+                        <span style={{ color: 'var(--text3)' }}>…</span>
+                      ) : bAmt != null ? (
+                        <>
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>{fmtCr(bAmt)}</span>
+                          {alpha != null && (
+                            <span style={{ fontFamily: 'var(--font-mono)', marginLeft: 6, fontWeight: '700', color: colorPnl(alpha) }}>
+                              ({alpha >= 0 ? '+' : ''}{fmtCr(alpha)})
+                            </span>
+                          )}
+                        </>
+                      ) : '—'}
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}
@@ -125,21 +257,16 @@ function HypotheticalTable({ portfolioSeries, niftySeries, totalInvested }) {
   );
 }
 
-// ── Nifty data status banner ──────────────────────────────────────────────────
-// FIX (Issue 9): extracted into its own component so the correct banner is
-// rendered on the VERY FIRST paint.  Previously the banner was chosen based on
-// `niftyHistory` state (initially null), so `isNiftyDataStale(null)` returned
-// false and the "live data" green banner flashed briefly before the actual
-// fetch result arrived — misleading the user into thinking live data was loaded
-// when NIFTY_FALLBACK was actually powering the chart.
-//
-// Now we derive the banner from THREE distinct states:
-//   1. loading  — fetch in progress, show neutral "Fetching…" pill
-//   2. error    — both sources failed, show amber "using fallback" warning
-//   3. resolved — show green (live) or amber (stale fallback) based on result
-function NiftyStatusBanner({ loading, error, niftyHistory, niftySource, niftyWarning }) {
-  const lastNiftyMonth = niftyDataLastMonth(niftyHistory);
-  const dataStale      = isNiftyDataStale(niftyHistory);
+// ─── Nifty / benchmark data status banner ────────────────────────────────────
+// Rendered for the primary (first active) benchmark only; others are noted
+// in a secondary line if they differ.
+
+function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys }) {
+  if (!activeBenchKeys.length) return null;
+
+  // FD is synthetic — never show a fetch banner for it
+  const fetchableKeys = activeBenchKeys.filter(k => k !== 'fd');
+  if (!fetchableKeys.length) return null;
 
   if (loading) {
     return (
@@ -148,12 +275,11 @@ function NiftyStatusBanner({ loading, error, niftyHistory, niftySource, niftyWar
         background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.2)',
         color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: '8px',
       }}>
-        {/* Simple spinner */}
         <svg width="12" height="12" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}>
           <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(148,169,196,0.3)" strokeWidth="2.5" />
           <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="var(--accent2)" strokeWidth="2.5" strokeLinecap="round" />
         </svg>
-        Fetching live Nifty 50 data… chart is using static fallback until complete.
+        Fetching live benchmark data… chart uses static fallback until complete.
       </div>
     );
   }
@@ -167,105 +293,137 @@ function NiftyStatusBanner({ loading, error, niftyHistory, niftySource, niftyWar
       }}>
         <span>⚠</span>
         <span>
-          Could not fetch live Nifty 50 data — using static fallback (last entry: <strong>{lastNiftyMonth}</strong>).
+          Could not fetch live benchmark data — using static fallback values.
           Check your network and reload to retry.
         </span>
       </div>
     );
   }
 
-  if (dataStale) {
-    return (
-      <div style={{
-        padding: '10px 16px', borderRadius: '8px', fontSize: '12px',
-        background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)',
-        color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: '8px',
-      }}>
-        <span>⚠</span>
-        <span>
-          Nifty 50 fallback data only covers up to <strong>{lastNiftyMonth}</strong>.
-          The Nifty line may appear flat for recent months.
-        </span>
-      </div>
-    );
-  }
-
-  // Live data successfully loaded
+  // Resolved — show per-benchmark source lines
   return (
     <div style={{
       padding: '8px 14px', borderRadius: '8px', fontSize: '11px',
       background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
-      color: 'var(--green2)', display: 'flex', alignItems: 'center', gap: '8px',
+      color: 'var(--green2)',
     }}>
-      <span className="live-dot" />
-      <span>
-        Nifty 50 data loaded live via{' '}
-        <strong>
-          {niftySource === 'upstox'
-            ? 'Upstox (^NSE_INDEX|Nifty 50)'
-            : 'Yahoo Finance (^NSEI)'}
-        </strong>
-        {' '}— up to <strong>{lastNiftyMonth}</strong>
-        {niftyWarning && (
-          <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>⚠ {niftyWarning}</span>
-        )}
-      </span>
+      {fetchableKeys.map(key => {
+        const info  = benchHistories[key];
+        const bench = BENCHMARKS[key];
+        const last  = benchmarkDataLastMonth(info?.history ?? null, key);
+        const stale = isBenchmarkDataStale(info?.history ?? null, key);
+        if (!info) return (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span style={{ color: bench.color }}>●</span>
+            <span style={{ color: 'var(--yellow)' }}>
+              {bench.label} — using static fallback (live fetch pending or failed)
+            </span>
+          </div>
+        );
+        return (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span className="live-dot" style={{ flexShrink: 0 }} />
+            <span>
+              <strong style={{ color: bench.color }}>{bench.label}</strong>
+              {' '}via <strong>{info.source === 'upstox' ? 'Upstox' : 'Yahoo Finance'}</strong>
+              {' '}— up to <strong>{last}</strong>
+              {stale && <span style={{ color: 'var(--yellow)', marginLeft: 6 }}>⚠ fallback data may be stale</span>}
+              {info.warning && <span style={{ color: 'var(--yellow)', marginLeft: 6 }}>⚠ {info.warning}</span>}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-// ── Main View ─────────────────────────────────────────────────────────────────
+// ─── Main View ────────────────────────────────────────────────────────────────
+
 export default function PortfolioVsNiftyView() {
   const { portfolioId, stats, setActiveView } = usePortfolio();
   const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId, 100);
-  const [mode, setMode] = useState('indexed');
 
-  // FIX (Issue 9): initialise niftyHistory to null (not an empty object) so
-  // we can distinguish "not yet fetched" from "fetched but empty".
-  // The niftySeries memo and NiftyStatusBanner both key off this being null
-  // to show the correct "loading/fallback" state on the first render.
-  const [niftyHistory, setNiftyHistory] = useState(null);
-  const [niftySource,  setNiftySource]  = useState(null);
-  const [niftyWarning, setNiftyWarning] = useState(null);
-  const [niftyLoading, setNiftyLoading] = useState(false);
-  const [niftyError,   setNiftyError]   = useState(false);
+  // FIX Bug 5: mode resets to 'indexed' when the portfolio series changes
+  const [mode, setMode]                     = useState('indexed');
+  const prevSeriesLenRef                    = useRef(0);
+
+  // Active benchmark keys (multi-select); default = Nifty 50 only
+  const [activeBenchKeys, setActiveBenchKeys] = useState(['nifty50']);
+
+  // Per-benchmark fetch state: { [key]: { history, source, warning } | null }
+  const [benchHistories, setBenchHistories] = useState({});
+  const [benchLoading,   setBenchLoading]   = useState(false);
+  const [benchError,     setBenchError]     = useState(false);
 
   const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
 
+  // FIX Bug 6: track the previous firstSnapshotDate so we only re-fetch
+  // when it actually changes, not on every snapshots refetch.
+  const prevFirstDateRef = useRef(null);
+
+  function toggleBenchmark(key) {
+    setActiveBenchKeys(prev =>
+      prev.includes(key)
+        ? prev.filter(k => k !== key)
+        : [...prev, key]
+    );
+  }
+
+  // Fetch all non-fd, non-cached benchmarks whenever firstSnapshotDate changes
+  // or the user enables a new benchmark.
   useEffect(() => {
     if (!firstSnapshotDate) return;
 
-    let cancelled = false;
-    // Reset to loading state — this also makes NiftyStatusBanner show the
-    // "Fetching…" pill on every re-fetch, not just the first one.
-    setNiftyLoading(true);
-    setNiftyError(false);
-    setNiftyHistory(null);   // null = "not yet resolved" — banner shows loading
-    setNiftyWarning(null);
-    setNiftySource(null);
+    // Find keys that actually need fetching
+    const needFetch = activeBenchKeys.filter(k =>
+      k !== 'fd' && !benchHistories[k]
+    );
 
-    fetchNiftyHistory(firstSnapshotDate).then(result => {
+    // Also re-fetch everything if firstSnapshotDate changed
+    const dateChanged = firstSnapshotDate !== prevFirstDateRef.current;
+    prevFirstDateRef.current = firstSnapshotDate;
+
+    const toFetch = dateChanged
+      ? activeBenchKeys.filter(k => k !== 'fd')
+      : needFetch;
+
+    if (!toFetch.length) return;
+
+    let cancelled = false;
+    setBenchLoading(true);
+    setBenchError(false);
+
+    // Reset histories for the keys being re-fetched so the banner shows loading
+    if (dateChanged) {
+      setBenchHistories({});
+    }
+
+    Promise.all(
+      toFetch.map(key =>
+        fetchBenchmarkHistory(firstSnapshotDate, key)
+          .then(result => ({ key, result }))
+      )
+    ).then(results => {
       if (cancelled) return;
-      if (result) {
-        setNiftyHistory(result.history);
-        setNiftySource(result.source);
-        setNiftyWarning(result.warning || null);
-      } else {
-        // Both sources failed — niftyHistory stays null → getNiftyForMonth
-        // will fall back to NIFTY_FALLBACK automatically; banner shows error.
-        setNiftyError(true);
-      }
-      setNiftyLoading(false);
+      let anyError = false;
+      const updates = {};
+      results.forEach(({ key, result }) => {
+        if (result) {
+          updates[key] = result;
+        } else {
+          anyError = true;
+        }
+      });
+      setBenchHistories(prev => ({ ...prev, ...updates }));
+      if (anyError) setBenchError(true);
+      setBenchLoading(false);
     });
 
     return () => { cancelled = true; };
-  }, [firstSnapshotDate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstSnapshotDate, activeBenchKeys.join(',')]);
 
-  const dataStale      = isNiftyDataStale(niftyHistory);
-  const lastNiftyMonth = niftyDataLastMonth(niftyHistory);
-
-  const loading = snapshotsLoading || niftyLoading;
-
+  // ── Portfolio series ────────────────────────────────────────────────────────
   const portfolioSeries = useMemo(() => {
     if (!snapshots.length) return [];
     return snapshots.map(s => ({
@@ -280,33 +438,86 @@ export default function PortfolioVsNiftyView() {
     }));
   }, [snapshots]);
 
-  // niftyHistory is null while loading — getNiftyForMonth falls back to
-  // NIFTY_FALLBACK automatically, so the chart always has something to show.
-  // The NiftyStatusBanner communicates this clearly (see above).
-  const niftySeries = useMemo(() =>
-    portfolioSeries
-      .map(d => ({ month: d.month, value: getNiftyForMonth(d.month, niftyHistory) || 0 }))
-      .filter(d => d.value > 0),
-    [portfolioSeries, niftyHistory]
-  );
+  // FIX Bug 5: reset mode to 'indexed' when new snapshots arrive
+  useEffect(() => {
+    if (portfolioSeries.length !== prevSeriesLenRef.current) {
+      prevSeriesLenRef.current = portfolioSeries.length;
+      setMode('indexed');
+    }
+  }, [portfolioSeries.length]);
 
+  // ── Benchmark raw series (un-rebased, for RollingReturns / HypotheticalTable)
+  const activeBenchSeries = useMemo(() => {
+    return activeBenchKeys.map(key => {
+      const bench = BENCHMARKS[key];
+      let data;
+      if (key === 'fd') {
+        // Synthetic FD — generate indexed values starting at 100
+        data = getFDSeries(portfolioSeries).map(d => ({
+          month: d.month,
+          value: d.value, // already base-100
+        }));
+      } else {
+        const history = benchHistories[key]?.history ?? null;
+        data = portfolioSeries
+          .map(d => ({
+            month: d.month,
+            // FIX Bug 2: getBenchmarkForMonth returns null (not undefined) when
+            // missing, so all downstream null checks work correctly
+            value: getBenchmarkForMonth(d.month, history, key) ?? null,
+          }))
+          .filter(d => d.value !== null);
+      }
+      return {
+        key,
+        label:      bench.label,
+        shortLabel: bench.label.split(' ')[0] + (bench.label.split(' ')[1] ? ' ' + bench.label.split(' ')[1] : ''),
+        color:      bench.color,
+        data,
+      };
+    });
+  }, [activeBenchKeys, benchHistories, portfolioSeries]);
+
+  // ── Rebased series for ComparisonChart ─────────────────────────────────────
   const rebasedPortfolio = useMemo(() => {
     if (!portfolioSeries.length) return [];
     return rebaseToIndex(portfolioSeries, portfolioSeries[0].value);
   }, [portfolioSeries]);
 
-  const rebasedNifty = useMemo(() => {
-    if (!niftySeries.length) return [];
-    return rebaseToIndex(niftySeries, niftySeries[0].value);
-  }, [niftySeries]);
+  const rebasedBenchSeries = useMemo(() => {
+    return activeBenchSeries
+      .filter(b => b.data.length > 0)
+      .map(b => ({
+        ...b,
+        data: b.key === 'fd'
+          // FD is already base-100
+          ? b.data.map(d => ({ ...d, indexed: d.value }))
+          : rebaseToIndex(b.data, b.data[0].value),
+      }));
+  }, [activeBenchSeries]);
 
-  const lastP = rebasedPortfolio[rebasedPortfolio.length - 1];
-  const lastN = rebasedNifty[rebasedNifty.length - 1];
-  const alpha = lastP && lastN ? lastP.indexed - lastN.indexed : null;
+  // ── Summary stats using first active benchmark ─────────────────────────────
+  const primaryBench  = activeBenchSeries[0];
+  const lastP         = rebasedPortfolio[rebasedPortfolio.length - 1];
+  const lastPrimBench = primaryBench
+    ? rebasedBenchSeries.find(b => b.key === primaryBench.key)?.data?.slice(-1)[0]
+    : null;
+
   const pTotal = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
-  const nTotal = lastN ? ((lastN.indexed / 100) - 1) * 100 : 0;
-  const latestSnapshotDate = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
+  const bTotal = lastPrimBench ? ((lastPrimBench.indexed / 100) - 1) * 100 : 0;
 
+  // FIX Bug 4: alpha expressed as % return difference (not raw index points)
+  const alphaReturnPct  = primaryBench ? pTotal - bTotal : null;
+  // Also keep the index-point difference for the detail banner
+  const alphaIndexPts   = lastP && lastPrimBench
+    ? lastP.indexed - lastPrimBench.indexed
+    : null;
+
+  const firstSnapshotDateFmt  = snapshots[0]?.snapshotAt?.slice(0, 10);
+  const latestSnapshotDate    = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
+  const loading               = snapshotsLoading || benchLoading;
+
+  // ── Guard: need ≥ 2 snapshots ───────────────────────────────────────────────
   if (snapshotsLoading) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="fade-up">
       {[140, 260, 100].map((h, i) => (
@@ -343,38 +554,43 @@ export default function PortfolioVsNiftyView() {
   return (
     <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-      {/* FIX (Issue 9): NiftyStatusBanner is always rendered — it shows
-          "Fetching…" during load, "error/fallback" on failure, and "live" on
-          success.  The old inline ternary only checked niftyError / dataStale
-          after the fetch resolved, so the very first render flashed "live data"
-          green even though NIFTY_FALLBACK was still powering the chart. */}
-      <NiftyStatusBanner
-        loading={niftyLoading}
-        error={niftyError}
-        niftyHistory={niftyHistory}
-        niftySource={niftySource}
-        niftyWarning={niftyWarning}
+      {/* Benchmark status banner — always rendered, shows correct state */}
+      <BenchmarkStatusBanner
+        loading={benchLoading}
+        error={benchError}
+        benchHistories={benchHistories}
+        activeBenchKeys={activeBenchKeys}
       />
+
+      {/* Benchmark selector */}
+      <div className="glass" style={{ padding: '14px 18px' }}>
+        <BenchmarkSelector active={activeBenchKeys} onChange={toggleBenchmark} />
+      </div>
 
       {/* Header stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
         <StatCard
-          label="Portfolio Return"
+          label="Portfolio return"
           value={`${pTotal >= 0 ? '+' : ''}${fmt(pTotal, 1)}%`}
           color={colorPnl(pTotal)}
-          sub={`Since ${firstSnapshotDate}`}
+          sub={`Since ${firstSnapshotDateFmt}`}
         />
+        {primaryBench && (
+          <StatCard
+            label={`${primaryBench.label} return`}
+            value={`${bTotal >= 0 ? '+' : ''}${fmt(bTotal, 1)}%`}
+            color={primaryBench.color}
+            sub="Same period"
+          />
+        )}
+        {/* FIX Bug 4: alpha now shows % (return difference), not raw index pts */}
         <StatCard
-          label="Nifty 50 Return"
-          value={`${nTotal >= 0 ? '+' : ''}${fmt(nTotal, 1)}%`}
-          color={colorPnl(nTotal)}
-          sub="Same period"
-        />
-        <StatCard
-          label="Alpha Generated"
-          value={alpha != null ? `${alpha >= 0 ? '+' : ''}${fmt(alpha, 1)} pts` : '—'}
-          color={alpha != null ? colorPnl(alpha) : 'var(--text2)'}
-          sub={alpha != null && alpha > 0 ? '🏆 Beating index' : '📉 Trailing index'}
+          label="Alpha vs primary"
+          value={alphaReturnPct != null ? `${alphaReturnPct >= 0 ? '+' : ''}${fmt(alphaReturnPct, 1)}%` : '—'}
+          color={alphaReturnPct != null ? colorPnl(alphaReturnPct) : 'var(--text2)'}
+          sub={alphaIndexPts != null
+            ? `${fmt(Math.abs(alphaIndexPts), 1)} index pts`
+            : primaryBench ? `vs ${primaryBench.label}` : '—'}
         />
         <StatCard
           label="Portfolio CAGR"
@@ -383,51 +599,53 @@ export default function PortfolioVsNiftyView() {
           sub="Annualised"
         />
         <StatCard
-          label="Data Points"
+          label="Data points"
           value={snapshots.length}
           color="var(--accent2)"
-          sub={`${firstSnapshotDate} → ${latestSnapshotDate}`}
+          sub={`${firstSnapshotDateFmt} → ${latestSnapshotDate}`}
         />
       </div>
 
       {/* Alpha badge */}
-      {alpha != null && (
+      {alphaReturnPct != null && (
         <div style={{
           padding: '12px 18px', borderRadius: '10px',
-          background: alpha > 0
+          background: alphaReturnPct > 0
             ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))'
             : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))',
-          border: `1px solid ${alpha > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+          border: `1px solid ${alphaReturnPct > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div>
-            <span style={{ fontSize: '14px', fontWeight: '700', color: alpha > 0 ? 'var(--green2)' : 'var(--red2)' }}>
-              {alpha > 0 ? '🏆 Your portfolio is beating Nifty 50' : '📉 Your portfolio is trailing Nifty 50'}
+            <span style={{ fontSize: '14px', fontWeight: '700', color: alphaReturnPct > 0 ? 'var(--green2)' : 'var(--red2)' }}>
+              {alphaReturnPct > 0 ? '🏆 Your portfolio is beating' : '📉 Your portfolio is trailing'}{' '}
+              {primaryBench?.label}
             </span>
             <span style={{ fontSize: '12px', color: 'var(--text2)', marginLeft: '10px' }}>
-              by {Math.abs(alpha).toFixed(1)} index points ({alpha > 0 ? '+' : ''}{fmt(pTotal - nTotal, 1)}% absolute)
+              by {fmt(Math.abs(alphaReturnPct), 1)}% return
+              {alphaIndexPts != null && ` (${fmt(Math.abs(alphaIndexPts), 1)} index pts)`}
             </span>
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
-            Base period: {firstSnapshotDate} → {latestSnapshotDate}
+            {firstSnapshotDateFmt} → {latestSnapshotDate}
           </div>
         </div>
       )}
 
       {/* Main chart */}
       <div className="glass" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: 10, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>
-              {mode === 'cagr' ? 'Sub-portfolio CAGR Trend' : 'Portfolio vs Nifty 50'}
+              {mode === 'cagr' ? 'Sub-portfolio CAGR trend' : 'Portfolio vs benchmarks'}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
               {mode === 'cagr'
                 ? 'MF and stock CAGR captured in each saved snapshot'
-                : 'Indexed to 100 at start — shows relative performance irrespective of portfolio size'}
-              {mode !== 'cagr' && niftyLoading && (
+                : 'Indexed to 100 at first snapshot — shows relative performance'}
+              {mode === 'indexed' && benchLoading && (
                 <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
-                  (Nifty line uses static data while live fetch completes)
+                  (benchmark lines use static data while live fetch completes)
                 </span>
               )}
             </div>
@@ -443,34 +661,62 @@ export default function PortfolioVsNiftyView() {
             ))}
           </div>
         </div>
-        {mode === 'indexed'
-          ? <ComparisonChart portfolioSeries={rebasedPortfolio} niftySeries={rebasedNifty} />
-          : mode === 'absolute'
-          ? <AbsoluteChart portfolioSeries={portfolioSeries} />
-          : <CagrTrendChart series={portfolioSeries} />
-        }
+
+        {mode === 'indexed' && (
+          <ComparisonChart
+            portfolioSeries={rebasedPortfolio}
+            benchmarkSeries={rebasedBenchSeries}
+          />
+        )}
+        {mode === 'absolute' && <AbsoluteChart portfolioSeries={portfolioSeries} />}
+        {mode === 'cagr'     && <CagrTrendChart series={portfolioSeries} />}
       </div>
 
       {/* Rolling returns */}
       <div className="glass" style={{ padding: '18px' }}>
-        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>Rolling Return Comparison</div>
-        <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>
-          Point-to-point return vs Nifty 50 over different time horizons
+        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>
+          Rolling return comparison
         </div>
-        <RollingReturns portfolioSeries={portfolioSeries} niftySeries={niftySeries} />
+        <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>
+          Point-to-point return vs selected benchmarks over different time horizons
+          {/* FIX Bug 1: explicit callout when benchmark data is still loading */}
+          {benchLoading && (
+            <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
+              · benchmark columns show live data once fetch completes
+            </span>
+          )}
+        </div>
+        <RollingReturns
+          portfolioSeries={portfolioSeries}
+          activeBenchSeries={activeBenchSeries}
+          benchLoading={benchLoading}
+        />
       </div>
 
       {/* Hypothetical growth table */}
       <div className="glass" style={{ overflow: 'hidden' }}>
-        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>
-            Hypothetical Growth — ₹{fmt(stats.totalInvested / 100000, 1)}L invested
-          </span>
-          <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text3)' }}>
-            · What would the same capital look like in Nifty 50?
-          </span>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>
+              Hypothetical growth — ₹{fmt(stats.totalInvested / 100000, 1)}L invested
+            </span>
+            <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text3)' }}>
+              · What would the same capital look like in each benchmark?
+            </span>
+          </div>
+          {/* FIX Bug 1: show loading indicator on the table header */}
+          {benchLoading && (
+            <span style={{ fontSize: '11px', color: 'var(--yellow)' }}>
+              ⏳ Loading benchmark data…
+            </span>
+          )}
         </div>
-        <HypotheticalTable portfolioSeries={portfolioSeries} niftySeries={niftySeries} totalInvested={stats.totalInvested} />
+        <HypotheticalTable
+          portfolioSeries={portfolioSeries}
+          activeBenchSeries={activeBenchSeries}
+          totalInvested={stats.totalInvested}
+          benchLoading={benchLoading}
+        />
       </div>
 
       {/* Methodology note */}
@@ -478,16 +724,13 @@ export default function PortfolioVsNiftyView() {
         padding: '12px 16px', borderRadius: '8px', fontSize: '11px', color: 'var(--text3)',
         background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.15)', lineHeight: '1.7',
       }}>
-        <strong style={{ color: 'var(--text2)' }}>Methodology:</strong> Portfolio values are from your saved snapshots.
-        Nifty 50 data is fetched live from{' '}
-        {niftySource === 'upstox'
-          ? 'Upstox V3 API (NSE_INDEX|Nifty 50, monthly closes)'
-          : niftySource === 'yahoo'
-          ? 'Yahoo Finance (^NSEI, monthly closes)'
-          : 'static fallback data (live fetch pending or unavailable)'}.
-        {' '}Both series are rebased to 100 at your first snapshot date for fair comparison.
-        Alpha = Portfolio indexed value − Nifty indexed value (index points).
-        Save more snapshots regularly for better granularity.
+        <strong style={{ color: 'var(--text2)' }}>Methodology:</strong>{' '}
+        Portfolio values are from saved snapshots. Benchmark data from Yahoo Finance (or Upstox for Nifty 50).
+        FD/Risk-free line is synthetic at 7.1% p.a. compounded monthly.
+        All series rebased to 100 at first snapshot for fair comparison.
+        Alpha = portfolio return % − primary benchmark return % over the same period.
+        Rolling returns use point-to-point % change on raw values.
+        Save snapshots regularly for better chart granularity.
       </div>
     </div>
   );

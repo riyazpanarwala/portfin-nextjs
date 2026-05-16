@@ -1,28 +1,25 @@
 import { NextResponse } from 'next/server';
 import YahooFinance from 'yahoo-finance2';
 import { withErrorHandler, badRequest } from '@/lib/apiHelpers';
+import { BENCHMARKS } from '@/lib/niftyData';
 
 export const dynamic = 'force-dynamic';
 
 const yahooFinance = new YahooFinance();
 
-// Upstox instrument key for Nifty 50 index
-// NSE_INDEX|Nifty 50  →  URL-encoded:  NSE_INDEX%7CNifty%2050
-const NIFTY_INSTRUMENT_KEY = 'NSE_INDEX%7CNifty%2050';
+// ─── Upstox instrument keys for Indian indices ────────────────────────────────
+// Only Nifty 50 works on the no-auth endpoint; others need a Bearer token.
+// We attempt Upstox first for Nifty 50 only and fall through to Yahoo for all.
+const UPSTOX_NIFTY50_KEY = 'NSE_INDEX%7CNifty%2050';
 
 /**
- * Fetch monthly Nifty 50 closes from Upstox V3 historical candle API.
- * Returns { 'YYYY-MM': closePrice } or throws on failure.
- *
- * UPSTOX_ACCESS_TOKEN in .env is optional — include it for better rate limits,
- * but the index historical endpoint works without auth too.
- *
- * Docs: https://upstox.com/developer/api-documentation/v3/get-historical-candle-data
+ * Fetch monthly closes from Upstox V3 — only valid for Nifty 50 index.
+ * Returns { 'YYYY-MM': number } or throws.
  */
 async function fetchFromUpstox(fromStr, toStr) {
   const url =
     `https://api.upstox.com/v3/historical-candle/` +
-    `${NIFTY_INSTRUMENT_KEY}/months/1/${toStr}/${fromStr}`;
+    `${UPSTOX_NIFTY50_KEY}/months/1/${toStr}/${fromStr}`;
 
   const headers = {
     Accept: 'application/json',
@@ -48,12 +45,10 @@ async function fetchFromUpstox(fromStr, toStr) {
     throw new Error('Unexpected Upstox response shape');
   }
 
-  // Each candle: [timestamp, open, high, low, close, volume, oi]
   const history = {};
   for (const candle of data.data.candles) {
     if (!candle[0] || candle[4] == null) continue;
-    // Timestamp is IST ISO string: "2025-01-01T00:00:00+05:30"
-    const month = candle[0].slice(0, 7); // 'YYYY-MM'
+    const month = candle[0].slice(0, 7);
     history[month] = Math.round(candle[4]);
   }
 
@@ -65,17 +60,17 @@ async function fetchFromUpstox(fromStr, toStr) {
 }
 
 /**
- * Fetch monthly Nifty 50 closes from Yahoo Finance (^NSEI).
- * Returns { 'YYYY-MM': closePrice } or throws on failure.
+ * Fetch monthly closes from Yahoo Finance for any supported ticker.
+ * Returns { 'YYYY-MM': number } or throws.
  */
-async function fetchFromYahoo(fromStr) {
-  const result = await yahooFinance.historical('^NSEI', {
+async function fetchFromYahoo(yahooTicker, fromStr) {
+  const result = await yahooFinance.historical(yahooTicker, {
     period1: fromStr,
     period2: new Date().toISOString().slice(0, 10),
     interval: '1mo',
   });
 
-  if (!result?.length) throw new Error('Yahoo returned no data');
+  if (!result?.length) throw new Error(`Yahoo returned no data for ${yahooTicker}`);
 
   const history = {};
   for (const row of result) {
@@ -84,31 +79,46 @@ async function fetchFromYahoo(fromStr) {
     history[month] = Math.round(row.close);
   }
 
-  if (Object.keys(history).length === 0) throw new Error('Yahoo: no valid rows');
+  if (Object.keys(history).length === 0) {
+    throw new Error(`Yahoo: no valid rows for ${yahooTicker}`);
+  }
+
   return history;
 }
 
 /**
- * GET /api/nifty-history?from=YYYY-MM-DD
+ * GET /api/nifty-history?from=YYYY-MM-DD&benchmark=nifty50
  *
- * Returns monthly end-of-month Nifty 50 closes from `from` to today.
- * Primary: Upstox V3 (better Indian market data, back to 2000, no limit)
- * Fallback: Yahoo Finance (^NSEI)
+ * `benchmark` must be one of the keys in BENCHMARKS (lib/niftyData.js).
+ * Defaults to 'nifty50' for backward compatibility.
  *
- * Response shape:
+ * Strategy:
+ *   - nifty50  → try Upstox first, fall back to Yahoo ^NSEI
+ *   - all others → Yahoo directly (Upstox no-auth only covers Nifty 50)
+ *
+ * Response:
  * {
  *   history:     { [month: 'YYYY-MM']: number },
  *   source:      'upstox' | 'yahoo',
+ *   benchmark:   string,
  *   lastUpdated: ISO string,
- *   warning?:    string   // present only when fallback was used
+ *   warning?:    string
  * }
  */
 export const GET = withErrorHandler('GET /api/nifty-history', async (request) => {
   const { searchParams } = new URL(request.url);
-  const from = searchParams.get('from');
+  const from      = searchParams.get('from');
+  const benchKey  = searchParams.get('benchmark') || 'nifty50';
 
   if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
     return badRequest('from parameter required in YYYY-MM-DD format');
+  }
+
+  const bench = BENCHMARKS[benchKey];
+  if (!bench) {
+    return badRequest(
+      `Unknown benchmark "${benchKey}". Valid: ${Object.keys(BENCHMARKS).join(', ')}`
+    );
   }
 
   // Pull one extra month before `from` so the chart baseline is always present
@@ -121,25 +131,50 @@ export const GET = withErrorHandler('GET /api/nifty-history', async (request) =>
   let source  = null;
   let warning = null;
 
-  // 1. Try Upstox first
-  try {
-    history = await fetchFromUpstox(fromStr, toStr);
-    source  = 'upstox';
-  } catch (upstoxErr) {
-    console.warn('[nifty-history] Upstox failed:', upstoxErr.message);
-    warning = `Upstox unavailable (${upstoxErr.message}), fell back to Yahoo Finance`;
-
-    // 2. Fall back to Yahoo Finance
+  // For Nifty 50: try Upstox first (better Indian market data)
+  if (benchKey === 'nifty50') {
     try {
-      history = await fetchFromYahoo(fromStr);
-      source  = 'yahoo';
-    } catch (yahooErr) {
-      console.error('[nifty-history] Yahoo also failed:', yahooErr.message);
+      history = await fetchFromUpstox(fromStr, toStr);
+      source  = 'upstox';
+    } catch (upstoxErr) {
+      console.warn('[nifty-history] Upstox failed:', upstoxErr.message);
+      warning = `Upstox unavailable (${upstoxErr.message}), fell back to Yahoo Finance`;
+    }
+  }
+
+  // Yahoo — try primary ticker, then optional alt ticker.
+  // Midcap 100 uses ^CRSMID as primary and NIFTY_MIDCAP_100.NS as alt
+  // because the caret symbol sometimes has shorter history on Yahoo.
+  if (!history) {
+    const tickersToTry = [
+      bench.yahooTicker,
+      bench.yahooTickerAlt ?? null,
+    ].filter(Boolean);
+
+    let lastYahooErr = null;
+
+    for (const ticker of tickersToTry) {
+      try {
+        history = await fetchFromYahoo(ticker, fromStr);
+        source  = 'yahoo';
+        if (ticker !== bench.yahooTicker) {
+          const altWarning = `Primary ticker ${bench.yahooTicker} returned no data; used ${ticker} instead`;
+          warning = warning ? `${warning}; ${altWarning}` : altWarning;
+        }
+        break;
+      } catch (err) {
+        console.warn(`[nifty-history] Yahoo ticker ${ticker} failed:`, err.message);
+        lastYahooErr = err;
+      }
+    }
+
+    if (!history) {
+      console.error('[nifty-history] All Yahoo tickers failed for', benchKey);
       return NextResponse.json(
         {
-          error: 'Both Upstox and Yahoo Finance failed to return Nifty 50 data.',
-          upstoxError: upstoxErr.message,
-          yahooError:  yahooErr.message,
+          error: `Failed to fetch ${bench.label} data. Tried: ${tickersToTry.join(', ')}.`,
+          yahooError: lastYahooErr?.message,
+          ...(warning && { upstoxWarning: warning }),
         },
         { status: 502 }
       );
@@ -149,6 +184,7 @@ export const GET = withErrorHandler('GET /api/nifty-history', async (request) =>
   return NextResponse.json({
     history,
     source,
+    benchmark: benchKey,
     lastUpdated: new Date().toISOString(),
     ...(warning && { warning }),
   });
