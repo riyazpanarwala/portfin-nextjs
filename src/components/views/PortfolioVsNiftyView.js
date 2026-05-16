@@ -16,6 +16,7 @@ import {
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { ComparisonChart, AbsoluteChart, CagrTrendChart } from '@/components/charts/Charts';
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
+import styles from './PortfolioVsNiftyView.module.css';
 
 // ─── Benchmark selector ───────────────────────────────────────────────────────
 
@@ -23,17 +24,12 @@ const BENCH_KEYS = Object.keys(BENCHMARKS);
 
 function BenchmarkSelector({ active, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-      <span style={{
-        fontSize: 10, fontWeight: 700, color: 'var(--text3)',
-        letterSpacing: '0.07em', textTransform: 'uppercase', flexShrink: 0,
-      }}>
-        Compare vs
-      </span>
+    <div className={styles.selectorRow}>
+      <span className={styles.selectorLabel}>Compare vs</span>
       {BENCH_KEYS.map(key => {
         const bench = BENCHMARKS[key];
         const on    = active.includes(key);
-        // bench.color is a CSS variable — use it directly for border/background
+        // bench.color is a CSS variable — used directly for dynamic border/bg/text
         return (
           <button
             key={key}
@@ -51,16 +47,10 @@ function BenchmarkSelector({ active, onChange }) {
               transition:   'all 0.15s',
             }}
           >
-            <span style={{
-              display:      'inline-block',
-              width:        7,
-              height:       7,
-              borderRadius: 2,
-              background:   bench.color,
-              marginRight:  5,
-              verticalAlign:'middle',
-              opacity:      on ? 1 : 0.35,
-            }} />
+            <span
+              className={styles.selectorSwatch}
+              style={{ background: bench.color, opacity: on ? 1 : 0.35 }}
+            />
             {bench.label}
           </button>
         );
@@ -84,16 +74,14 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
   const lastMonth = allMonths[allMonths.length - 1];
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+    <div className={styles.rollingGrid}>
       {periods.map(({ label, months }) => {
         const fromIdx = allMonths.length - 1 - months;
+
         if (fromIdx < 0) return (
-          <div key={label} style={{
-            background: 'var(--bg3)', borderRadius: '8px',
-            padding: '12px', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text3)' }}>{label}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '4px' }}>Insufficient data</div>
+          <div key={label} className={styles.rollingCardInsufficient}>
+            <div className={styles.rollingCardPeriodLabel}>{label}</div>
+            <div className={styles.rollingCardInsufficientSub}>Insufficient data</div>
           </div>
         );
 
@@ -103,35 +91,24 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
         const pRet = (pStart != null && pEnd != null && pStart > 0)
           ? ((pEnd / pStart) - 1) * 100 : null;
 
+        // border colour depends on loading state — stays inline (dynamic value)
         return (
-          <div key={label} style={{
-            background:   'var(--bg3)',
-            borderRadius: '8px',
-            padding:      '14px',
-            border:       `1px solid ${benchLoading ? 'var(--border)' : 'rgba(59,130,246,0.15)'}`,
-          }}>
-            <div style={{
-              fontSize: '11px', fontWeight: '700', color: 'var(--text3)',
-              letterSpacing: '0.06em', marginBottom: '8px',
-            }}>
-              {label} RETURN
-            </div>
+          <div
+            key={label}
+            className={styles.rollingCard}
+            style={{ border: `1px solid ${benchLoading ? 'var(--border)' : 'rgba(59,130,246,0.15)'}` }}
+          >
+            <div className={styles.rollingCardHeader}>{label} RETURN</div>
 
-            {/* Portfolio row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span style={{ fontSize: '10px', color: 'var(--accent2)' }}>● Portfolio</span>
-              <span style={{
-                fontFamily: 'var(--font-mono)', fontSize: '13px',
-                fontWeight: '700', color: colorPnl(pRet),
-              }}>
+            <div className={styles.rollingRow}>
+              <span className={styles.rollingPortfolioLabel}>● Portfolio</span>
+              <span className={styles.rollingValue} style={{ color: colorPnl(pRet) }}>
                 {pRet != null ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%` : '—'}
               </span>
             </div>
 
             {benchLoading ? (
-              <div style={{ fontSize: '10px', color: 'var(--text3)', fontStyle: 'italic', marginTop: 4 }}>
-                Loading benchmark data…
-              </div>
+              <div className={styles.rollingLoadingHint}>Loading benchmark data…</div>
             ) : (
               activeBenchSeries.map(b => {
                 const bMap   = Object.fromEntries(b.data.map(d => [d.month, d.value]));
@@ -143,29 +120,21 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
 
                 return (
                   <div key={b.key}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontSize: '10px', color: b.color }}>● {b.label}</span>
-                      <span style={{
-                        fontFamily: 'var(--font-mono)', fontSize: '13px',
-                        fontWeight: '700', color: colorPnl(bRet),
-                      }}>
+                    <div className={styles.rollingRow}>
+                      {/* bench.color is a CSS var — inline only because it's dynamic per benchmark */}
+                      <span className={styles.rollingBenchLabel} style={{ color: b.color }}>
+                        ● {b.label}
+                      </span>
+                      <span className={styles.rollingValue} style={{ color: colorPnl(bRet) }}>
                         {bRet != null ? `${bRet > 0 ? '+' : ''}${fmt(bRet, 1)}%` : '—'}
                       </span>
                     </div>
                     {alpha != null && (
-                      <div style={{
-                        padding:      '3px 7px',
-                        borderRadius: '5px',
-                        textAlign:    'center',
-                        marginBottom: 6,
-                        background:   alpha > 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                        border:       `1px solid ${alpha > 0 ? 'var(--green)' : 'var(--red)'}`,
-                      }}>
-                        <span style={{
-                          fontSize:   '11px',
-                          fontWeight: '700',
-                          color:      alpha > 0 ? 'var(--green2)' : 'var(--red2)',
-                        }}>
+                      <div className={`${styles.alphaChip} ${alpha > 0 ? styles.alphaChipWin : styles.alphaChipLoss}`}>
+                        <span
+                          className={styles.alphaChipText}
+                          style={{ color: alpha > 0 ? 'var(--green2)' : 'var(--red2)' }}
+                        >
                           {alpha > 0 ? '▲' : '▼'} vs {b.shortLabel ?? b.label}: {alpha > 0 ? '+' : ''}{fmt(alpha, 1)}%
                         </span>
                       </div>
@@ -205,7 +174,7 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
   );
 
   return (
-    <div style={{ overflowX: 'auto' }}>
+    <div className={styles.hypotheticalTableWrapper}>
       <table>
         <thead>
           <tr>
@@ -223,8 +192,8 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
             const portVal = baseAmt * (d.value / baseP);
             return (
               <tr key={i}>
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.month}</td>
-                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)', fontWeight: '600' }}>
+                <td className={styles.tdMonoText2}>{d.month}</td>
+                <td className={styles.tdMonoAccent}>
                   {(d.value / baseP * 100).toFixed(1)}
                 </td>
 
@@ -232,31 +201,32 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
                   const bVal = benchMaps[bi][d.month] ?? null;
                   const base = b.data[0]?.value || 1;
                   return (
-                    <td key={b.key} style={{ fontFamily: 'var(--font-mono)', color: b.color, fontWeight: '600' }}>
+                    /* bench.color is a CSS var — inline only because it's dynamic per benchmark */
+                    <td key={b.key} className={styles.tdMonoBold} style={{ color: b.color }}>
                       {benchLoading ? '…' : bVal != null ? (bVal / base * 100).toFixed(1) : '—'}
                     </td>
                   );
                 })}
 
-                <td style={{ fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{fmtCr(portVal)}</td>
+                <td className={styles.tdMonoBold}>{fmtCr(portVal)}</td>
 
                 {activeBenchSeries.map((b, bi) => {
-                  const bVal = benchMaps[bi][d.month] ?? null;
-                  const base = b.data[0]?.value || 1;
-                  const bAmt = bVal != null ? baseAmt * (bVal / base) : null;
+                  const bVal  = benchMaps[bi][d.month] ?? null;
+                  const base  = b.data[0]?.value || 1;
+                  const bAmt  = bVal != null ? baseAmt * (bVal / base) : null;
                   const alpha = bAmt != null ? portVal - bAmt : null;
                   return (
                     <td key={b.key}>
                       {benchLoading ? (
-                        <span style={{ color: 'var(--text3)' }}>…</span>
+                        <span className={styles.tdLoadingHint}>…</span>
                       ) : bAmt != null ? (
                         <>
-                          <span style={{ fontFamily: 'var(--font-mono)' }}>{fmtCr(bAmt)}</span>
+                          <span className={styles.tdMono}>{fmtCr(bAmt)}</span>
                           {alpha != null && (
-                            <span style={{
-                              fontFamily: 'var(--font-mono)', marginLeft: 6,
-                              fontWeight: '700', color: colorPnl(alpha),
-                            }}>
+                            <span
+                              className={styles.tdAlphaDelta}
+                              style={{ color: colorPnl(alpha) }}
+                            >
                               ({alpha >= 0 ? '+' : ''}{fmtCr(alpha)})
                             </span>
                           )}
@@ -284,18 +254,13 @@ function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys
 
   if (loading) {
     return (
-      <div style={{
-        padding:    '8px 14px',
-        borderRadius: '8px',
-        fontSize:   '11px',
-        background: 'rgba(59,130,246,0.07)',
-        border:     '1px solid rgba(59,130,246,0.2)',
-        color:      'var(--text3)',
-        display:    'flex',
-        alignItems: 'center',
-        gap:        '8px',
-      }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}>
+      <div className={styles.bannerLoading}>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          className={styles.bannerSpinner}
+        >
           <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(148,169,196,0.3)" strokeWidth="2.5" />
           <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="var(--accent2)" strokeWidth="2.5" strokeLinecap="round" />
         </svg>
@@ -306,17 +271,7 @@ function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys
 
   if (error) {
     return (
-      <div style={{
-        padding:    '10px 16px',
-        borderRadius: '8px',
-        fontSize:   '12px',
-        background: 'rgba(245,158,11,0.08)',
-        border:     '1px solid rgba(245,158,11,0.3)',
-        color:      'var(--yellow)',
-        display:    'flex',
-        alignItems: 'center',
-        gap:        '8px',
-      }}>
+      <div className={styles.bannerError}>
         <span>⚠</span>
         <span>
           Could not fetch live benchmark data from Upstox — using static fallback values.
@@ -327,41 +282,60 @@ function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys
   }
 
   return (
-    <div style={{
-      padding:      '8px 14px',
-      borderRadius: '8px',
-      fontSize:     '11px',
-      background:   'rgba(16,185,129,0.07)',
-      border:       '1px solid rgba(16,185,129,0.2)',
-      color:        'var(--green2)',
-    }}>
+    <div className={styles.bannerSuccess}>
       {fetchableKeys.map(key => {
         const info  = benchHistories[key];
         const bench = BENCHMARKS[key];
         const last  = benchmarkDataLastMonth(info?.history ?? null, key);
         const stale = isBenchmarkDataStale(info?.history ?? null, key);
+
         if (!info) return (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+          <div key={key} className={styles.bannerRow}>
+            {/* bench.color is a CSS var — inline only because it's dynamic per benchmark */}
             <span style={{ color: bench.color }}>●</span>
             <span style={{ color: 'var(--yellow)' }}>
               {bench.label} — using static fallback (live fetch pending or failed)
             </span>
           </div>
         );
+
         return (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+          <div key={key} className={styles.bannerRow}>
             <span className="live-dot" style={{ flexShrink: 0 }} />
             <span>
               <strong style={{ color: bench.color }}>{bench.label}</strong>
               {' '}via <strong>Upstox</strong>
               {' '}— up to <strong>{last}</strong>
-              {stale && <span style={{ color: 'var(--yellow)', marginLeft: 6 }}>⚠ fallback data may be stale</span>}
-              {info.warning && <span style={{ color: 'var(--yellow)', marginLeft: 6 }}>⚠ {info.warning}</span>}
+              {stale        && <span className={styles.bannerStaleWarning}>⚠ fallback data may be stale</span>}
+              {info.warning && <span className={styles.bannerStaleWarning}>⚠ {info.warning}</span>}
             </span>
           </div>
         );
       })}
     </div>
+  );
+}
+
+// ─── Mode toggle button ───────────────────────────────────────────────────────
+
+function ModeButton({ label, value, active, onClick }) {
+  // active state determines border/bg/color — stays inline (dynamic)
+  return (
+    <button
+      onClick={() => onClick(value)}
+      style={{
+        padding:      '4px 12px',
+        borderRadius: '6px',
+        fontSize:     '11px',
+        fontWeight:   '600',
+        cursor:       'pointer',
+        background:   active ? 'rgba(59,130,246,0.2)' : 'transparent',
+        border:       `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+        color:        active ? 'var(--accent2)' : 'var(--text3)',
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -375,13 +349,12 @@ export default function PortfolioVsNiftyView() {
   const prevSeriesLenRef                      = useRef(0);
   const [activeBenchKeys, setActiveBenchKeys] = useState(['nifty50']);
 
-  // Per-benchmark fetch state: { [key]: { history, source, warning } | null }
   const [benchHistories, setBenchHistories] = useState({});
   const [benchLoading,   setBenchLoading]   = useState(false);
   const [benchError,     setBenchError]     = useState(false);
 
-  const firstSnapshotDate  = snapshots[0]?.snapshotAt?.slice(0, 10);
-  const prevFirstDateRef   = useRef(null);
+  const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
+  const prevFirstDateRef  = useRef(null);
 
   function toggleBenchmark(key) {
     setActiveBenchKeys(prev =>
@@ -391,11 +364,10 @@ export default function PortfolioVsNiftyView() {
     );
   }
 
-  // Fetch all non-fd, non-cached benchmarks
   useEffect(() => {
     if (!firstSnapshotDate) return;
 
-    const needFetch  = activeBenchKeys.filter(k => k !== 'fd' && !benchHistories[k]);
+    const needFetch   = activeBenchKeys.filter(k => k !== 'fd' && !benchHistories[k]);
     const dateChanged = firstSnapshotDate !== prevFirstDateRef.current;
     prevFirstDateRef.current = firstSnapshotDate;
 
@@ -408,13 +380,11 @@ export default function PortfolioVsNiftyView() {
     let cancelled = false;
     setBenchLoading(true);
     setBenchError(false);
-
     if (dateChanged) setBenchHistories({});
 
     Promise.all(
       toFetch.map(key =>
-        fetchBenchmarkHistory(firstSnapshotDate, key)
-          .then(result => ({ key, result }))
+        fetchBenchmarkHistory(firstSnapshotDate, key).then(result => ({ key, result }))
       )
     ).then(results => {
       if (cancelled) return;
@@ -448,7 +418,6 @@ export default function PortfolioVsNiftyView() {
     }));
   }, [snapshots]);
 
-  // Reset mode when new snapshots arrive
   useEffect(() => {
     if (portfolioSeries.length !== prevSeriesLenRef.current) {
       prevSeriesLenRef.current = portfolioSeries.length;
@@ -456,35 +425,25 @@ export default function PortfolioVsNiftyView() {
     }
   }, [portfolioSeries.length]);
 
-  // ── Benchmark raw series (un-rebased) ──────────────────────────────────────
-  // bench.color is a CSS variable; resolveBenchmarkColor converts to hex for
-  // Recharts when needed, but we keep the CSS var in the series for UI usage.
+  // ── Benchmark raw series ────────────────────────────────────────────────────
   const activeBenchSeries = useMemo(() => {
     return activeBenchKeys.map(key => {
       const bench = BENCHMARKS[key];
       let data;
       if (key === 'fd') {
-        data = getFDSeries(portfolioSeries).map(d => ({
-          month: d.month,
-          value: d.value,
-        }));
+        data = getFDSeries(portfolioSeries).map(d => ({ month: d.month, value: d.value }));
       } else {
         const history = benchHistories[key]?.history ?? null;
         data = portfolioSeries
-          .map(d => ({
-            month: d.month,
-            value: getBenchmarkForMonth(d.month, history, key) ?? null,
-          }))
+          .map(d => ({ month: d.month, value: getBenchmarkForMonth(d.month, history, key) ?? null }))
           .filter(d => d.value !== null);
       }
       return {
         key,
         label:      bench.label,
         shortLabel: bench.label.split(' ').slice(0, 2).join(' '),
-        // CSS variable — safe for inline styles; use resolveBenchmarkColor for Recharts
-        color:      bench.color,
-        // Resolved hex for Recharts lines
-        hexColor:   resolveBenchmarkColor(bench.color),
+        color:      bench.color,                        // CSS var — for inline styles
+        hexColor:   resolveBenchmarkColor(bench.color), // hex — for Recharts
         data,
       };
     });
@@ -507,29 +466,26 @@ export default function PortfolioVsNiftyView() {
       }));
   }, [activeBenchSeries]);
 
-  // ── Summary stats using first active benchmark ─────────────────────────────
+  // ── Summary stats ───────────────────────────────────────────────────────────
   const primaryBench  = activeBenchSeries[0];
   const lastP         = rebasedPortfolio[rebasedPortfolio.length - 1];
   const lastPrimBench = primaryBench
     ? rebasedBenchSeries.find(b => b.key === primaryBench.key)?.data?.slice(-1)[0]
     : null;
 
-  const pTotal = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
-  const bTotal = lastPrimBench ? ((lastPrimBench.indexed / 100) - 1) * 100 : 0;
-
+  const pTotal         = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
+  const bTotal         = lastPrimBench ? ((lastPrimBench.indexed / 100) - 1) * 100 : 0;
   const alphaReturnPct = primaryBench ? pTotal - bTotal : null;
-  const alphaIndexPts  = lastP && lastPrimBench
-    ? lastP.indexed - lastPrimBench.indexed
-    : null;
+  const alphaIndexPts  = lastP && lastPrimBench ? lastP.indexed - lastPrimBench.indexed : null;
 
   const firstSnapshotDateFmt = snapshots[0]?.snapshotAt?.slice(0, 10);
   const latestSnapshotDate   = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
 
   // ── Guards ──────────────────────────────────────────────────────────────────
   if (snapshotsLoading) return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} className="fade-up">
+    <div className={`${styles.skeletonStack} fade-up`}>
       {[140, 260, 100].map((h, i) => (
-        <div key={i} className="skeleton" style={{ height: h, borderRadius: '12px' }} />
+        <div key={i} className={`skeleton ${styles.skeletonBlock}`} style={{ height: h }} />
       ))}
     </div>
   );
@@ -543,18 +499,8 @@ export default function PortfolioVsNiftyView() {
         cta="Go to Snapshots"
         onCta={() => setActiveView('snapshots')}
         extra={
-          <div style={{
-            background:   'rgba(59,130,246,0.08)',
-            borderRadius: '10px',
-            padding:      '14px 20px',
-            border:       '1px solid rgba(59,130,246,0.2)',
-            maxWidth:     '380px',
-            fontSize:     '12px',
-            color:        'var(--text2)',
-            textAlign:    'left',
-            lineHeight:   '1.8',
-          }}>
-            <div style={{ fontWeight: '700', color: 'var(--accent2)', marginBottom: '6px' }}>💡 Pro tip</div>
+          <div className={styles.proTipBox}>
+            <div className={styles.proTipLabel}>💡 Pro tip</div>
             {snapshots.length === 1
               ? '✅ You have 1 snapshot — save one more to unlock this chart.'
               : '📸 Go to Snapshot History and click "Save Snapshot Now" a few times over different days.'}
@@ -565,17 +511,15 @@ export default function PortfolioVsNiftyView() {
     </div>
   );
 
-  // ── Alpha badge colours via CSS vars ───────────────────────────────────────
-  const alphaBg     = alphaReturnPct > 0
+  // Alpha badge: gradient & border depend on sign — stays inline (dynamic)
+  const alphaBg = alphaReturnPct > 0
     ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))'
     : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))';
-  const alphaBorder = alphaReturnPct > 0
-    ? 'var(--green)' : 'var(--red)';
+  const alphaBorderColor = alphaReturnPct > 0 ? 'var(--green)' : 'var(--red)';
 
   return (
-    <div className="fade-up" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    <div className={`${styles.wrapper} fade-up`}>
 
-      {/* Benchmark status banner */}
       <BenchmarkStatusBanner
         loading={benchLoading}
         error={benchError}
@@ -583,13 +527,11 @@ export default function PortfolioVsNiftyView() {
         activeBenchKeys={activeBenchKeys}
       />
 
-      {/* Benchmark selector */}
-      <div className="glass" style={{ padding: '14px 18px' }}>
+      <div className={`glass ${styles.selectorPanel}`}>
         <BenchmarkSelector active={activeBenchKeys} onChange={toggleBenchmark} />
       </div>
 
-      {/* Header stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '10px' }}>
+      <div className={styles.statsGrid}>
         <StatCard
           label="Portfolio return"
           value={`${pTotal >= 0 ? '+' : ''}${fmt(pTotal, 1)}%`}
@@ -626,74 +568,50 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
-      {/* Alpha badge */}
       {alphaReturnPct != null && (
-        <div style={{
-          padding:      '12px 18px',
-          borderRadius: '10px',
-          background:   alphaBg,
-          border:       `1px solid ${alphaBorder}`,
-          display:      'flex',
-          justifyContent: 'space-between',
-          alignItems:   'center',
-        }}>
+        <div
+          className={styles.alphaBadge}
+          style={{ background: alphaBg, border: `1px solid ${alphaBorderColor}` }}
+        >
           <div>
-            <span style={{
-              fontSize:   '14px',
-              fontWeight: '700',
-              color:      alphaReturnPct > 0 ? 'var(--green2)' : 'var(--red2)',
-            }}>
+            <span
+              className={styles.alphaBadgeTitle}
+              style={{ color: alphaReturnPct > 0 ? 'var(--green2)' : 'var(--red2)' }}
+            >
               {alphaReturnPct > 0 ? '🏆 Your portfolio is beating' : '📉 Your portfolio is trailing'}{' '}
               {primaryBench?.label}
             </span>
-            <span style={{ fontSize: '12px', color: 'var(--text2)', marginLeft: '10px' }}>
+            <span className={styles.alphaBadgeSub}>
               by {fmt(Math.abs(alphaReturnPct), 1)}% return
               {alphaIndexPts != null && ` (${fmt(Math.abs(alphaIndexPts), 1)} index pts)`}
             </span>
           </div>
-          <div style={{ fontSize: '12px', color: 'var(--text3)' }}>
+          <div className={styles.alphaBadgeDates}>
             {firstSnapshotDateFmt} → {latestSnapshotDate}
           </div>
         </div>
       )}
 
-      {/* Main chart */}
-      <div className="glass" style={{ padding: '20px' }}>
-        <div style={{
-          display:        'flex',
-          justifyContent: 'space-between',
-          alignItems:     'center',
-          marginBottom:   '16px',
-          gap:            10,
-          flexWrap:       'wrap',
-        }}>
+      <div className={`glass ${styles.chartPanel}`}>
+        <div className={styles.chartHeader}>
           <div>
-            <div style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text)' }}>
+            <div className={styles.chartTitle}>
               {mode === 'cagr' ? 'Sub-portfolio CAGR trend' : 'Portfolio vs benchmarks'}
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text3)', marginTop: '2px' }}>
+            <div className={styles.chartSubtitle}>
               {mode === 'cagr'
                 ? 'MF and stock CAGR captured in each saved snapshot'
                 : 'Indexed to 100 at first snapshot — shows relative performance'}
               {mode === 'indexed' && benchLoading && (
-                <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
+                <span className={styles.chartSubtitleWarning}>
                   (benchmark lines use static data while live fetch completes)
                 </span>
               )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '6px' }}>
+          <div className={styles.chartModeGroup}>
             {[['indexed', 'Indexed'], ['absolute', 'Absolute'], ['cagr', 'CAGR']].map(([v, l]) => (
-              <button key={v} onClick={() => setMode(v)} style={{
-                padding:    '4px 12px',
-                borderRadius: '6px',
-                fontSize:   '11px',
-                fontWeight: '600',
-                cursor:     'pointer',
-                background: mode === v ? 'rgba(59,130,246,0.2)' : 'transparent',
-                border:     `1px solid ${mode === v ? 'var(--accent)' : 'var(--border)'}`,
-                color:      mode === v ? 'var(--accent2)' : 'var(--text3)',
-              }}>{l}</button>
+              <ModeButton key={v} value={v} label={l} active={mode === v} onClick={setMode} />
             ))}
           </div>
         </div>
@@ -703,8 +621,7 @@ export default function PortfolioVsNiftyView() {
             portfolioSeries={rebasedPortfolio}
             benchmarkSeries={rebasedBenchSeries.map(b => ({
               ...b,
-              // ComparisonChart (Recharts) needs resolved hex colors
-              color: b.hexColor,
+              color: b.hexColor, // Recharts needs resolved hex, not CSS vars
             }))}
           />
         )}
@@ -712,15 +629,12 @@ export default function PortfolioVsNiftyView() {
         {mode === 'cagr'     && <CagrTrendChart series={portfolioSeries} />}
       </div>
 
-      {/* Rolling returns */}
-      <div className="glass" style={{ padding: '18px' }}>
-        <div style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)', marginBottom: '4px' }}>
-          Rolling return comparison
-        </div>
-        <div style={{ fontSize: '11px', color: 'var(--text3)', marginBottom: '14px' }}>
+      <div className={`glass ${styles.rollingPanel}`}>
+        <div className={styles.rollingTitle}>Rolling return comparison</div>
+        <div className={styles.rollingSub}>
           Point-to-point return vs selected benchmarks over different time horizons
           {benchLoading && (
-            <span style={{ color: 'var(--yellow)', marginLeft: 8 }}>
+            <span className={styles.rollingSubWarning}>
               · benchmark columns show live data once fetch completes
             </span>
           )}
@@ -732,27 +646,18 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
-      {/* Hypothetical growth table */}
-      <div className="glass" style={{ overflow: 'hidden' }}>
-        <div style={{
-          padding:        '16px 18px',
-          borderBottom:   '1px solid var(--border)',
-          display:        'flex',
-          justifyContent: 'space-between',
-          alignItems:     'center',
-        }}>
+      <div className={`glass ${styles.hypotheticalPanel}`}>
+        <div className={styles.hypotheticalHeader}>
           <div>
-            <span style={{ fontSize: '13px', fontWeight: '600', color: 'var(--text)' }}>
+            <span className={styles.hypotheticalTitle}>
               Hypothetical growth — ₹{fmt(stats.totalInvested / 100000, 1)}L invested
             </span>
-            <span style={{ marginLeft: '8px', fontSize: '11px', color: 'var(--text3)' }}>
+            <span className={styles.hypotheticalSub}>
               · What would the same capital look like in each benchmark?
             </span>
           </div>
           {benchLoading && (
-            <span style={{ fontSize: '11px', color: 'var(--yellow)' }}>
-              ⏳ Loading benchmark data…
-            </span>
+            <span className={styles.hypotheticalLoadingBadge}>⏳ Loading benchmark data…</span>
           )}
         </div>
         <HypotheticalTable
@@ -763,17 +668,8 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
-      {/* Methodology note */}
-      <div style={{
-        padding:      '12px 16px',
-        borderRadius: '8px',
-        fontSize:     '11px',
-        color:        'var(--text3)',
-        background:   'rgba(59,130,246,0.05)',
-        border:       '1px solid rgba(59,130,246,0.15)',
-        lineHeight:   '1.7',
-      }}>
-        <strong style={{ color: 'var(--text2)' }}>Methodology:</strong>{' '}
+      <div className={styles.methodologyNote}>
+        <strong className={styles.methodologyNoteStrong}>Methodology:</strong>{' '}
         Portfolio values are from saved snapshots. Benchmark data fetched live from Upstox V3 API
         (Nifty 50, Sensex, Nifty Midcap 100, Nifty Smallcap 100).
         FD/Risk-free line is synthetic at 7.1% p.a. compounded monthly.

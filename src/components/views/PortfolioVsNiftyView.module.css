@@ -1,0 +1,376 @@
+/* ── Wrapper ── */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Skeleton loader ── */
+.skeletonStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeletonBlock {
+  border-radius: 12px;
+}
+
+/* ── Status banners ── */
+.bannerLoading {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  background: rgba(59, 130, 246, 0.07);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: var(--text3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bannerSpinner {
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+.bannerError {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--yellow);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bannerSuccess {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  background: rgba(16, 185, 129, 0.07);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: var(--green2);
+}
+
+.bannerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.bannerStaleWarning {
+  color: var(--yellow);
+  margin-left: 6px;
+}
+
+/* ── Benchmark selector panel ── */
+.selectorPanel {
+  padding: 14px 18px;
+}
+
+.selectorRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.selectorLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.selectorSwatch {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* ── Stats grid ── */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+/* ── Alpha badge ── */
+.alphaBadge {
+  padding: 12px 18px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.alphaBadgeTitle {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.alphaBadgeSub {
+  font-size: 12px;
+  color: var(--text2);
+  margin-left: 10px;
+}
+
+.alphaBadgeDates {
+  font-size: 12px;
+  color: var(--text3);
+}
+
+/* ── Main chart panel ── */
+.chartPanel {
+  padding: 20px;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chartTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chartSubtitle {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.chartSubtitleWarning {
+  color: var(--yellow);
+  margin-left: 8px;
+}
+
+.chartModeGroup {
+  display: flex;
+  gap: 6px;
+}
+
+/* ── Rolling returns ── */
+.rollingPanel {
+  padding: 18px;
+}
+
+.rollingTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.rollingSub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+
+.rollingSubWarning {
+  color: var(--yellow);
+  margin-left: 8px;
+}
+
+.rollingGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.rollingCard {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.rollingCardInsufficient {
+  background: var(--bg3);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.rollingCardPeriodLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text3);
+}
+
+.rollingCardInsufficientSub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 4px;
+}
+
+.rollingCardHeader {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.rollingRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.rollingBenchLabel {
+  font-size: 10px;
+}
+
+.rollingValue {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rollingPortfolioLabel {
+  font-size: 10px;
+  color: var(--accent2);
+}
+
+.rollingLoadingHint {
+  font-size: 10px;
+  color: var(--text3);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.alphaChip {
+  padding: 3px 7px;
+  border-radius: 5px;
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.alphaChipWin {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid var(--green);
+}
+
+.alphaChipLoss {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--red);
+}
+
+.alphaChipText {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Hypothetical table panel ── */
+.hypotheticalPanel {
+  overflow: hidden;
+}
+
+.hypotheticalHeader {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hypotheticalTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.hypotheticalSub {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.hypotheticalLoadingBadge {
+  font-size: 11px;
+  color: var(--yellow);
+}
+
+.hypotheticalTableWrapper {
+  overflow-x: auto;
+}
+
+.tdMono {
+  font-family: var(--font-mono);
+}
+
+.tdMonoBold {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.tdMonoAccent {
+  font-family: var(--font-mono);
+  color: var(--accent2);
+  font-weight: 600;
+}
+
+.tdMonoText2 {
+  font-family: var(--font-mono);
+  color: var(--text2);
+}
+
+.tdLoadingHint {
+  color: var(--text3);
+}
+
+.tdAlphaDelta {
+  font-family: var(--font-mono);
+  margin-left: 6px;
+  font-weight: 700;
+}
+
+/* ── Methodology note ── */
+.methodologyNote {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text3);
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  line-height: 1.7;
+}
+
+.methodologyNoteStrong {
+  color: var(--text2);
+}
+
+/* ── Empty state pro-tip box ── */
+.proTipBox {
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 10px;
+  padding: 14px 20px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  max-width: 380px;
+  font-size: 12px;
+  color: var(--text2);
+  text-align: left;
+  line-height: 1.8;
+}
+
+.proTipLabel {
+  font-weight: 700;
+  color: var(--accent2);
+  margin-bottom: 6px;
+}
