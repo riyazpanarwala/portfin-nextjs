@@ -1,26 +1,26 @@
 /**
  * lib/niftyData.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Benchmark configuration and Nifty 50 utilities.
+ * Benchmark configuration and Indian index utilities.
  *
  * BENCHMARKS defines every index the app can compare against.
  * Each entry carries:
  *   label       – display name shown in the UI
- *   yahooTicker – symbol passed to Yahoo Finance historical API
- *   color       – chart line colour (CSS-safe hex)
+ *   upstoxKey   – URL-encoded Upstox V3 instrument key
+ *   color       – CSS variable for chart line colour (never raw hex here)
  *   fallback    – sparse anchor points used when live fetch fails
  *
- * The NIFTY_FALLBACK export is kept for backward compatibility with any
- * code that still imports it directly; prefer BENCHMARKS['nifty50'].fallback.
+ * All live data is fetched via Upstox V3 historical candle API.
+ * The NIFTY_FALLBACK export is kept for backward compatibility.
  */
 
 // ─── Benchmark registry ───────────────────────────────────────────────────────
 
 export const BENCHMARKS = {
   nifty50: {
-    label:       'Nifty 50',
-    yahooTicker: '^NSEI',
-    color:       '#f59e0b',   // amber
+    label:     'Nifty 50',
+    upstoxKey: 'NSE_INDEX%7CNifty%2050',
+    color:     'var(--yellow)',
     fallback: {
       '2020-03': 8598,
       '2020-12': 13982,
@@ -38,10 +38,11 @@ export const BENCHMARKS = {
       '2026-05': 24334,
     },
   },
+
   sensex: {
-    label:       'Sensex',
-    yahooTicker: '^BSESN',
-    color:       '#f97316',   // orange
+    label:     'Sensex',
+    upstoxKey: 'BSE_INDEX%7CSENSEX',
+    color:     'var(--orange)',
     fallback: {
       '2020-03': 29468,
       '2020-12': 47751,
@@ -54,15 +55,11 @@ export const BENCHMARKS = {
       '2026-05': 80400,
     },
   },
+
   niftymidcap: {
-    label:       'Nifty Midcap 100',
-    // Primary ticker on Yahoo Finance for this index.
-    // ^CRSMID is the correct caret-symbol; NIFTY_MIDCAP_100.NS is the .NS
-    // variant — the API route tries both in sequence.
-    // NOTE: ^CNXMID does NOT exist on Yahoo Finance (returns 404).
-    yahooTicker: '^CRSMID',
-    yahooTickerAlt: 'NIFTY_MIDCAP_100.NS',  // tried if ^CRSMID returns no rows
-    color:       '#a78bfa',   // purple
+    label:     'Nifty Midcap 100',
+    upstoxKey: 'NSE_INDEX%7CNIFTY%20MIDCAP%20100',
+    color:     'var(--purple)',
     fallback: {
       '2020-03': 13839,
       '2020-12': 22771,
@@ -80,11 +77,11 @@ export const BENCHMARKS = {
       '2026-05': 54500,
     },
   },
+
   niftysmallcap: {
-    label:       'Nifty Smallcap 100',
-    // ^CNXSC is correct and confirmed working on Yahoo Finance.
-    yahooTicker: '^CNXSC',
-    color:       '#34d399',   // green
+    label:     'Nifty Smallcap 100',
+    upstoxKey: 'NSE_INDEX%7CNIFTY%20SMLCAP%20100',
+    color:     'var(--green2)',
     fallback: {
       '2020-03': 4356,
       '2020-12': 8021,
@@ -102,16 +99,48 @@ export const BENCHMARKS = {
       '2026-05': 17800,
     },
   },
+
   fd: {
-    label:       'FD / Risk-free (7.1% p.a.)',
-    yahooTicker: null,   // synthetic — no live fetch needed
-    color:       '#94a3b8', // slate
-    fallback:    {},     // generated dynamically in getFDSeries()
+    label:     'FD / Risk-free (7.1% p.a.)',
+    upstoxKey: null,   // synthetic — no live fetch needed
+    color:     'var(--text3)',
+    fallback:  {},     // generated dynamically in getFDSeries()
   },
 };
 
 // Backward-compat alias
 export const NIFTY_FALLBACK = BENCHMARKS.nifty50.fallback;
+
+// ─── CSS variable → hex resolver (for Recharts which needs real colours) ──────
+// Keep the mapping here so chart components don't hard-code hex values.
+const CSS_VAR_HEX = {
+  'var(--accent)':  '#3b82f6',
+  'var(--accent2)': '#60a5fa',
+  'var(--green)':   '#10b981',
+  'var(--green2)':  '#34d399',
+  'var(--red)':     '#ef4444',
+  'var(--red2)':    '#f87171',
+  'var(--yellow)':  '#f59e0b',
+  'var(--purple)':  '#8b5cf6',
+  'var(--orange)':  '#f97316',
+  'var(--teal)':    '#14b8a6',
+  'var(--text3)':   '#5c7a9a',
+  'var(--text2)':   '#94a9c4',
+  'var(--text)':    '#e8eef8',
+};
+
+/**
+ * resolveBenchmarkColor
+ * Converts a CSS variable colour string to a hex string safe for Recharts.
+ * Falls back to the provided default when the variable is unrecognised.
+ *
+ * @param {string} cssVar   e.g. 'var(--yellow)'
+ * @param {string} fallback hex fallback
+ * @returns {string}
+ */
+export function resolveBenchmarkColor(cssVar, fallback = '#94a9c4') {
+  return CSS_VAR_HEX[cssVar] || fallback;
+}
 
 // ─── Fetch ────────────────────────────────────────────────────────────────────
 
@@ -175,7 +204,7 @@ export function getBenchmarkForMonth(month, history, benchKey = 'nifty50') {
   return prior ? source[prior] : null;
 }
 
-// Backward-compat alias (used widely in existing code)
+// Backward-compat alias
 export function getNiftyForMonth(month, history) {
   return getBenchmarkForMonth(month, history, 'nifty50');
 }
