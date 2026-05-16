@@ -9,7 +9,7 @@ const BENCHMARKS = [
   { name: 'Nifty Smallcap', cagr5y: 22.1, cagr3y: 19.8, cagr1y: 16.5 },
 ];
 
-export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realizedSummary, portfolioXIRR }) {
+export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta }) {
   const [analyticsTab, setAnalyticsTab] = useState('overview');
 
   const ltcg         = useMemo(() => holdings.filter(h => h.years >= 1), [holdings]);
@@ -38,13 +38,14 @@ export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realiz
 
   const returnMetrics = useMemo(() => [
     { label: 'Portfolio XIRR',    value: portfolioXIRR != null ? portfolioXIRR : null, color: 'var(--green2)',          sub: 'True money-weighted',  suffix: '%' },
+    { label: 'Portfolio Beta',    value: portfolioBeta?.beta ?? null,                    color: 'var(--yellow)',          sub: 'Weighted equity risk', suffix: '' },
     { label: 'Approx CAGR',       value: stats.overallCagr * 0.93,                    color: 'var(--accent2)',          sub: 'Time-weighted est.',   suffix: '%' },
     { label: 'Sharpe Ratio',      value: parseFloat(sharpe),                           color: 'var(--teal)',             sub: 'Risk-adjusted',        suffix: '' },
     { label: 'Unrealized Return', value: stats.totalReturnPct,                         color: null, /* colorPnl applied in component */ sub: 'Open positions', suffix: '%' },
     { label: 'Total Realized',    value: null, crValue: realizedSummary.totalRealized, color: null, sub: 'Closed positions' },
     { label: 'MF CAGR',           value: stats.mfCagr,                                color: 'var(--purple)',           sub: 'Weighted avg',         suffix: '%' },
     { label: 'Stock CAGR',        value: stats.stCagr,                                color: 'var(--teal)',             sub: 'Weighted avg',         suffix: '%' },
-  ], [stats, sharpe, realizedSummary, portfolioXIRR]);
+  ], [stats, sharpe, realizedSummary, portfolioXIRR, portfolioBeta]);
 
   const sectorData = useMemo(() => {
     const map = {};

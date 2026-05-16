@@ -322,7 +322,7 @@ function RadarChartEmptyState({ sectorCount }) {
 }
 
 function SectorRotationWheel({ holdings, stats }) {
-  const { sectors, equalWeight, sectorCount } = useAnalyticsView({ stats, holdings, taxData: [], monthlyFlow: [], realizedSummary: { sells: [] }, portfolioXIRR: null }).sectorData;
+  const { sectors, equalWeight, sectorCount } = useAnalyticsView({ stats, holdings, taxData: [], monthlyFlow: [], realizedSummary: { sells: [] }, portfolioXIRR: null, portfolioBeta: null }).sectorData;
 
   const overweightSectors  = sectors.filter(s => s.delta >  2);
   const underweightSectors = sectors.filter(s => s.delta < -2);
@@ -451,16 +451,17 @@ function SectorRotationWheel({ holdings, stats }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function AnalyticsView() {
-  const { stats, holdings, taxData, monthlyFlow, realizedSummary, portfolioXIRR } = usePortfolio();
+  const { stats, holdings, taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta } = usePortfolio();
   const {
     analyticsTab, setAnalyticsTab,
     ltcg, stcg, ltcgInvested, stcgInvested,
     flowBars, sharpe, unrealizedTax,
     BENCHMARKS,
-  } = useAnalyticsView({ stats, holdings, stHoldings: [], mfHoldings: [], taxData, monthlyFlow, realizedSummary, portfolioXIRR });
+  } = useAnalyticsView({ stats, holdings, stHoldings: [], mfHoldings: [], taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta });
 
   const returnMetrics = [
     { label: 'Portfolio XIRR',    value: portfolioXIRR != null ? fmtPct(portfolioXIRR, true) : '—', color: 'var(--green2)',           sub: 'True money-weighted' },
+    { label: 'Portfolio Beta',    value: portfolioBeta?.beta != null ? fmt(portfolioBeta.beta, 2) : '—', color: 'var(--yellow)', sub: portfolioBeta?.beta != null ? `${fmt(portfolioBeta.coveragePct, 0)}% coverage` : 'Weighted equity risk' },
     { label: 'Approx CAGR',       value: fmtPct(stats.overallCagr * 0.93),                          color: 'var(--accent2)',           sub: 'Time-weighted est.'  },
     { label: 'Sharpe Ratio',      value: sharpe,                                                     color: 'var(--teal)',             sub: 'Risk-adjusted'       },
     { label: 'Unrealized Return', value: fmtPct(stats.totalReturnPct),                               color: colorPnl(stats.totalReturnPct), sub: 'Open positions'  },

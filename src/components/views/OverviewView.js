@@ -9,7 +9,7 @@ import styles from './OverviewView.module.css';
 
 export default function OverviewView() {
   const ctx = usePortfolio();
-  const { stats, holdings, mfHoldings, stHoldings, currentPrices, realizedSummary, portfolioXIRR } = ctx;
+  const { stats, holdings, mfHoldings, stHoldings, currentPrices, realizedSummary, portfolioXIRR, portfolioBeta } = ctx;
 
   const {
     mfCatMap, topMF, topSt, healthScore,
@@ -38,6 +38,9 @@ export default function OverviewView() {
         <StatCard label="Overall CAGR" value={fmtPct(stats.overallCagr)} sub="Annualised" color="var(--green2)" valueSize={20} />
         {portfolioXIRR != null && (
           <StatCard label="Portfolio XIRR" value={fmtPct(portfolioXIRR)} sub="Money-weighted" color="var(--teal)" valueSize={20} />
+        )}
+        {portfolioBeta?.beta != null && (
+          <StatCard label="Portfolio Beta" value={fmt(portfolioBeta.beta, 2)} sub={`${fmt(portfolioBeta.coveragePct, 0)}% coverage`} color="var(--yellow)" valueSize={20} />
         )}
         <StatCard label="MF Value" value={fmtCr(stats.mfValue)} sub={`${fmt(stats.mfPct, 1)}% of portfolio`} color="var(--teal)" valueSize={20} />
         <StatCard label="Stock Value" value={fmtCr(stats.stValue)} sub={`${fmt(stats.stPct, 1)}% of portfolio`} color="var(--purple)" valueSize={20} />

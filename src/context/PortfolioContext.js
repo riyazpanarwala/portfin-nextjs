@@ -32,6 +32,7 @@ export function PortfolioProvider({ children }) {
   const [toasts, setToasts]               = useState([]);
 
   const [portfolioXIRR, setPortfolioXIRR] = useState(null);
+  const [portfolioBeta, setPortfolioBeta] = useState(null);
   const [, startXIRRTransition]           = useTransition();
 
   // ── Load portfolio + trades ───────────────────────────────────────────────
@@ -139,6 +140,41 @@ export function PortfolioProvider({ children }) {
   }, [trades, currentPrices, holdings, startXIRRTransition]);
 
   // ── Stable price-merge helpers ────────────────────────────────────────────
+  useEffect(() => {
+    const activeHoldings = holdings.filter(h => h.qty > 0 && h.marketValue > 0);
+    if (!activeHoldings.length) {
+      setPortfolioBeta(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/portfolio-beta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            holdings: activeHoldings.map(h => ({
+              symbol: h.symbol,
+              assetType: h.assetType,
+              marketValue: h.marketValue,
+            })),
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error('Portfolio beta fetch failed');
+        setPortfolioBeta(await res.json());
+      } catch (err) {
+        if (err.name !== 'AbortError') setPortfolioBeta(null);
+      }
+    }, 0);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [holdings]);
+
   function mergePrices(next = {}) {
     setCurrentPrices(prev => {
       const changed = Object.keys(next).some(k => prev[k] !== next[k]);
@@ -316,7 +352,7 @@ export function PortfolioProvider({ children }) {
     <PortfolioCtx.Provider value={{
       trades, holdings, stats, mfHoldings, stHoldings,
       monthlyFlow, taxData, currentPrices, priceMeta,
-      realizedSummary, portfolioXIRR,
+      realizedSummary, portfolioXIRR, portfolioBeta,
       portfolioId, loading, error,
       activeView, setActiveView,
       addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,
