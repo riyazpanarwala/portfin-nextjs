@@ -2,21 +2,27 @@
 
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, colorPnl, sectorColor } from '@/lib/store';
-import { pct, pcol, holdStr, ReturnBar, HoldingDetailPanel, HoldingsEmpty, HoldingsControls } from '@/components/views/HoldingsShared';
+import {
+  pct, pcol, holdStr,
+  ReturnBar, HoldingDetailPanel,
+  HoldingsEmpty, HoldingsControls,
+  RefreshPriceButton,
+} from '@/components/views/HoldingsShared';
 import { useMFView } from '@/hooks/useMFView';
 import styles from './HoldingsTable.module.css';
 
-const COL = '20px 1fr 80px 32px 72px 72px 80px 80px 80px 88px 64px 130px 50px';
+// Added a 28px column at the end for the refresh button
+const COL = '20px 1fr 80px 32px 72px 72px 80px 80px 80px 88px 64px 130px 50px 28px';
 
 function HeaderRow() {
-  const cols = ['', 'FUND NAME', 'CAT', '#', 'UNITS', 'CMP', 'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
+  const cols = ['', 'FUND NAME', 'CAT', '#', 'UNITS', 'CMP', 'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', ''];
   return (
     <div className={styles.headerRow} style={{ display: 'grid', gridTemplateColumns: COL }}>
       {cols.map((c, i) => (
         <div
           key={i}
           className={`${styles.headerCell} ${i === 8 ? styles.headerCellYellow : ''}`}
-          style={{ textAlign: i > 2 ? 'right' : 'left' }}
+          style={{ textAlign: i > 2 && i < cols.length - 1 ? 'right' : 'left' }}
         >
           {c}
         </div>
@@ -41,18 +47,12 @@ export default function MFView() {
   return (
     <div className={`fade-up ${styles.wrapper}`}>
 
-      {/* Summary strip
-          FIX (Issue 8): each summaryItem now carries a `fmt` function so the
-          render loop never has to guess the type of `m.v`.  Previously the
-          component used `typeof m.v === 'number' && m.l !== 'Funds'` as a
-          guard, but any label change would silently break it and pass a plain
-          integer (e.g. fund count = 5) into fmtCr(), producing "₹5". */}
+      {/* Summary strip */}
       <div className={styles.summaryStrip}>
         {summaryItems.map((m, i) => (
           <div key={i} className={styles.summaryCell}>
             <div className={styles.summaryCellLabel}>{m.l}</div>
             <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 18 }}>
-              {/* Each item carries its own formatter — no type-sniffing needed */}
               {m.format ? m.format(m.v) : m.v}
             </div>
           </div>
@@ -68,6 +68,12 @@ export default function MFView() {
         onSortToggle={toggleSort}
         onExport={() => exportCSV(fmt)}
       />
+
+      {/* Edit hint */}
+      <div className={styles.editHint} style={{ marginBottom: 6 }}>
+        <span style={{ color: 'var(--teal)' }}>↺</span>
+        <span style={{ marginLeft: 3 }}>Click refresh icon on each row to fetch latest NAV from AMFI</span>
+      </div>
 
       {/* Table */}
       <div className={styles.tableContainer}>
@@ -126,6 +132,14 @@ export default function MFView() {
                 <div className={styles.monoCell} style={{ fontWeight: 700, color: pcol(h.cagr) }}>{pct(h.cagr)}</div>
                 <div className={styles.returnBarCell}><ReturnBar val={h.returnPct} max={maxRet} /></div>
                 <div className={styles.holdCell}>{holdStr(h.holdingDays)}</div>
+
+                {/* Per-row live NAV refresh button */}
+                <div
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <RefreshPriceButton symbol={h.symbol} assetType="MF" />
+                </div>
               </div>
 
               {open && (

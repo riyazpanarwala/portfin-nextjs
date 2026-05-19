@@ -6,21 +6,23 @@ import {
   pct, pcol, holdStr,
   ReturnBar, PriceCell, HoldingDetailPanel,
   HoldingsEmpty, HoldingsControls,
+  RefreshPriceButton,
 } from '@/components/views/HoldingsShared';
 import { useStocksView } from '@/hooks/useStocksView';
 import styles from './HoldingsTable.module.css';
 
-const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 80px 88px 64px 130px 50px';
+// Added a 28px column at the end for the refresh button
+const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 80px 88px 64px 130px 50px 28px';
 
 function HeaderRow() {
-  const cols = ['', 'STOCK', 'SECTOR', '#', 'QTY', 'CMP ✎', 'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD'];
+  const cols = ['', 'STOCK', 'SECTOR', '#', 'QTY', 'CMP ✎', 'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', ''];
   return (
     <div className={styles.headerRow} style={{ display: 'grid', gridTemplateColumns: COL }}>
       {cols.map((c, i) => (
         <div
           key={i}
           className={`${styles.headerCell} ${i === 5 ? styles.headerCellHighlight : ''} ${i === 8 ? styles.headerCellYellow : ''}`}
-          style={{ textAlign: i > 2 ? 'right' : 'left' }}
+          style={{ textAlign: i > 2 && i < cols.length - 1 ? 'right' : 'left' }}
         >
           {c}
         </div>
@@ -78,7 +80,9 @@ export default function StocksView() {
       {/* Edit hint */}
       <div className={styles.editHint}>
         <span className={styles.editHintAccent}>✎</span>
-        Click edit icon next to CMP to update price · Click row to expand lot details + sell history
+        Click edit icon next to CMP to update price · Click row to expand lot details + sell history ·
+        <span style={{ color: 'var(--teal)', marginLeft: 4 }}>↺</span>
+        <span style={{ marginLeft: 3 }}>Click refresh icon to fetch live price</span>
       </div>
 
       {/* Table */}
@@ -141,6 +145,14 @@ export default function StocksView() {
                 <div className={styles.monoCell} style={{ fontWeight: 700, color: pcol(h.cagr) }}>{pct(h.cagr)}</div>
                 <div className={styles.returnBarCell}><ReturnBar val={h.returnPct} max={maxRet} /></div>
                 <div className={styles.holdCell}>{holdStr(h.holdingDays)}</div>
+
+                {/* Per-row live price refresh button */}
+                <div
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <RefreshPriceButton symbol={h.symbol} assetType="STOCK" />
+                </div>
               </div>
 
               {open && (

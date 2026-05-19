@@ -89,6 +89,84 @@ export function TD({ ch, right, mono, color, bold, small }) {
   );
 }
 
+// ── RefreshPriceButton ────────────────────────────────────────────────────────
+// Fetches live price for a single symbol with force:true, saves to DB via
+// updatePrice (which calls PATCH /api/prices), and notifies the parent row.
+export function RefreshPriceButton({ symbol, assetType, onRefreshed }) {
+  const { updatePrice, toast } = usePortfolio();
+  const [loading, setLoading] = useState(false);
+
+  async function handleRefresh(e) {
+    e.stopPropagation(); // don't expand/collapse the row
+    setLoading(true);
+    try {
+      const res = await fetch('/api/prices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: [symbol], force: true }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // prices map may use original case or uppercase
+      const newPrice =
+        data.prices?.[symbol] ??
+        data.prices?.[symbol.toUpperCase()] ??
+        null;
+      if (newPrice && newPrice > 0) {
+        // updatePrice saves to DB (PATCH /api/prices) and updates context
+        await updatePrice(symbol, newPrice);
+        onRefreshed && onRefreshed(newPrice);
+      } else {
+        toast(`No live price found for ${symbol}`, 'blue');
+      }
+    } catch (err) {
+      toast(`Price refresh failed for ${symbol}: ${err.message}`, 'red');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleRefresh}
+      disabled={loading}
+      title={`Refresh live ${assetType === 'MF' ? 'NAV' : 'price'} for ${symbol}`}
+      className={styles.refreshPriceBtn}
+      style={{ opacity: loading ? 0.55 : 1 }}
+    >
+      {loading ? (
+        /* spinning arc */
+        <svg
+          width="10" height="10" viewBox="0 0 24 24"
+          style={{ animation: 'spin 0.7s linear infinite', display: 'block' }}
+        >
+          <circle
+            cx="12" cy="12" r="10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.8"
+            strokeDasharray="32"
+            strokeDashoffset="10"
+            strokeLinecap="round"
+          />
+        </svg>
+      ) : (
+        /* refresh arrows icon */
+        <svg
+          width="10" height="10" viewBox="0 0 24 24"
+          fill="none" stroke="currentColor"
+          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          style={{ display: 'block' }}
+        >
+          <path d="M23 4v6h-6" />
+          <path d="M1 20v-6h6" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 // ── Inline CMP price editor ───────────────────────────────────────────────────
 export function PriceCell({ symbol, cmp, onSaved }) {
   const { updatePrice } = usePortfolio();
@@ -412,8 +490,6 @@ export function SellHistoryTable({ h, qtyDecimals = 0 }) {
 export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirrLabel }) {
   const [tab, setTab] = useState('lots');
 
-  // FIX (Bug 16): h.lots and h.sells were missing from deps, causing stale
-  // XIRR to persist after trades were added/removed for this holding.
   const xirrVal = useMemo(
     () => calcHoldingXIRR(h.lots, h.sells, h.cmp),
     [h.symbol, h.cmp, h.lots, h.sells],
