@@ -119,7 +119,7 @@ export default function MFView() {
 
                 <div className={styles.monoCell}>{h.lots.length}</div>
                 <div className={styles.monoCell}>{fmt(h.qty, 2)}</div>
-                <div className={styles.cmpCell}>₹{fmt(h.cmp, 1)}</div>
+                <div className={styles.cmpCell}>₹{fmt(h.cmp, 2)}</div>
                 <div className={styles.monoCell}>{fmtCr(h.invested)}</div>
                 <div className={styles.monoCellBold}>{fmtCr(h.marketValue)}</div>
 

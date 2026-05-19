@@ -221,7 +221,7 @@ export function PriceCell({ symbol, cmp, onSaved }) {
 
   return (
     <div className={styles.priceCellWrapper}>
-      <span className={styles.priceCellValue}>₹{fmt(cmp, 1)}</span>
+      <span className={styles.priceCellValue}>₹{fmt(cmp, 2)}</span>
       <button onClick={startEdit} title={`Edit CMP for ${symbol}`} className={styles.priceCellEditBtn}>
         ✎
       </button>
