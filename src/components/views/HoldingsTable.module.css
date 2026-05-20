@@ -1,3 +1,5 @@
+/* ─── original classes (unchanged) ─── */
+
 .wrapper {
   display: flex;
   flex-direction: column;
@@ -174,4 +176,82 @@
 .editHintAccent {
   color: var(--accent2);
   font-weight: 600;
+}
+
+/* ─── new classes for active/exited feature ─── */
+
+/* Row outer wrapper — carries the bottom border */
+.rowOuter {
+  border-bottom: 1px solid rgba(45, 64, 96, 0.35);
+}
+
+/* Hover state on data rows */
+.dataRow:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* Exited rows are slightly dimmed */
+.dataRowExited {
+  opacity: 0.82;
+}
+
+/* Flex row wrapping symbol text + EXITED badge */
+.symbolNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* "EXITED" pill shown next to symbol in exited mode */
+.exitedBadge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(148, 169, 196, 0.12);
+  color: var(--text3);
+  border: 1px solid rgba(148, 169, 196, 0.2);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* Sector badge dimmed on exited rows */
+.sectorBadgeExited {
+  opacity: 0.7;
+}
+
+/* Qty / value cells that show "—" on exited rows */
+.monoCellMuted {
+  color: var(--text3);
+}
+
+/* Font-weight modifiers for P&L cells (colour set via colorPnl/pcol in JSX) */
+.monoCellRealized {
+  font-weight: 600;
+}
+
+.monoCellGain {
+  font-weight: 600;
+}
+
+.monoCellCagr {
+  font-weight: 700;
+}
+
+/* Read-only CMP / NAV on exited rows */
+.cmpCellExited {
+  color: var(--text3);
+}
+
+/* Last-column refresh-button wrapper */
+.refreshCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+/* Teal accent used in hint bar */
+.editHintTeal {
+  color: var(--teal);
 }

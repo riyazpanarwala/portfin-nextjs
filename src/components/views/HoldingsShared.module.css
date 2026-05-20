@@ -1,4 +1,5 @@
-/* ── Shared controls bar ── */
+/* ─── original classes (unchanged) ─── */
+
 .controlsBar {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -56,7 +57,6 @@
   transition: all 0.15s;
 }
 
-/* ── Return bar ── */
 .returnBarWrapper {
   display: flex;
   align-items: center;
@@ -82,7 +82,6 @@
   font-weight: 700;
 }
 
-/* ── Tax badge ── */
 .taxBadge {
   font-size: 10px;
   font-weight: 700;
@@ -91,7 +90,6 @@
   letter-spacing: 0.04em;
 }
 
-/* ── Price cell (inline CMP editor) ── */
 .priceCellWrapper {
   display: flex;
   align-items: center;
@@ -159,7 +157,6 @@
   font-weight: 700;
 }
 
-/* ── Refresh price button ── */
 .refreshPriceBtn {
   background: transparent;
   border: 1px solid var(--border);
@@ -185,7 +182,6 @@
   cursor: not-allowed;
 }
 
-/* ── Detail panel ── */
 .detailPanel {
   background: rgba(8, 14, 28, 0.85);
   border-top: 1px solid var(--border);
@@ -299,7 +295,6 @@
   border-bottom-color: var(--accent2);
 }
 
-/* ── Lot table ── */
 .tableScrollWrapper {
   overflow-x: auto;
 }
@@ -319,7 +314,6 @@
   color: var(--text3);
 }
 
-/* ── Lot table cells ── */
 .th {
   font-size: 10px;
   color: var(--text3);
@@ -359,9 +353,87 @@
   font-weight: 700;
 }
 
-/* ── FIFO note ── */
 .fifoNote {
   font-size: 10px;
   color: var(--text3);
   margin-top: 6px;
+}
+
+/* ─── new classes for ModeToggle and ExitedBanner ─── */
+
+/* Flex row containing the Active / Exited buttons */
+.modeToggleRow {
+  display: flex;
+  gap: 6px;
+}
+
+/* Base button style — inactive state */
+.modeBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text3);
+  cursor: pointer;
+  font-family: var(--font-main);
+  font-size: 12px;
+  font-weight: 700;
+  transition: all 0.15s;
+}
+
+/* "Active" tab — lit in accent blue when selected */
+.modeBtnActive {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent2);
+}
+
+/* "Exited" tab — lit in muted grey when selected */
+.modeBtnExited {
+  border-color: var(--border2);
+  background: rgba(148, 169, 196, 0.1);
+  color: var(--text3);
+}
+
+/* Count badge inside each mode button */
+.modeBtnCount {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg3);
+  color: var(--text3);
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+/* Badge when "Active" tab is selected */
+.modeBtnActive .modeBtnCount {
+  background: rgba(59, 130, 246, 0.25);
+  color: var(--accent2);
+  border-color: var(--accent);
+}
+
+/* Badge when "Exited" tab is selected */
+.modeBtnExited .modeBtnCount {
+  background: rgba(148, 169, 196, 0.15);
+  color: var(--text3);
+  border-color: var(--border2);
+}
+
+/* Info banner shown when viewing exited positions */
+.exitedBanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(148, 169, 196, 0.06);
+  border: 1px solid rgba(148, 169, 196, 0.15);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text3);
 }

@@ -7,79 +7,34 @@ import {
   ReturnBar, PriceCell, HoldingDetailPanel,
   HoldingsEmpty, HoldingsControls,
   RefreshPriceButton,
+  ModeToggle, ExitedBanner,
 } from '@/components/views/HoldingsShared';
 import { useStocksView } from '@/hooks/useStocksView';
 import styles from './HoldingsTable.module.css';
 
-// Added a 28px column at the end for the refresh button
 const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 80px 88px 64px 130px 50px 28px';
 
 function HeaderRow({ isExited }) {
-  // For exited positions CMP column label changes slightly
-  const cmpLabel = isExited ? 'LAST PRICE' : 'CMP ✎';
-  const cols = ['', 'STOCK', 'SECTOR', '#', 'QTY', cmpLabel, 'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', ''];
+  const cols = [
+    '', 'STOCK', 'SECTOR', '#', 'QTY',
+    isExited ? 'LAST PRICE' : 'CMP ✎',
+    'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', '',
+  ];
   return (
     <div className={styles.headerRow} style={{ display: 'grid', gridTemplateColumns: COL }}>
       {cols.map((c, i) => (
         <div
           key={i}
-          className={`${styles.headerCell} ${i === 5 && !isExited ? styles.headerCellHighlight : ''} ${i === 8 ? styles.headerCellYellow : ''}`}
+          className={[
+            styles.headerCell,
+            i === 5 && !isExited ? styles.headerCellHighlight : '',
+            i === 8              ? styles.headerCellYellow    : '',
+          ].filter(Boolean).join(' ')}
           style={{ textAlign: i > 2 && i < cols.length - 1 ? 'right' : 'left' }}
         >
           {c}
         </div>
       ))}
-    </div>
-  );
-}
-
-// ── Active/Exited segment control ─────────────────────────────────────────────
-function ModeToggle({ mode, setMode, activeCount, exitedCount }) {
-  const tabs = [
-    { key: 'active', label: 'Active', count: activeCount, color: 'var(--accent2)', activeBg: 'rgba(59,130,246,0.15)', activeBorder: 'var(--accent)' },
-    { key: 'exited', label: 'Exited', count: exitedCount, color: 'var(--text3)',   activeBg: 'rgba(148,169,196,0.1)', activeBorder: 'var(--border2)' },
-  ];
-
-  return (
-    <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-      {tabs.map(t => {
-        const on = mode === t.key;
-        return (
-          <button
-            key={t.key}
-            onClick={() => setMode(t.key)}
-            style={{
-              display:      'flex',
-              alignItems:   'center',
-              gap:          7,
-              padding:      '6px 14px',
-              borderRadius: 8,
-              border:       `1px solid ${on ? t.activeBorder : 'var(--border)'}`,
-              background:   on ? t.activeBg : 'transparent',
-              color:        on ? t.color : 'var(--text3)',
-              cursor:       'pointer',
-              fontFamily:   'var(--font-main)',
-              fontSize:     12,
-              fontWeight:   700,
-              transition:   'all 0.15s',
-            }}
-          >
-            {t.label}
-            <span style={{
-              fontSize:     10,
-              fontFamily:   'var(--font-mono)',
-              fontWeight:   700,
-              padding:      '1px 6px',
-              borderRadius: 4,
-              background:   on ? (t.key === 'active' ? 'rgba(59,130,246,0.25)' : 'rgba(148,169,196,0.15)') : 'var(--bg3)',
-              color:        on ? t.color : 'var(--text3)',
-              border:       `1px solid ${on ? t.activeBorder : 'transparent'}`,
-            }}>
-              {t.count}
-            </span>
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -90,12 +45,17 @@ export default function StocksView() {
   const {
     sort, sector, setSector, filter, setFilter, expanded,
     mode, setMode, activeCount, exitedCount,
-    sectors, rows, maxRet, stGain, stRealized,
+    sectors, rows, maxRet,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   } = useStocksView({ stHoldings, stats });
 
   if (!stHoldings.length) return (
-    <HoldingsEmpty icon="◐" label="No stock holdings yet" cta="+ Add Stock Trade" onCta={() => setActiveView('trade')} />
+    <HoldingsEmpty
+      icon="◐"
+      label="No stock holdings yet"
+      cta="+ Add Stock Trade"
+      onCta={() => setActiveView('trade')}
+    />
   );
 
   const isExited = mode === 'exited';
@@ -123,25 +83,12 @@ export default function StocksView() {
         exitedCount={exitedCount}
       />
 
-      {/* Exited banner */}
+      {/* Exited context banner */}
       {isExited && (
-        <div style={{
-          padding:      '8px 14px',
-          marginBottom: 8,
-          background:   'rgba(148,169,196,0.06)',
-          border:       '1px solid rgba(148,169,196,0.15)',
-          borderRadius: 8,
-          fontSize:     12,
-          color:        'var(--text3)',
-          display:      'flex',
-          alignItems:   'center',
-          gap:          8,
-        }}>
-          <span>📋</span>
-          Showing fully exited positions — all shares sold. Realized P&amp;L and FIFO details available by expanding each row.
-        </div>
+        <ExitedBanner message="Showing fully exited positions — all shares sold. Realized P&L and FIFO details available by expanding each row." />
       )}
 
+      {/* Filter + sort controls */}
       <HoldingsControls
         groupLabel="SECTOR"
         groups={sectors}
@@ -160,21 +107,22 @@ export default function StocksView() {
         }
       />
 
-      {/* Edit hint */}
-      {!isExited && (
-        <div className={styles.editHint}>
-          <span className={styles.editHintAccent}>✎</span>
-          Click edit icon next to CMP to update price · Click row to expand lot details + sell history ·
-          <span style={{ color: 'var(--teal)', marginLeft: 4 }}>↺</span>
-          <span style={{ marginLeft: 3 }}>Click refresh icon to fetch live price</span>
-        </div>
-      )}
-      {isExited && (
-        <div className={styles.editHint}>
-          <span style={{ color: 'var(--text3)' }}>ℹ</span>
-          <span style={{ marginLeft: 3 }}>Click row to expand full FIFO sell history and realized P&amp;L breakdown</span>
-        </div>
-      )}
+      {/* Hint bar */}
+      <div className={styles.editHint}>
+        {isExited ? (
+          <>
+            <span>ℹ</span>
+            Click row to expand full FIFO sell history and realized P&amp;L breakdown
+          </>
+        ) : (
+          <>
+            <span className={styles.editHintAccent}>✎</span>
+            Click edit icon next to CMP to update price · Click row to expand lot details + sell history ·
+            <span className={styles.editHintTeal}>↺</span>
+            Click refresh icon to fetch live price
+          </>
+        )}
+      </div>
 
       {/* Table */}
       <div className={styles.tableContainer}>
@@ -182,74 +130,69 @@ export default function StocksView() {
 
         {rows.length === 0 ? (
           <div className={styles.tableEmpty}>
-            {isExited
-              ? 'No fully exited positions yet.'
-              : 'No stocks match the selected filter.'}
+            {isExited ? 'No fully exited positions yet.' : 'No stocks match the selected filter.'}
           </div>
         ) : rows.map(h => {
           const open        = !!expanded[h.symbol];
           const hasRealized = (h.realizedGain || 0) !== 0;
 
           return (
-            <div key={h.symbol} style={{ borderBottom: '1px solid rgba(45,64,96,0.35)' }}>
+            <div key={h.symbol} className={styles.rowOuter}>
               <div
-                className={`${styles.dataRow} ${open ? styles.dataRowExpanded : ''}`}
+                className={[
+                  styles.dataRow,
+                  open     ? styles.dataRowExpanded : '',
+                  isExited ? styles.dataRowExited   : '',
+                ].filter(Boolean).join(' ')}
                 onClick={() => toggleExpanded(h.symbol)}
-                style={{
-                  display: 'grid', gridTemplateColumns: COL,
-                  opacity: isExited ? 0.82 : 1,
-                }}
-                onMouseEnter={e => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
-                onMouseLeave={e => { if (!open) e.currentTarget.style.background = 'transparent'; }}
+                style={{ display: 'grid', gridTemplateColumns: COL }}
               >
                 <div className={styles.expandChevron}>{open ? '▼' : '►'}</div>
 
                 {/* Symbol */}
                 <div className={styles.symbolCell}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className={styles.symbolNameRow}>
                     <span className={styles.symbolText}>{h.symbol}</span>
-                    {isExited && (
-                      <span style={{
-                        fontSize:     9,
-                        fontWeight:   700,
-                        padding:      '1px 5px',
-                        borderRadius: 3,
-                        background:   'rgba(148,169,196,0.12)',
-                        color:        'var(--text3)',
-                        border:       '1px solid rgba(148,169,196,0.2)',
-                        letterSpacing: '0.05em',
-                      }}>EXITED</span>
-                    )}
+                    {isExited && <span className={styles.exitedBadge}>EXITED</span>}
                   </div>
                   {h.sells?.length > 0 && (
-                    <div className={styles.sellBadge}>{h.sells.length} sell{h.sells.length > 1 ? 's' : ''}</div>
+                    <div className={styles.sellBadge}>
+                      {h.sells.length} sell{h.sells.length > 1 ? 's' : ''}
+                    </div>
                   )}
                 </div>
 
                 {/* Sector */}
                 <div className={styles.sectorCell}>
                   <span
-                    className={styles.sectorBadge}
+                    className={[
+                      styles.sectorBadge,
+                      isExited ? styles.sectorBadgeExited : '',
+                    ].filter(Boolean).join(' ')}
                     style={{
                       background: `${sectorColor(h.sector || 'Other')}20`,
                       color:      sectorColor(h.sector || 'Other'),
                       border:     `1px solid ${sectorColor(h.sector || 'Other')}40`,
-                      opacity:    isExited ? 0.7 : 1,
                     }}
                   >
                     {h.sector || 'Other'}
                   </span>
                 </div>
 
+                {/* # lots */}
                 <div className={styles.monoCell}>{h.lots.length}</div>
-                {/* Exited positions show 0 qty greyed out */}
-                <div className={styles.monoCell} style={{ color: isExited ? 'var(--text3)' : undefined }}>
+
+                {/* Qty */}
+                <div className={[
+                  styles.monoCell,
+                  isExited ? styles.monoCellMuted : '',
+                ].filter(Boolean).join(' ')}>
                   {isExited ? '—' : fmt(h.qty, 0)}
                 </div>
 
-                {/* CMP — no inline editor for exited rows */}
+                {/* CMP — editable only for active rows */}
                 {isExited ? (
-                  <div className={styles.cmpCell} style={{ color: 'var(--text3)' }}>
+                  <div className={[styles.cmpCell, styles.cmpCellExited].join(' ')}>
                     ₹{fmt(h.cmp, 2)}
                   </div>
                 ) : (
@@ -258,28 +201,51 @@ export default function StocksView() {
                   </div>
                 )}
 
+                {/* Invested */}
                 <div className={styles.monoCell}>{fmtCr(h.invested)}</div>
-                {/* Value is 0 for exited; show em-dash */}
-                <div className={styles.monoCellBold} style={{ color: isExited ? 'var(--text3)' : undefined }}>
+
+                {/* Value */}
+                <div className={[
+                  styles.monoCellBold,
+                  isExited ? styles.monoCellMuted : '',
+                ].filter(Boolean).join(' ')}>
                   {isExited ? '—' : fmtCr(h.marketValue)}
                 </div>
 
-                <div className={styles.monoCell} style={{ fontWeight: 600, color: hasRealized ? colorPnl(h.realizedGain) : 'var(--text3)' }}>
+                {/* Realized */}
+                <div
+                  className={`${styles.monoCell} ${styles.monoCellRealized}`}
+                  style={{ color: hasRealized ? colorPnl(h.realizedGain) : 'var(--text3)' }}
+                >
                   {hasRealized ? fmtCr(h.realizedGain) : '—'}
                 </div>
-                {/* For exited, unrealized gain is always 0 — show total gain instead */}
-                <div className={styles.monoCell} style={{ fontWeight: 600, color: isExited ? colorPnl(h.realizedGain) : colorPnl(h.unrealizedGain) }}>
-                  {isExited ? fmtCr(h.realizedGain) : fmtCr(h.unrealizedGain)}
+
+                {/* Gain — realized for exited rows; unrealized for active */}
+                <div
+                  className={`${styles.monoCell} ${styles.monoCellGain}`}
+                  style={{ color: colorPnl(isExited ? h.realizedGain : h.unrealizedGain) }}
+                >
+                  {fmtCr(isExited ? h.realizedGain : h.unrealizedGain)}
                 </div>
-                <div className={styles.monoCell} style={{ fontWeight: 700, color: pcol(h.cagr) }}>{pct(h.cagr)}</div>
-                <div className={styles.returnBarCell}><ReturnBar val={h.returnPct} max={maxRet} /></div>
+
+                {/* CAGR */}
+                <div
+                  className={`${styles.monoCell} ${styles.monoCellCagr}`}
+                  style={{ color: pcol(h.cagr) }}
+                >
+                  {pct(h.cagr)}
+                </div>
+
+                {/* Return bar */}
+                <div className={styles.returnBarCell}>
+                  <ReturnBar val={h.returnPct} max={maxRet} />
+                </div>
+
+                {/* Holding period */}
                 <div className={styles.holdCell}>{holdStr(h.holdingDays)}</div>
 
-                {/* Per-row live price refresh button — hide for exited */}
-                <div
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}
-                  onClick={e => e.stopPropagation()}
-                >
+                {/* Refresh btn — hidden for exited rows */}
+                <div className={styles.refreshCell} onClick={e => e.stopPropagation()}>
                   {!isExited && <RefreshPriceButton symbol={h.symbol} assetType="STOCK" />}
                 </div>
               </div>

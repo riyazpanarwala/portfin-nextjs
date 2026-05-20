@@ -11,10 +11,9 @@ export function useMFView({ mfHoldings, stats }) {
   const [expanded, setExpanded] = useState({});
   const [mode, setMode]         = useState('active'); // 'active' | 'exited'
 
-  // Split into active (holding units) vs exited (fully redeemed)
+  // Split holdings: active = still holding units; exited = fully redeemed
   const activeHoldings = useMemo(() => mfHoldings.filter(h => h.qty > EPSILON),  [mfHoldings]);
   const exitedHoldings = useMemo(() => mfHoldings.filter(h => h.qty <= EPSILON), [mfHoldings]);
-
   const sourceHoldings = mode === 'active' ? activeHoldings : exitedHoldings;
 
   const categories = useMemo(() =>
@@ -22,7 +21,7 @@ export function useMFView({ mfHoldings, stats }) {
     [sourceHoldings]
   );
 
-  // Reset category pill when switching modes
+  // Reset category pill when mode changes
   const effectiveCategory = categories.includes(category) ? category : 'All';
 
   const rows = useMemo(() => {
@@ -53,43 +52,43 @@ export function useMFView({ mfHoldings, stats }) {
       l: 'MF Value',
       v: stats.mfValue,
       c: 'var(--teal)',
-      format: (v) => fmtCr(v),
+      format: v => fmtCr(v),
     },
     {
       l: 'Invested',
       v: stats.mfInvested,
       c: 'var(--text)',
-      format: (v) => fmtCr(v),
+      format: v => fmtCr(v),
     },
     {
       l: 'Unrealized',
       v: mfGain,
       c: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)',
-      format: (v) => fmtCr(v),
+      format: v => fmtCr(v),
     },
     {
       l: 'Realized P&L',
       v: mfRealized,
       c: mfRealized >= 0 ? 'var(--green2)' : 'var(--red2)',
-      format: (v) => fmtCr(v),
+      format: v => fmtCr(v),
     },
     {
       l: 'Wtd CAGR',
       v: stats.mfCagr,
       c: 'var(--green2)',
-      format: (v) => `${v >= 0 ? '+' : ''}${fmt(v)}%`,
+      format: v => `${v >= 0 ? '+' : ''}${fmt(v)}%`,
     },
     {
       l: 'Active',
       v: activeHoldings.length,
       c: 'var(--accent2)',
-      format: (v) => String(v),
+      format: v => String(v),
     },
     {
       l: 'Exited',
       v: exitedHoldings.length,
       c: 'var(--text3)',
-      format: (v) => String(v),
+      format: v => String(v),
     },
   ], [stats, mfGain, mfRealized, activeHoldings.length, exitedHoldings.length]);
 
@@ -102,7 +101,8 @@ export function useMFView({ mfHoldings, stats }) {
   }
 
   function exportCSV(fmt) {
-    const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status']];
+    const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Value',
+      'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status']];
     rows.forEach(h => rows2.push([
       h.symbol, h.sector || '', h.lots.length, fmt(h.qty, 3), fmt(h.cmp, 2), fmt(h.avgBuy, 2),
       fmt(h.invested, 0), fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),

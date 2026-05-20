@@ -35,6 +35,50 @@ export const SORTS = [
   { key: 'lots',           label: 'Lots'       },
 ];
 
+// ── ModeToggle — Active / Exited segment control ──────────────────────────────
+// Shared by StocksView and MFView.
+// Uses classes from HoldingsShared.module.css (modeToggleRow, modeBtn,
+// modeBtnActive, modeBtnExited, modeBtnCount).
+export function ModeToggle({ mode, setMode, activeCount, exitedCount }) {
+  const tabs = [
+    { key: 'active', label: 'Active', count: activeCount },
+    { key: 'exited', label: 'Exited', count: exitedCount },
+  ];
+  return (
+    <div className={styles.modeToggleRow}>
+      {tabs.map(t => {
+        const on = mode === t.key;
+        const modifier = on
+          ? (t.key === 'active' ? styles.modeBtnActive : styles.modeBtnExited)
+          : '';
+        return (
+          <button
+            key={t.key}
+            onClick={() => setMode(t.key)}
+            className={`${styles.modeBtn} ${modifier}`}
+          >
+            {t.label}
+            <span className={styles.modeBtnCount}>{t.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── ExitedBanner — info strip shown when viewing exited positions ─────────────
+// Uses .exitedBanner from HoldingsShared.module.css.
+// Props:
+//   message  string — context-specific wording (stocks vs MF)
+export function ExitedBanner({ message }) {
+  return (
+    <div className={styles.exitedBanner}>
+      <span>📋</span>
+      {message}
+    </div>
+  );
+}
+
 // ── ReturnBar ─────────────────────────────────────────────────────────────────
 export function ReturnBar({ val, max }) {
   const w = Math.min(100, (Math.abs(val) / (max || 1)) * 100);
@@ -90,14 +134,12 @@ export function TD({ ch, right, mono, color, bold, small }) {
 }
 
 // ── RefreshPriceButton ────────────────────────────────────────────────────────
-// Fetches live price for a single symbol with force:true, saves to DB via
-// updatePrice (which calls PATCH /api/prices), and notifies the parent row.
 export function RefreshPriceButton({ symbol, assetType, onRefreshed }) {
   const { updatePrice, toast } = usePortfolio();
   const [loading, setLoading] = useState(false);
 
   async function handleRefresh(e) {
-    e.stopPropagation(); // don't expand/collapse the row
+    e.stopPropagation();
     setLoading(true);
     try {
       const res = await fetch('/api/prices', {
@@ -107,13 +149,11 @@ export function RefreshPriceButton({ symbol, assetType, onRefreshed }) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      // prices map may use original case or uppercase
       const newPrice =
         data.prices?.[symbol] ??
         data.prices?.[symbol.toUpperCase()] ??
         null;
       if (newPrice && newPrice > 0) {
-        // updatePrice saves to DB (PATCH /api/prices) and updates context
         await updatePrice(symbol, newPrice);
         onRefreshed && onRefreshed(newPrice);
       } else {
@@ -135,23 +175,18 @@ export function RefreshPriceButton({ symbol, assetType, onRefreshed }) {
       style={{ opacity: loading ? 0.55 : 1 }}
     >
       {loading ? (
-        /* spinning arc */
         <svg
           width="10" height="10" viewBox="0 0 24 24"
           style={{ animation: 'spin 0.7s linear infinite', display: 'block' }}
         >
           <circle
             cx="12" cy="12" r="10"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.8"
-            strokeDasharray="32"
-            strokeDashoffset="10"
-            strokeLinecap="round"
+            fill="none" stroke="currentColor"
+            strokeWidth="2.8" strokeDasharray="32"
+            strokeDashoffset="10" strokeLinecap="round"
           />
         </svg>
       ) : (
-        /* refresh arrows icon */
         <svg
           width="10" height="10" viewBox="0 0 24 24"
           fill="none" stroke="currentColor"
@@ -369,8 +404,8 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
       }));
   }, [lots, cmp]);
 
-  const priceLabel = qtyDecimals > 0 ? 'AVG NAV'  : 'AVG PRICE';
-  const qtyLabel   = qtyDecimals > 0 ? 'UNITS'    : 'QTY';
+  const priceLabel = qtyDecimals > 0 ? 'AVG NAV'   : 'AVG PRICE';
+  const qtyLabel   = qtyDecimals > 0 ? 'UNITS'     : 'QTY';
 
   return (
     <div className={styles.tableScrollWrapper}>
@@ -495,7 +530,7 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
     [h.symbol, h.cmp, h.lots, h.sells],
   );
 
-  const meta    = priceMeta?.[h.symbol];
+  const meta     = priceMeta?.[h.symbol];
   const hasSells = h.sells && h.sells.length > 0;
 
   const tabs = [
@@ -508,7 +543,6 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
     <div className={styles.detailPanel}>
       <div className={styles.detailPanelInner}>
 
-        {/* XIRR + stats */}
         <div className={styles.detailXirrBar}>
           <div className={styles.detailXirrText}>
             {xirrLabel}:{' '}
@@ -539,13 +573,11 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
           )}
         </div>
 
-        {/* Chart */}
         <div className={styles.detailChartBox}>
           <div className={styles.detailChartLabel}>{chartLabel}</div>
           <HoldingPerformanceChart lots={h.lots} cmp={h.cmp} />
         </div>
 
-        {/* Tab bar */}
         <div className={styles.detailTabBar}>
           {tabs.map(([k, l]) => (
             <button

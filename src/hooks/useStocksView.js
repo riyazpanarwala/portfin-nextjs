@@ -11,10 +11,9 @@ export function useStocksView({ stHoldings, stats }) {
   const [expanded, setExpanded] = useState({});
   const [mode, setMode]         = useState('active'); // 'active' | 'exited'
 
-  // Split into active (holding qty) vs exited (fully sold)
+  // Split holdings: active = still holding qty; exited = fully sold
   const activeHoldings = useMemo(() => stHoldings.filter(h => h.qty > EPSILON),  [stHoldings]);
   const exitedHoldings = useMemo(() => stHoldings.filter(h => h.qty <= EPSILON), [stHoldings]);
-
   const sourceHoldings = mode === 'active' ? activeHoldings : exitedHoldings;
 
   const sectors = useMemo(() =>
@@ -22,7 +21,7 @@ export function useStocksView({ stHoldings, stats }) {
     [sourceHoldings]
   );
 
-  // Reset sector pill when switching modes (old sector may not exist in new list)
+  // Reset sector pill when mode changes — old sector may not exist in new list
   const effectiveSector = sectors.includes(sector) ? sector : 'All';
 
   const rows = useMemo(() => {
@@ -57,14 +56,14 @@ export function useStocksView({ stHoldings, stats }) {
   const stLoss = stHoldings.reduce((s, h) => s + (h.stats?.lossCount || 0), 0);
 
   const summaryItems = useMemo(() => [
-    { l: 'Stock Value',   v: stats.stValue,             c: 'var(--purple)'  },
-    { l: 'Invested',      v: stats.stInvested,          c: 'var(--text)'    },
-    { l: 'Unrealized',    v: stGain,                    c: stGain >= 0 ? 'var(--green2)' : 'var(--red2)' },
+    { l: 'Stock Value',  v: stats.stValue,             c: 'var(--purple)'  },
+    { l: 'Invested',     v: stats.stInvested,          c: 'var(--text)'    },
+    { l: 'Unrealized',   v: stGain,                    c: stGain >= 0 ? 'var(--green2)' : 'var(--red2)' },
     { l: 'Realized P&L', v: stRealized,                c: stRealized >= 0 ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'Total Gain',    v: stGain + stRealized,       c: (stGain + stRealized) >= 0 ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'W / L',         v: `${stWins}W / ${stLoss}L`, c: stWins > stLoss ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'Active',        v: activeHoldings.length,     c: 'var(--accent2)' },
-    { l: 'Exited',        v: exitedHoldings.length,     c: 'var(--text3)'   },
+    { l: 'Total Gain',   v: stGain + stRealized,       c: (stGain + stRealized) >= 0 ? 'var(--green2)' : 'var(--red2)' },
+    { l: 'W / L',        v: `${stWins}W / ${stLoss}L`, c: stWins > stLoss ? 'var(--green2)' : 'var(--red2)' },
+    { l: 'Active',       v: activeHoldings.length,     c: 'var(--accent2)' },
+    { l: 'Exited',       v: exitedHoldings.length,     c: 'var(--text3)'   },
   ], [stats, stGain, stRealized, stWins, stLoss, activeHoldings.length, exitedHoldings.length]);
 
   function toggleSort(k) {
@@ -76,7 +75,8 @@ export function useStocksView({ stHoldings, stats }) {
   }
 
   function exportCSV(fmt, holdStr) {
-    const rows2 = [['Stock', 'Sector', 'Lots', 'Qty', 'CMP', 'Avg Buy', 'Invested', 'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Holding', 'Status']];
+    const rows2 = [['Stock', 'Sector', 'Lots', 'Qty', 'CMP', 'Avg Buy', 'Invested', 'Value',
+      'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Holding', 'Status']];
     rows.forEach(h => rows2.push([
       h.symbol, h.sector || '', h.lots.length, fmt(h.qty, 0), fmt(h.cmp, 2), fmt(h.avgBuy, 2),
       fmt(h.invested, 0), fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),
