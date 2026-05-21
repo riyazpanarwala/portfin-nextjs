@@ -34,6 +34,14 @@
   font-family: var(--font-mono);
 }
 
+/* Sub-label below summary cell value (e.g. "incl. exited", "of total portfolio") */
+.summaryCellSub {
+  font-size: 9px;
+  color: var(--text3);
+  margin-top: 2px;
+  letter-spacing: 0.04em;
+}
+
 .tableContainer {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -91,6 +99,15 @@
   font-weight: 700;
 }
 
+/* Sub-row below symbol name (sell badge + stale buy badge) */
+.symbolMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 1px;
+}
+
 .fundName {
   font-size: 9px;
   color: var(--text3);
@@ -103,6 +120,13 @@
   font-size: 9px;
   color: var(--yellow);
   margin-top: 1px;
+}
+
+/* "last buy Xmo ago" label for neglected positions */
+.staleBuyBadge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .sectorCell {
@@ -171,6 +195,7 @@
   align-items: center;
   gap: 6px;
   padding-left: 2px;
+  flex-wrap: wrap;
 }
 
 .editHintAccent {
@@ -200,6 +225,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* "EXITED" pill shown next to symbol in exited mode */
@@ -254,4 +280,24 @@
 /* Teal accent used in hint bar */
 .editHintTeal {
   color: var(--teal);
+}
+
+/* ─── Data error banner (top of view when any holding has FIFO mismatch) ─── */
+.dataErrorBanner {
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.07);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--red2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Concentration hint in the edit-hint bar ─── */
+.concentrationHint {
+  color: var(--text3);
+  font-style: italic;
 }
