@@ -8,6 +8,7 @@ import {
   HoldingsEmpty, HoldingsControls,
   RefreshPriceButton,
   ModeToggle, ExitedBanner,
+  DataErrorBadge,
 } from '@/components/views/HoldingsShared';
 import { useMFView } from '@/hooks/useMFView';
 import styles from './HoldingsTable.module.css';
@@ -44,6 +45,7 @@ export default function MFView() {
   const {
     sort, category, setCategory, expanded,
     mode, setMode, activeCount, exitedCount,
+    dataErrorCount,
     categories, rows, maxRet,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   } = useMFView({ mfHoldings, stats });
@@ -70,9 +72,17 @@ export default function MFView() {
             <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 18 }}>
               {m.format ? m.format(m.v) : m.v}
             </div>
+            {m.sub && <div className={styles.summaryCellSub}>{m.sub}</div>}
           </div>
         ))}
       </div>
+
+      {/* Data error banner if any */}
+      {dataErrorCount > 0 && (
+        <div className={styles.dataErrorBanner}>
+          ⚠ {dataErrorCount} fund{dataErrorCount > 1 ? 's have' : ' has'} FIFO mismatches — some sell trades have no matching buys. Expand those rows for details.
+        </div>
+      )}
 
       {/* Active / Exited toggle */}
       <ModeToggle
@@ -103,12 +113,12 @@ export default function MFView() {
         {isExited ? (
           <>
             <span>ℹ</span>
-            Click row to expand full redemption history and realized P&amp;L breakdown
+            Click row to expand full redemption history, SIP consistency, and realized P&amp;L breakdown
           </>
         ) : (
           <>
             <span className={styles.editHintTeal}>↺</span>
-            Click refresh icon on each row to fetch latest NAV from AMFI
+            Click refresh icon on each row to fetch latest NAV from AMFI · Click row for SIP insights and tax exposure
           </>
         )}
       </div>
@@ -145,6 +155,7 @@ export default function MFView() {
                       {h.symbol}
                     </span>
                     {isExited && <span className={styles.exitedBadge}>EXITED</span>}
+                    {h.hasDataError && <DataErrorBadge qty={h.unmatchedSellQty} />}
                   </div>
                   {h.name && h.name !== h.symbol && (
                     <div className={styles.fundName}>{h.name}</div>
@@ -184,7 +195,7 @@ export default function MFView() {
                   {isExited ? '—' : fmt(h.qty, 2)}
                 </div>
 
-                {/* NAV — read-only for both modes (MF has no inline editor) */}
+                {/* NAV */}
                 <div className={[
                   styles.cmpCell,
                   isExited ? styles.cmpCellExited : '',
@@ -248,6 +259,7 @@ export default function MFView() {
                   qtyDecimals={3}
                   xirrLabel="Fund XIRR"
                   chartLabel="Investment Path vs Current NAV"
+                  assetType="MF"
                 />
               )}
             </div>

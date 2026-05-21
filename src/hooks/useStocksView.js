@@ -55,16 +55,51 @@ export function useStocksView({ stHoldings, stats }) {
   const stWins = stHoldings.reduce((s, h) => s + (h.stats?.winCount  || 0), 0);
   const stLoss = stHoldings.reduce((s, h) => s + (h.stats?.lossCount || 0), 0);
 
+  // Total ever invested across all stocks (including exited positions)
+  const stTotalEverInvested = useMemo(() =>
+    stHoldings.reduce((s, h) => s + (h.totalEverInvested ?? h.invested), 0),
+    [stHoldings]
+  );
+
+  // Data error count
+  const dataErrorCount = useMemo(() =>
+    stHoldings.filter(h => h.hasDataError).length,
+    [stHoldings]
+  );
+
+  // Concentration: per-holding weight within stock portfolio
+  const concentrationMap = useMemo(() => {
+    const total = activeHoldings.reduce((s, h) => s + h.marketValue, 0);
+    const map = {};
+    activeHoldings.forEach(h => {
+      map[h.symbol] = total > 0 ? (h.marketValue / total) * 100 : 0;
+    });
+    return map;
+  }, [activeHoldings]);
+
+  // Days since last buy per holding
+  const daysSinceLastBuyMap = useMemo(() => {
+    const map = {};
+    stHoldings.forEach(h => {
+      if (!h.lots || !h.lots.length) { map[h.symbol] = null; return; }
+      const lastLot = [...h.lots].sort((a, b) => b.date.localeCompare(a.date))[0];
+      map[h.symbol] = Math.round((new Date() - new Date(lastLot.date)) / 864e5);
+    });
+    return map;
+  }, [stHoldings]);
+
   const summaryItems = useMemo(() => [
-    { l: 'Stock Value',  v: stats.stValue,             c: 'var(--purple)'  },
-    { l: 'Invested',     v: stats.stInvested,          c: 'var(--text)'    },
-    { l: 'Unrealized',   v: stGain,                    c: stGain >= 0 ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'Realized P&L', v: stRealized,                c: stRealized >= 0 ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'Total Gain',   v: stGain + stRealized,       c: (stGain + stRealized) >= 0 ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'W / L',        v: `${stWins}W / ${stLoss}L`, c: stWins > stLoss ? 'var(--green2)' : 'var(--red2)' },
-    { l: 'Active',       v: activeHoldings.length,     c: 'var(--accent2)' },
-    { l: 'Exited',       v: exitedHoldings.length,     c: 'var(--text3)'   },
-  ], [stats, stGain, stRealized, stWins, stLoss, activeHoldings.length, exitedHoldings.length]);
+    { l: 'Stock Value',    v: stats.stValue,             c: 'var(--purple)'  },
+    { l: 'Invested',       v: stats.stInvested,          c: 'var(--text)'    },
+    { l: 'Total Deployed', v: stTotalEverInvested,       c: 'var(--text2)',  sub: 'incl. exited' },
+    { l: 'Unrealized',     v: stGain,                    c: stGain >= 0 ? 'var(--green2)' : 'var(--red2)' },
+    { l: 'Realized P&L',   v: stRealized,                c: stRealized >= 0 ? 'var(--green2)' : 'var(--red2)' },
+    { l: 'Total Gain',     v: stGain + stRealized,       c: (stGain + stRealized) >= 0 ? 'var(--green2)' : 'var(--red2)' },
+    { l: 'Portfolio %',    v: `${(stats.stPct || 0).toFixed(1)}%`, c: 'var(--accent2)', sub: 'of total portfolio' },
+    { l: 'W / L',          v: `${stWins}W / ${stLoss}L`, c: stWins > stLoss ? 'var(--green2)' : 'var(--red2)' },
+    { l: 'Active',         v: activeHoldings.length,     c: 'var(--accent2)' },
+    { l: 'Exited',         v: exitedHoldings.length,     c: 'var(--text3)'   },
+  ], [stats, stGain, stRealized, stTotalEverInvested, stWins, stLoss, activeHoldings.length, exitedHoldings.length]);
 
   function toggleSort(k) {
     setSort(s => s.key === k ? { key: k, dir: -s.dir } : { key: k, dir: -1 });
@@ -75,13 +110,19 @@ export function useStocksView({ stHoldings, stats }) {
   }
 
   function exportCSV(fmt, holdStr) {
-    const rows2 = [['Stock', 'Sector', 'Lots', 'Qty', 'CMP', 'Avg Buy', 'Invested', 'Value',
-      'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Holding', 'Status']];
+    const rows2 = [['Stock', 'Sector', 'Lots', 'Qty', 'CMP', 'Avg Buy', 'Invested', 'Total Deployed',
+      'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Holding', 'Portfolio%',
+      'Status', 'Data Error', 'Days Since Last Buy']];
     rows.forEach(h => rows2.push([
       h.symbol, h.sector || '', h.lots.length, fmt(h.qty, 0), fmt(h.cmp, 2), fmt(h.avgBuy, 2),
-      fmt(h.invested, 0), fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),
-      fmt(h.totalGain, 0), fmt(h.returnPct, 2) + '%', fmt(h.cagr, 2) + '%', holdStr(h.holdingDays),
+      fmt(h.invested, 0), fmt(h.totalEverInvested ?? h.invested, 0),
+      fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),
+      fmt(h.totalGain, 0), fmt(h.returnPct, 2) + '%', fmt(h.cagr, 2) + '%',
+      holdStr(h.holdingDays),
+      fmt(concentrationMap[h.symbol] ?? 0, 1) + '%',
       h.qty <= EPSILON ? 'Exited' : 'Active',
+      h.hasDataError ? 'YES' : '',
+      daysSinceLastBuyMap[h.symbol] ?? '',
     ]));
     const a = document.createElement('a');
     a.href = 'data:text/csv,' + encodeURIComponent(rows2.map(r => r.join(',')).join('\n'));
@@ -94,7 +135,10 @@ export function useStocksView({ stHoldings, stats }) {
     mode, setMode,
     activeCount: activeHoldings.length,
     exitedCount: exitedHoldings.length,
-    sectors, rows, maxRet, stGain, stRealized, stWins, stLoss,
+    dataErrorCount,
+    concentrationMap,
+    daysSinceLastBuyMap,
+    sectors, rows, maxRet, stGain, stRealized, stWins, stLoss, stTotalEverInvested,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   };
 }

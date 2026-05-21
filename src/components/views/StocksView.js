@@ -8,10 +8,12 @@ import {
   HoldingsEmpty, HoldingsControls,
   RefreshPriceButton,
   ModeToggle, ExitedBanner,
+  DataErrorBadge, ConcentrationBadge,
 } from '@/components/views/HoldingsShared';
 import { useStocksView } from '@/hooks/useStocksView';
 import styles from './HoldingsTable.module.css';
 
+// Extra column for concentration badge
 const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 80px 88px 64px 130px 50px 28px';
 
 function HeaderRow({ isExited }) {
@@ -45,6 +47,7 @@ export default function StocksView() {
   const {
     sort, sector, setSector, filter, setFilter, expanded,
     mode, setMode, activeCount, exitedCount,
+    dataErrorCount, concentrationMap, daysSinceLastBuyMap,
     sectors, rows, maxRet,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   } = useStocksView({ stHoldings, stats });
@@ -71,9 +74,17 @@ export default function StocksView() {
             <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 17 }}>
               {typeof m.v === 'string' ? m.v : fmtCr(m.v)}
             </div>
+            {m.sub && <div className={styles.summaryCellSub}>{m.sub}</div>}
           </div>
         ))}
       </div>
+
+      {/* Data error banner if any */}
+      {dataErrorCount > 0 && (
+        <div className={styles.dataErrorBanner}>
+          ⚠ {dataErrorCount} stock{dataErrorCount > 1 ? 's have' : ' has'} FIFO mismatches — some sell trades have no matching buys. Expand those rows for details.
+        </div>
+      )}
 
       {/* Active / Exited toggle */}
       <ModeToggle
@@ -112,14 +123,15 @@ export default function StocksView() {
         {isExited ? (
           <>
             <span>ℹ</span>
-            Click row to expand full FIFO sell history and realized P&amp;L breakdown
+            Click row to expand full FIFO sell history, cost analysis, and realized P&amp;L breakdown
           </>
         ) : (
           <>
             <span className={styles.editHintAccent}>✎</span>
-            Click edit icon next to CMP to update price · Click row to expand lot details + sell history ·
+            Click edit icon next to CMP to update price · Click row to expand lot details, cost analysis + sell history ·
             <span className={styles.editHintTeal}>↺</span>
-            Click refresh icon to fetch live price
+            Click refresh icon to fetch live price ·
+            <span className={styles.concentrationHint}>% badge = stock concentration in equity portfolio</span>
           </>
         )}
       </div>
@@ -133,8 +145,10 @@ export default function StocksView() {
             {isExited ? 'No fully exited positions yet.' : 'No stocks match the selected filter.'}
           </div>
         ) : rows.map(h => {
-          const open        = !!expanded[h.symbol];
-          const hasRealized = (h.realizedGain || 0) !== 0;
+          const open           = !!expanded[h.symbol];
+          const hasRealized    = (h.realizedGain || 0) !== 0;
+          const concentration  = concentrationMap[h.symbol] ?? 0;
+          const daysSinceBuy   = daysSinceLastBuyMap[h.symbol];
 
           return (
             <div key={h.symbol} className={styles.rowOuter}>
@@ -154,12 +168,28 @@ export default function StocksView() {
                   <div className={styles.symbolNameRow}>
                     <span className={styles.symbolText}>{h.symbol}</span>
                     {isExited && <span className={styles.exitedBadge}>EXITED</span>}
+                    {h.hasDataError && <DataErrorBadge qty={h.unmatchedSellQty} />}
+                    {!isExited && <ConcentrationBadge pct={concentration} />}
                   </div>
-                  {h.sells?.length > 0 && (
-                    <div className={styles.sellBadge}>
-                      {h.sells.length} sell{h.sells.length > 1 ? 's' : ''}
-                    </div>
-                  )}
+                  <div className={styles.symbolMeta}>
+                    {h.sells?.length > 0 && (
+                      <span className={styles.sellBadge}>
+                        {h.sells.length} sell{h.sells.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {!isExited && daysSinceBuy != null && daysSinceBuy > 90 && (
+                      <span
+                        className={styles.staleBuyBadge}
+                        style={{ color: daysSinceBuy > 180 ? 'var(--yellow)' : 'var(--text3)' }}
+                        title={`Last buy was ${daysSinceBuy} days ago`}
+                      >
+                        {daysSinceBuy > 365
+                          ? `last buy ${Math.floor(daysSinceBuy / 365)}y ago`
+                          : `last buy ${Math.floor(daysSinceBuy / 30)}mo ago`
+                        }
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Sector */}
@@ -257,6 +287,7 @@ export default function StocksView() {
                   qtyDecimals={0}
                   xirrLabel="Stock XIRR"
                   chartLabel="Investment Path vs Current CMP"
+                  assetType="STOCK"
                 />
               )}
             </div>

@@ -47,6 +47,18 @@ export function useMFView({ mfHoldings, stats }) {
     [mfHoldings]
   );
 
+  // Total ever invested across all MF (including exited positions)
+  const mfTotalEverInvested = useMemo(() =>
+    mfHoldings.reduce((s, h) => s + (h.totalEverInvested ?? h.invested), 0),
+    [mfHoldings]
+  );
+
+  // Data error count
+  const dataErrorCount = useMemo(() =>
+    mfHoldings.filter(h => h.hasDataError).length,
+    [mfHoldings]
+  );
+
   const summaryItems = useMemo(() => [
     {
       l: 'MF Value',
@@ -59,6 +71,13 @@ export function useMFView({ mfHoldings, stats }) {
       v: stats.mfInvested,
       c: 'var(--text)',
       format: v => fmtCr(v),
+    },
+    {
+      l: 'Total Deployed',
+      v: mfTotalEverInvested,
+      c: 'var(--text2)',
+      format: v => fmtCr(v),
+      sub: 'incl. exited',
     },
     {
       l: 'Unrealized',
@@ -79,6 +98,13 @@ export function useMFView({ mfHoldings, stats }) {
       format: v => `${v >= 0 ? '+' : ''}${fmt(v)}%`,
     },
     {
+      l: 'Portfolio %',
+      v: stats.mfPct,
+      c: 'var(--accent2)',
+      format: v => `${fmt(v, 1)}%`,
+      sub: 'of total portfolio',
+    },
+    {
       l: 'Active',
       v: activeHoldings.length,
       c: 'var(--accent2)',
@@ -90,7 +116,7 @@ export function useMFView({ mfHoldings, stats }) {
       c: 'var(--text3)',
       format: v => String(v),
     },
-  ], [stats, mfGain, mfRealized, activeHoldings.length, exitedHoldings.length]);
+  ], [stats, mfGain, mfRealized, mfTotalEverInvested, activeHoldings.length, exitedHoldings.length]);
 
   function toggleSort(k) {
     setSort(s => s.key === k ? { key: k, dir: -s.dir } : { key: k, dir: -1 });
@@ -101,13 +127,15 @@ export function useMFView({ mfHoldings, stats }) {
   }
 
   function exportCSV(fmt) {
-    const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Value',
-      'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status']];
+    const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Total Deployed',
+      'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status', 'Data Error']];
     rows.forEach(h => rows2.push([
       h.symbol, h.sector || '', h.lots.length, fmt(h.qty, 3), fmt(h.cmp, 2), fmt(h.avgBuy, 2),
-      fmt(h.invested, 0), fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),
+      fmt(h.invested, 0), fmt(h.totalEverInvested ?? h.invested, 0),
+      fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),
       fmt(h.totalGain, 0), fmt(h.returnPct, 2) + '%', fmt(h.cagr, 2) + '%',
       h.qty <= EPSILON ? 'Exited' : 'Active',
+      h.hasDataError ? 'YES' : '',
     ]));
     const a = document.createElement('a');
     a.href = 'data:text/csv,' + encodeURIComponent(rows2.map(r => r.join(',')).join('\n'));
@@ -120,7 +148,8 @@ export function useMFView({ mfHoldings, stats }) {
     mode, setMode,
     activeCount: activeHoldings.length,
     exitedCount: exitedHoldings.length,
-    categories, rows, maxRet, mfGain, mfRealized,
+    dataErrorCount,
+    categories, rows, maxRet, mfGain, mfRealized, mfTotalEverInvested,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   };
 }

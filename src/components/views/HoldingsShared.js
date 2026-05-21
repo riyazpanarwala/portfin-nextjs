@@ -36,9 +36,6 @@ export const SORTS = [
 ];
 
 // ── ModeToggle — Active / Exited segment control ──────────────────────────────
-// Shared by StocksView and MFView.
-// Uses classes from HoldingsShared.module.css (modeToggleRow, modeBtn,
-// modeBtnActive, modeBtnExited, modeBtnCount).
 export function ModeToggle({ mode, setMode, activeCount, exitedCount }) {
   const tabs = [
     { key: 'active', label: 'Active', count: activeCount },
@@ -66,16 +63,39 @@ export function ModeToggle({ mode, setMode, activeCount, exitedCount }) {
   );
 }
 
-// ── ExitedBanner — info strip shown when viewing exited positions ─────────────
-// Uses .exitedBanner from HoldingsShared.module.css.
-// Props:
-//   message  string — context-specific wording (stocks vs MF)
+// ── ExitedBanner ──────────────────────────────────────────────────────────────
 export function ExitedBanner({ message }) {
   return (
     <div className={styles.exitedBanner}>
       <span>📋</span>
       {message}
     </div>
+  );
+}
+
+// ── DataErrorBadge — warns about FIFO mismatch ───────────────────────────────
+export function DataErrorBadge({ qty }) {
+  return (
+    <span
+      title={`FIFO mismatch: ${fmt(qty, 4)} units sold have no matching buy lots. Realized gain may be understated.`}
+      className={styles.dataErrorBadge}
+    >
+      ⚠ data
+    </span>
+  );
+}
+
+// ── ConcentrationBadge — flags high single-stock weight ──────────────────────
+export function ConcentrationBadge({ pct: weight }) {
+  if (weight < 15) return null;
+  const level = weight >= 25 ? 'high' : 'warn';
+  return (
+    <span
+      title={`${fmt(weight, 1)}% of stock portfolio — ${level === 'high' ? 'very high' : 'elevated'} concentration`}
+      className={`${styles.concentrationBadge} ${level === 'high' ? styles.concentrationHigh : styles.concentrationWarn}`}
+    >
+      {fmt(weight, 0)}%
+    </span>
   );
 }
 
@@ -521,8 +541,192 @@ export function SellHistoryTable({ h, qtyDecimals = 0 }) {
   );
 }
 
+// ── SIP Consistency panel (MF-specific) ───────────────────────────────────────
+export function SIPConsistencyPanel({ lots }) {
+  const { monthsInvested, totalMonths, consistency, avgMonthlyInvestment, lastBuyDate, daysSinceLastBuy } = useMemo(() => {
+    if (!lots || !lots.length) return { monthsInvested: 0, totalMonths: 0, consistency: 0, avgMonthlyInvestment: 0, lastBuyDate: null, daysSinceLastBuy: 0 };
+
+    const sortedDates = [...lots].sort((a, b) => a.date.localeCompare(b.date));
+    const firstDate = new Date(sortedDates[0].date);
+    const lastDate  = new Date(sortedDates[sortedDates.length - 1].date);
+
+    const months = new Set(lots.map(l => l.date.slice(0, 7)));
+    const [fy, fm] = sortedDates[0].date.slice(0, 7).split('-').map(Number);
+    const [ly, lm] = sortedDates[sortedDates.length - 1].date.slice(0, 7).split('-').map(Number);
+    const totalMonths = Math.max(1, (ly - fy) * 12 + (lm - fm) + 1);
+    const monthsInvested = months.size;
+    const consistency = Math.round((monthsInvested / totalMonths) * 100);
+    const totalInv = lots.reduce((s, l) => s + l.qty * l.price, 0);
+    const avgMonthlyInvestment = totalInv / monthsInvested;
+    const daysSinceLastBuy = Math.round((new Date() - lastDate) / 864e5);
+
+    return { monthsInvested, totalMonths, consistency, avgMonthlyInvestment, lastBuyDate: sortedDates[sortedDates.length - 1].date, daysSinceLastBuy };
+  }, [lots]);
+
+  const consistencyColor = consistency >= 80 ? 'var(--green2)' : consistency >= 50 ? 'var(--yellow)' : 'var(--red2)';
+  const consistencyLabel = consistency >= 80 ? 'Consistent' : consistency >= 50 ? 'Irregular' : 'Sporadic';
+  const lastBuyColor = daysSinceLastBuy > 60 ? 'var(--yellow)' : 'var(--text3)';
+
+  return (
+    <div className={styles.sipPanel}>
+      <div className={styles.sipPanelTitle}>SIP Consistency</div>
+      <div className={styles.sipGrid}>
+        <div className={styles.sipStat}>
+          <div className={styles.sipStatLabel}>Months invested</div>
+          <div className={styles.sipStatValue} style={{ color: 'var(--accent2)' }}>
+            {monthsInvested} <span className={styles.sipStatOf}>/ {totalMonths}</span>
+          </div>
+        </div>
+        <div className={styles.sipStat}>
+          <div className={styles.sipStatLabel}>Consistency</div>
+          <div className={styles.sipStatValue} style={{ color: consistencyColor }}>
+            {consistency}% <span className={styles.sipStatOf}>({consistencyLabel})</span>
+          </div>
+        </div>
+        <div className={styles.sipStat}>
+          <div className={styles.sipStatLabel}>Avg monthly SIP</div>
+          <div className={styles.sipStatValue} style={{ color: 'var(--text)' }}>
+            {fmtCr(avgMonthlyInvestment)}
+          </div>
+        </div>
+        <div className={styles.sipStat}>
+          <div className={styles.sipStatLabel}>Last buy</div>
+          <div className={styles.sipStatValue} style={{ color: lastBuyColor }}>
+            {lastBuyDate} <span className={styles.sipStatOf}>({daysSinceLastBuy}d ago)</span>
+          </div>
+        </div>
+      </div>
+      <div className={styles.sipBar}>
+        <div className={styles.sipBarTrack}>
+          <div
+            className={styles.sipBarFill}
+            style={{ width: `${consistency}%`, background: consistencyColor }}
+          />
+        </div>
+        <span className={styles.sipBarLabel} style={{ color: consistencyColor }}>{consistency}%</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Unrealized Tax panel (shared) ─────────────────────────────────────────────
+export function UnrealizedTaxPanel({ h }) {
+  const ltcgLots = h.lots.filter(l => {
+    const days = Math.round((new Date() - new Date(l.date)) / 864e5);
+    return days >= 365;
+  });
+  const stcgLots = h.lots.filter(l => {
+    const days = Math.round((new Date() - new Date(l.date)) / 864e5);
+    return days < 365;
+  });
+
+  const ltcgGain = ltcgLots.reduce((s, l) => s + l.qty * (h.cmp - l.price), 0);
+  const stcgGain = stcgLots.reduce((s, l) => s + l.qty * (h.cmp - l.price), 0);
+
+  const ltcgTax = Math.max(0, ltcgGain - 125000) * 0.125;
+  const stcgTax = Math.max(0, stcgGain) * 0.20;
+  const totalTax = ltcgTax + stcgTax;
+
+  if (totalTax <= 0 && ltcgGain <= 0 && stcgGain <= 0) return null;
+
+  return (
+    <div className={styles.taxPanel}>
+      <div className={styles.taxPanelTitle}>Unrealized Tax Exposure</div>
+      <div className={styles.taxGrid}>
+        {ltcgGain > 0 && (
+          <div className={styles.taxStat}>
+            <div className={styles.taxStatLabel}>LTCG gain</div>
+            <div className={styles.taxStatValue} style={{ color: 'var(--green2)' }}>{fmtCr(ltcgGain)}</div>
+            <div className={styles.taxStatSub}>12.5% · ₹1.25L exempt</div>
+          </div>
+        )}
+        {stcgGain > 0 && (
+          <div className={styles.taxStat}>
+            <div className={styles.taxStatLabel}>STCG gain</div>
+            <div className={styles.taxStatValue} style={{ color: 'var(--yellow)' }}>{fmtCr(stcgGain)}</div>
+            <div className={styles.taxStatSub}>20% rate</div>
+          </div>
+        )}
+        {totalTax > 0 && (
+          <div className={styles.taxStat}>
+            <div className={styles.taxStatLabel}>Est. tax if booked</div>
+            <div className={styles.taxStatValue} style={{ color: 'var(--red2)' }}>{fmtCr(totalTax)}</div>
+            <div className={styles.taxStatSub}>Approx. FY liability</div>
+          </div>
+        )}
+        <div className={styles.taxStat}>
+          <div className={styles.taxStatLabel}>LTCG lots</div>
+          <div className={styles.taxStatValue} style={{ color: 'var(--text2)' }}>{ltcgLots.length}</div>
+          <div className={styles.taxStatSub}>held ≥ 1yr</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Cost Averaging Indicator (stocks-specific) ────────────────────────────────
+export function CostAveragingPanel({ h }) {
+  const { lots, avgBuy, cmp } = h;
+  if (!lots || lots.length < 2) return null;
+
+  const sortedLots = [...lots].sort((a, b) => a.date.localeCompare(b.date));
+  const recentLot  = sortedLots[sortedLots.length - 1];
+  const oldestLot  = sortedLots[0];
+  const recentVsAvg = ((recentLot.price - avgBuy) / avgBuy) * 100;
+  const priceImproved = recentLot.price < avgBuy; // recent buy below avg = cost-averaging down
+
+  const daysSinceLastBuy = Math.round((new Date() - new Date(recentLot.date)) / 864e5);
+  const lastBuyColor = daysSinceLastBuy > 180 ? 'var(--yellow)' : daysSinceLastBuy > 90 ? 'var(--text2)' : 'var(--green2)';
+
+  return (
+    <div className={styles.caPanel}>
+      <div className={styles.caPanelTitle}>Cost Basis Analysis</div>
+      <div className={styles.caGrid}>
+        <div className={styles.caStat}>
+          <div className={styles.caStatLabel}>Avg buy price</div>
+          <div className={styles.caStatValue} style={{ color: 'var(--text)' }}>₹{fmt(avgBuy, 2)}</div>
+        </div>
+        <div className={styles.caStat}>
+          <div className={styles.caStatLabel}>Last buy price</div>
+          <div className={styles.caStatValue} style={{ color: priceImproved ? 'var(--green2)' : 'var(--yellow)' }}>
+            ₹{fmt(recentLot.price, 2)}
+          </div>
+          <div className={styles.caStatSub} style={{ color: priceImproved ? 'var(--green2)' : 'var(--yellow)' }}>
+            {priceImproved ? '▼ below avg (cost down)' : '▲ above avg (cost up)'}
+          </div>
+        </div>
+        <div className={styles.caStat}>
+          <div className={styles.caStatLabel}>Last buy vs avg</div>
+          <div className={styles.caStatValue} style={{ color: pcol(recentVsAvg) }}>
+            {pct(recentVsAvg)}
+          </div>
+        </div>
+        <div className={styles.caStat}>
+          <div className={styles.caStatLabel}>Days since last buy</div>
+          <div className={styles.caStatValue} style={{ color: lastBuyColor }}>
+            {daysSinceLastBuy}d
+          </div>
+          <div className={styles.caStatSub}>{recentLot.date}</div>
+        </div>
+        <div className={styles.caStat}>
+          <div className={styles.caStatLabel}>Price range (lots)</div>
+          <div className={styles.caStatValue} style={{ color: 'var(--text2)', fontSize: 13 }}>
+            ₹{fmt(Math.min(...lots.map(l => l.price)), 0)} – ₹{fmt(Math.max(...lots.map(l => l.price)), 0)}
+          </div>
+        </div>
+        <div className={styles.caStat}>
+          <div className={styles.caStatLabel}>First purchase</div>
+          <div className={styles.caStatValue} style={{ color: 'var(--text2)', fontSize: 13 }}>
+            {oldestLot.date}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Holding detail panel shell ────────────────────────────────────────────────
-export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirrLabel }) {
+export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirrLabel, assetType }) {
   const [tab, setTab] = useState('lots');
 
   const xirrVal = useMemo(
@@ -532,12 +736,20 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
 
   const meta     = priceMeta?.[h.symbol];
   const hasSells = h.sells && h.sells.length > 0;
+  const isMF     = assetType === 'MF' || h.assetType === 'MF';
+  const isStock  = !isMF;
 
   const tabs = [
     ['lots',    'Lot-wise breakup'],
     ['monthly', 'Monthly breakup'],
     ...(hasSells ? [['sells', `Sell History (${h.sells.length})`]] : []),
+    ['insights', isMF ? 'SIP Insights' : 'Cost Analysis'],
   ];
+
+  // Trade count breakdown
+  const buyTrades  = h.stats?.buyTrades  ?? 0;
+  const sellTrades = h.stats?.sellTrades ?? 0;
+  const totalTrades = h.stats?.trades    ?? 0;
 
   return (
     <div className={styles.detailPanel}>
@@ -552,17 +764,39 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
             <span className={styles.detailXirrUnit}>p.a.</span>
           </div>
 
-          {hasSells && (
-            <div className={styles.detailSellChips}>
-              <span className={styles.detailSellChipWin}>✓ {h.stats.winCount} wins</span>
-              <span className={styles.detailSellChipLoss}>✗ {h.stats.lossCount} losses</span>
-              <span className={styles.detailSellChipRealized}>
-                Realized:{' '}
-                <span style={{ fontWeight: 700, color: colorPnl(h.realizedGain) }}>
-                  {fmtCr(h.realizedGain)}
+          {/* Trade count chips */}
+          <div className={styles.detailSellChips}>
+            <span className={styles.detailTradeChip}>
+              {buyTrades}B / {sellTrades}S · {totalTrades} trades
+            </span>
+            {hasSells && (
+              <>
+                <span className={styles.detailSellChipWin}>✓ {h.stats.winCount} wins</span>
+                <span className={styles.detailSellChipLoss}>✗ {h.stats.lossCount} losses</span>
+                <span className={styles.detailSellChipRealized}>
+                  Realized:{' '}
+                  <span style={{ fontWeight: 700, color: colorPnl(h.realizedGain) }}>
+                    {fmtCr(h.realizedGain)}
+                  </span>
+                </span>
+              </>
+            )}
+            {/* Combined total gain chip */}
+            {(h.realizedGain !== 0 || h.unrealizedGain !== 0) && (
+              <span className={styles.detailTotalGainChip}>
+                Total P&L:{' '}
+                <span style={{ fontWeight: 700, color: colorPnl(h.totalGain) }}>
+                  {fmtCr(h.totalGain)}
                 </span>
               </span>
-            </div>
+            )}
+          </div>
+
+          {/* Data error warning */}
+          {h.hasDataError && (
+            <span className={styles.detailDataError}>
+              ⚠ FIFO mismatch: {fmt(h.unmatchedSellQty, 4)} units sold without matching buys — realized gain understated
+            </span>
           )}
 
           {meta && (
@@ -590,9 +824,16 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
           ))}
         </div>
 
-        {tab === 'lots'    && <LotTable lots={h.lots} cmp={h.cmp} qtyDecimals={qtyDecimals} />}
-        {tab === 'monthly' && <MonthlyTable lots={h.lots} cmp={h.cmp} qtyDecimals={qtyDecimals} />}
-        {tab === 'sells'   && <SellHistoryTable h={h} qtyDecimals={qtyDecimals} />}
+        {tab === 'lots'     && <LotTable lots={h.lots} cmp={h.cmp} qtyDecimals={qtyDecimals} />}
+        {tab === 'monthly'  && <MonthlyTable lots={h.lots} cmp={h.cmp} qtyDecimals={qtyDecimals} />}
+        {tab === 'sells'    && <SellHistoryTable h={h} qtyDecimals={qtyDecimals} />}
+        {tab === 'insights' && (
+          <div className={styles.insightsTab}>
+            {isMF && <SIPConsistencyPanel lots={h.lots} />}
+            {isStock && <CostAveragingPanel h={h} />}
+            <UnrealizedTaxPanel h={h} />
+          </div>
+        )}
       </div>
     </div>
   );
