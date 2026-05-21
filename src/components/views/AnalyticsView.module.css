@@ -1,28 +1,48 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   AnalyticsView.module.css
+   All styles for AnalyticsView — original panels + 6 new feature sections
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Tab bar ─────────────────────────────────────────────────────────────────*/
+
 .tabBar {
   display: flex;
   gap: 0;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
 }
+
+.tabBar::-webkit-scrollbar { display: none; }
 
 .tabBtn {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 8px 16px;
-  font-size: 13px;
+  padding: 8px 14px;
+  font-size: 12px;
   font-weight: 600;
   margin-bottom: -1px;
   color: var(--text3);
   border-bottom: 2px solid transparent;
   font-family: var(--font-main);
   transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tabBtnActive {
   color: var(--accent2);
   border-bottom-color: var(--accent2);
 }
+
+.tabBtn:hover:not(.tabBtnActive) {
+  color: var(--text2);
+}
+
+/* ── Overview panel ──────────────────────────────────────────────────────────*/
 
 .returnMetricsPanel {
   padding: 18px;
@@ -150,9 +170,7 @@
   color: var(--text3);
 }
 
-.realizedContainer {
-  padding: 20px;
-}
+/* ── Realized P&L ────────────────────────────────────────────────────────────*/
 
 .realizedTitle {
   font-size: 14px;
@@ -315,6 +333,8 @@
   line-height: 1.7;
 }
 
+/* ── Sectors ─────────────────────────────────────────────────────────────────*/
+
 .sectorSection {
   display: flex;
   flex-direction: column;
@@ -386,12 +406,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 377px;
+  min-height: 337px;
 }
 
 .radarEmptyState {
   width: 100%;
-  min-height: 337px;
+  min-height: 280px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -460,14 +480,11 @@
 }
 
 .sectorRow {
-  border-bottom: 1px solid rgba(45, 64, 96, 0.35);
   padding: 10px 16px;
   transition: background 0.15s;
 }
 
-.sectorRow:hover {
-  background: rgba(255, 255, 255, 0.025);
-}
+.sectorRow:hover { background: rgba(255, 255, 255, 0.025); }
 
 .sectorRowHeader {
   display: flex;
@@ -490,22 +507,9 @@
   justify-content: flex-end;
 }
 
-.sectorRowName {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.sectorRowPct {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.sectorRowValue {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text2);
-}
+.sectorRowName { font-size: 13px; font-weight: 700; }
+.sectorRowPct  { font-family: var(--font-mono); font-size: 14px; font-weight: 800; }
+.sectorRowValue { font-family: var(--font-mono); font-size: 12px; color: var(--text2); }
 
 .sectorSignalBadge {
   font-size: 10px;
@@ -544,15 +548,8 @@
   margin-bottom: 2px;
 }
 
-.barRowLabel {
-  font-size: 9px;
-}
-
-.barRowValue {
-  font-size: 9px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-}
+.barRowLabel { font-size: 9px; }
+.barRowValue { font-size: 9px; font-family: var(--font-mono); font-weight: 700; }
 
 .sectorChips {
   display: flex;
@@ -565,4 +562,502 @@
   font-size: 9px;
   padding: 1px 7px;
   border-radius: 3px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SHARED NEW-FEATURE PRIMITIVES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.featureSection {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.featureHeader {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.featureTitleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.featureIcon {
+  font-size: 22px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.featureTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.featureSub {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 3px;
+}
+
+/* 4-column metric row used in every new feature */
+.metricsGrid4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.metricCard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: border-color 0.2s;
+}
+
+.metricCard:hover { border-color: var(--border2); }
+
+.metricLabel {
+  font-size: 9px;
+  color: var(--text3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+}
+
+.metricValue {
+  font-size: 20px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.metricSub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 3px;
+}
+
+/* Info box */
+.infoBox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(59, 130, 246, 0.06);
+  font-size: 12px;
+  color: var(--text2);
+  line-height: 1.7;
+}
+
+/* Chart box wrapper */
+.chartBox {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.chartBoxTitle {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+/* Table box wrapper */
+.tableBox {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.tableBoxTitle {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* Empty feature state */
+.emptyFeature {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  gap: 10px;
+  text-align: center;
+}
+
+.emptyFeatureIcon { font-size: 38px; }
+
+.emptyFeatureTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.emptyFeatureSub {
+  font-size: 12px;
+  color: var(--text3);
+  max-width: 340px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   1. DRAWDOWN ANALYSIS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.recoveryBar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 8px 14px;
+  background: rgba(16, 185, 129, 0.07);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.recoveryLabel { color: var(--text3); }
+
+.recoveryValue {
+  color: var(--green2);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.recoveryMeta { color: var(--text3); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   2. SIP PERFORMANCE TRACKER
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.sipTableWrapper {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.sipTableWrapper table {
+  min-width: 800px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   3. CONCENTRATION RISK
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.concentrationLayout {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.concentrationGaugeBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 4px;
+}
+
+.gaugeWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.concentrationMetrics {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flagsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.flagItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+/* Position weight bars */
+.positionBars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.positionBarRow {
+  display: grid;
+  grid-template-columns: 120px 1fr 50px 70px;
+  align-items: center;
+  gap: 10px;
+}
+
+.positionBarLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.positionBarTrack {
+  height: 8px;
+  background: var(--bg2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.positionBarFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   5. CAGR WATERFALL BY HOLDING
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.cagrAvgNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text2);
+  padding: 6px 12px;
+  background: rgba(96, 165, 250, 0.07);
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  border-radius: 8px;
+}
+
+.cagrAvgDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent2);
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(96, 165, 250, 0.6);
+}
+
+.cagrBarsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.cagrBarRow {
+  display: grid;
+  grid-template-columns: 90px 1fr 64px 60px 60px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.cagrBarRow:hover { background: rgba(255, 255, 255, 0.03); }
+
+.cagrBarSymbol {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.cagrBarTrackWrapper { position: relative; }
+
+.cagrBarTrack {
+  position: relative;
+  height: 10px;
+  background: var(--bg2);
+  border-radius: 5px;
+  overflow: visible;
+}
+
+.cagrBarFill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.5s ease;
+}
+
+/* Vertical line showing portfolio average */
+.cagrAvgMarker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--accent2);
+  border-radius: 1px;
+  transform: translateX(-50%);
+  box-shadow: 0 0 4px rgba(96, 165, 250, 0.6);
+}
+
+.cagrSummaryRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.cagrSummaryCard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.2s;
+}
+
+.cagrSummaryCard:hover { border-color: var(--border2); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   7. ROLLING XIRR / CAGR
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Uses shared tableBox, metricCard, chartBox — no extra classes needed */
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   8. TRADE BEHAVIOR ANALYSIS
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.behaviorTwoCol {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+}
+
+.behaviorCard {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.behaviorCardTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 14px;
+}
+
+/* Day-of-week bars */
+.dowBars {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dowBarRow {
+  display: grid;
+  grid-template-columns: 30px 1fr 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.dowLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+
+.dowTrack {
+  height: 18px;
+  background: var(--bg2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dowFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.dowCount {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text2);
+  text-align: right;
+  font-weight: 600;
+}
+
+/* Trade size grid */
+.tradeSizeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.tradeSizeItem {
+  background: var(--bg2);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   RESPONSIVE
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .metricsGrid4 { grid-template-columns: repeat(2, 1fr); }
+  .concentrationLayout { grid-template-columns: 1fr; }
+  .cagrBarRow { grid-template-columns: 80px 1fr 56px; }
+  .cagrBarRow > :nth-child(4),
+  .cagrBarRow > :nth-child(5) { display: none; }
+  .cagrSummaryRow { grid-template-columns: 1fr 1fr; }
+  .behaviorTwoCol { grid-template-columns: 1fr; }
+  .chartsRow { grid-template-columns: 1fr; }
+  .twoCol { grid-template-columns: 1fr; }
+  .flowDistRow { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 600px) {
+  .metricsGrid4 { grid-template-columns: 1fr 1fr; }
+  .cagrSummaryRow { grid-template-columns: 1fr; }
+  .positionBarRow { grid-template-columns: 100px 1fr 44px; }
+  .positionBarRow > :last-child { display: none; }
+  .taxBreakdownGrid { grid-template-columns: 1fr; }
+  .winLossGrid { grid-template-columns: 1fr; }
+  .tradeSizeGrid { grid-template-columns: 1fr 1fr; }
+  .realizedMetricsGrid { grid-template-columns: repeat(2, 1fr); }
 }
