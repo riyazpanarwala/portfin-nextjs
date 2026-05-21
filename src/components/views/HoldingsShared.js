@@ -18,7 +18,8 @@ export { EmptyState as HoldingsEmpty };
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 export function holdStr(days) {
-  const y = Math.floor(days / 365), m = Math.floor((days % 365) / 30);
+  const d = Math.max(0, days);
+  const y = Math.floor(d / 365), m = Math.floor((d % 365) / 30);
   return y > 0 ? (m > 0 ? `${y}y ${m}m` : `${y}y`) : `${m}m`;
 }
 export const pct  = (v, d = 2) => `${v > 0 ? '+' : ''}${fmt(v, d)}%`;
@@ -229,6 +230,7 @@ export function PriceCell({ symbol, cmp, onSaved }) {
   const [val, setVal]         = useState('');
   const [saving, setSaving]   = useState(false);
   const inputRef              = useRef(null);
+  const savingRef             = useRef(false);
 
   function startEdit(e) {
     e.stopPropagation();
@@ -238,14 +240,27 @@ export function PriceCell({ symbol, cmp, onSaved }) {
   }
 
   async function save(e) {
-    e.stopPropagation();
+    e?.stopPropagation();
+    if (savingRef.current) return;
     const price = parseFloat(val);
     if (!price || price <= 0) { setEditing(false); return; }
+    savingRef.current = true;
     setSaving(true);
-    await updatePrice(symbol, price);
-    setSaving(false);
-    setEditing(false);
-    onSaved && onSaved(price);
+    try {
+      await updatePrice(symbol, price);
+      onSaved?.(price);
+    } finally {
+      setSaving(false);
+      setEditing(false);
+      savingRef.current = false;
+    }
+  }
+
+  function handleBlur(e) {
+    // Only save on blur if focus didn't move to the save button
+    if (!e.relatedTarget?.closest?.('button')) {
+      save(e);
+    }
   }
 
   function onKey(e) {
@@ -264,7 +279,7 @@ export function PriceCell({ symbol, cmp, onSaved }) {
           value={val}
           onChange={e => setVal(e.target.value)}
           onKeyDown={onKey}
-          onBlur={save}
+          onBlur={handleBlur}
           className={styles.priceCellInput}
         />
         <button onClick={save} disabled={saving} className={styles.priceCellSaveBtn}>
@@ -417,10 +432,10 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
       .sort((a, b) => a.month.localeCompare(b.month))
       .map(m => ({
         ...m,
-        avgPrice: m.inv / m.qty,
+        avgPrice: m.qty > 0 ? m.inv / m.qty : 0,
         val:  m.qty * cmp,
         gain: m.qty * cmp - m.inv,
-        ret:  (m.qty * cmp - m.inv) / m.inv * 100,
+        ret:  m.inv > 0 ? (m.qty * cmp - m.inv) / m.inv * 100 : 0,
       }));
   }, [lots, cmp]);
 
@@ -672,8 +687,8 @@ export function CostAveragingPanel({ h }) {
   const sortedLots = [...lots].sort((a, b) => a.date.localeCompare(b.date));
   const recentLot  = sortedLots[sortedLots.length - 1];
   const oldestLot  = sortedLots[0];
-  const recentVsAvg = ((recentLot.price - avgBuy) / avgBuy) * 100;
-  const priceImproved = recentLot.price < avgBuy; // recent buy below avg = cost-averaging down
+  const recentVsAvg = avgBuy > 0 ? ((recentLot.price - avgBuy) / avgBuy) * 100 : 0;
+  const priceImproved = avgBuy > 0 ? recentLot.price < avgBuy : false; // recent buy below avg = cost-averaging down
 
   const daysSinceLastBuy = Math.round((new Date() - new Date(recentLot.date)) / 864e5);
   const lastBuyColor = daysSinceLastBuy > 180 ? 'var(--yellow)' : daysSinceLastBuy > 90 ? 'var(--text2)' : 'var(--green2)';
@@ -729,9 +744,13 @@ export function CostAveragingPanel({ h }) {
 export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirrLabel, assetType }) {
   const [tab, setTab] = useState('lots');
 
+  // Use a stable key derived from primitives to avoid re-computing on
+  // every render when lots/sells are new array references.
+  const xirrKey = `${h.symbol}:${h.cmp}:${h.lots?.length ?? 0}:${h.lots?.reduce((s, l) => s + l.qty, 0) ?? 0}:${h.sells?.length ?? 0}`;
   const xirrVal = useMemo(
     () => calcHoldingXIRR(h.lots, h.sells, h.cmp),
-    [h.symbol, h.cmp, h.lots, h.sells],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [xirrKey],
   );
 
   const meta     = priceMeta?.[h.symbol];

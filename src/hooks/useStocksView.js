@@ -45,15 +45,15 @@ export function useStocksView({ stHoldings, stats }) {
     [sourceHoldings]
   );
 
-  const stGain = stats.stValue - stats.stInvested;
+  const stGain = useMemo(() => stats.stValue - stats.stInvested, [stats.stValue, stats.stInvested]);
 
   const stRealized = useMemo(() =>
     stHoldings.reduce((s, h) => s + (h.realizedGain || 0), 0),
     [stHoldings]
   );
 
-  const stWins = stHoldings.reduce((s, h) => s + (h.stats?.winCount  || 0), 0);
-  const stLoss = stHoldings.reduce((s, h) => s + (h.stats?.lossCount || 0), 0);
+  const stWins = useMemo(() => stHoldings.reduce((s, h) => s + (h.stats?.winCount  || 0), 0), [stHoldings]);
+  const stLoss = useMemo(() => stHoldings.reduce((s, h) => s + (h.stats?.lossCount || 0), 0), [stHoldings]);
 
   // Total ever invested across all stocks (including exited positions)
   const stTotalEverInvested = useMemo(() =>
@@ -109,17 +109,17 @@ export function useStocksView({ stHoldings, stats }) {
     setExpanded(e => ({ ...e, [sym]: !e[sym] }));
   }
 
-  function exportCSV(fmt, holdStr) {
+  function exportCSV(formatNum, formatHold) {
     const rows2 = [['Stock', 'Sector', 'Lots', 'Qty', 'CMP', 'Avg Buy', 'Invested', 'Total Deployed',
       'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Holding', 'Portfolio%',
       'Status', 'Data Error', 'Days Since Last Buy']];
     rows.forEach(h => rows2.push([
-      h.symbol, h.sector || '', h.lots.length, fmt(h.qty, 0), fmt(h.cmp, 2), fmt(h.avgBuy, 2),
-      fmt(h.invested, 0), fmt(h.totalEverInvested ?? h.invested, 0),
-      fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),
-      fmt(h.totalGain, 0), fmt(h.returnPct, 2) + '%', fmt(h.cagr, 2) + '%',
-      holdStr(h.holdingDays),
-      fmt(concentrationMap[h.symbol] ?? 0, 1) + '%',
+      h.symbol, h.sector || '', h.lots.length, formatNum(h.qty, 0), formatNum(h.cmp, 2), formatNum(h.avgBuy, 2),
+      formatNum(h.invested, 0), formatNum(h.totalEverInvested ?? h.invested, 0),
+      formatNum(h.marketValue, 0), formatNum(h.unrealizedGain, 0), formatNum(h.realizedGain, 0),
+      formatNum(h.totalGain, 0), formatNum(h.returnPct, 2) + '%', formatNum(h.cagr, 2) + '%',
+      formatHold(h.holdingDays),
+      formatNum(concentrationMap[h.symbol] ?? 0, 1) + '%',
       h.qty <= EPSILON ? 'Exited' : 'Active',
       h.hasDataError ? 'YES' : '',
       daysSinceLastBuyMap[h.symbol] ?? '',

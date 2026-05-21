@@ -126,14 +126,14 @@ export function useMFView({ mfHoldings, stats }) {
     setExpanded(e => ({ ...e, [sym]: !e[sym] }));
   }
 
-  function exportCSV(fmt) {
+  function exportCSV(formatNum) {
     const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Total Deployed',
       'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status', 'Data Error']];
     rows.forEach(h => rows2.push([
-      h.symbol, h.sector || '', h.lots.length, fmt(h.qty, 3), fmt(h.cmp, 2), fmt(h.avgBuy, 2),
-      fmt(h.invested, 0), fmt(h.totalEverInvested ?? h.invested, 0),
-      fmt(h.marketValue, 0), fmt(h.unrealizedGain, 0), fmt(h.realizedGain, 0),
-      fmt(h.totalGain, 0), fmt(h.returnPct, 2) + '%', fmt(h.cagr, 2) + '%',
+      h.symbol, h.sector || '', h.lots.length, formatNum(h.qty, 3), formatNum(h.cmp, 2), formatNum(h.avgBuy, 2),
+      formatNum(h.invested, 0), formatNum(h.totalEverInvested ?? h.invested, 0),
+      formatNum(h.marketValue, 0), formatNum(h.unrealizedGain, 0), formatNum(h.realizedGain, 0),
+      formatNum(h.totalGain, 0), formatNum(h.returnPct, 2) + '%', formatNum(h.cagr, 2) + '%',
       h.qty <= EPSILON ? 'Exited' : 'Active',
       h.hasDataError ? 'YES' : '',
     ]));
