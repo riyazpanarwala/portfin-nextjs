@@ -15,13 +15,13 @@ import { useStocksView } from '@/hooks/useStocksView';
 import styles from './HoldingsTable.module.css';
 
 // Extra column for concentration badge
-const COL = '20px 1fr 120px 32px 72px 110px 80px 80px 80px 88px 64px 130px 50px 28px';
+const COL = '20px 1fr 120px 32px 72px 110px 80px 90px 80px 80px 88px 64px 130px 50px 28px';
 
 function HeaderRow({ isExited }) {
   const cols = [
     '', 'STOCK', 'SECTOR', '#', 'QTY',
     isExited ? 'LAST PRICE' : 'CMP ✎',
-    'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', '',
+    'INVESTED', 'INV. PRICE', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', '',
   ];
   return (
     <div className={styles.headerRow} style={{ display: 'grid', gridTemplateColumns: COL }}>
@@ -31,7 +31,7 @@ function HeaderRow({ isExited }) {
           className={[
             styles.headerCell,
             i === 5 && !isExited ? styles.headerCellHighlight : '',
-            i === 8 ? styles.headerCellYellow : '',
+            i === 9 ? styles.headerCellYellow : '',
           ].filter(Boolean).join(' ')}
           style={{ textAlign: i > 2 && i < cols.length - 1 ? 'right' : 'left' }}
         >
@@ -270,6 +270,11 @@ export default function StocksView() {
 
                 {/* Invested */}
                 <div className={styles.monoCell}>{fmtCr(h.invested)}</div>
+
+                {/* Invested Price (avg cost per share) */}
+                <div className={styles.monoCell}>
+                  {h.qty > 0 ? `₹${fmt(h.invested / h.qty, 2)}` : '—'}
+                </div>
 
                 {/* Value */}
                 <div className={[

@@ -14,13 +14,13 @@ import {
 import { useMFView } from '@/hooks/useMFView';
 import styles from './HoldingsTable.module.css';
 
-const COL = '20px 1fr 80px 32px 72px 72px 80px 80px 80px 88px 64px 130px 50px 28px';
+const COL = '20px 1fr 80px 32px 72px 72px 80px 90px 80px 80px 88px 64px 130px 50px 28px';
 
 function HeaderRow({ isExited }) {
   const cols = [
     '', 'FUND NAME', 'CAT', '#', 'UNITS',
     isExited ? 'LAST NAV' : 'CMP',
-    'INVESTED', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', '',
+    'INVESTED', 'INV. PRICE', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', '',
   ];
   return (
     <div className={styles.headerRow} style={{ display: 'grid', gridTemplateColumns: COL }}>
@@ -29,7 +29,7 @@ function HeaderRow({ isExited }) {
           key={i}
           className={[
             styles.headerCell,
-            i === 8 ? styles.headerCellYellow : '',
+            i === 9 ? styles.headerCellYellow : '',
           ].filter(Boolean).join(' ')}
           style={{ textAlign: i > 2 && i < cols.length - 1 ? 'right' : 'left' }}
         >
@@ -70,16 +70,16 @@ export default function MFView() {
       {/* Summary strip + refresh button */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
         <div className={styles.summaryStrip} style={{ flex: 1 }}>
-          {summaryItems.map((m, i) => (
-            <div key={i} className={styles.summaryCell}>
-              <div className={styles.summaryCellLabel}>{m.l}</div>
-              <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 18 }}>
-                {m.format ? m.format(m.v) : m.v}
-              </div>
-              {m.sub && <div className={styles.summaryCellSub}>{m.sub}</div>}
+        {summaryItems.map((m, i) => (
+          <div key={i} className={styles.summaryCell}>
+            <div className={styles.summaryCellLabel}>{m.l}</div>
+            <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 18 }}>
+              {m.format ? m.format(m.v) : m.v}
             </div>
-          ))}
-        </div>
+            {m.sub && <div className={styles.summaryCellSub}>{m.sub}</div>}
+          </div>
+        ))}
+      </div>
 
         {/* MF-only refresh button */}
         <button
@@ -168,7 +168,7 @@ export default function MFView() {
             {isExited ? 'No fully redeemed funds yet.' : 'No funds match the selected filter.'}
           </div>
         ) : rows.map(h => {
-          const open = !!expanded[h.symbol];
+          const open        = !!expanded[h.symbol];
           const hasRealized = (h.realizedGain || 0) !== 0;
 
           return (
@@ -176,8 +176,8 @@ export default function MFView() {
               <div
                 className={[
                   styles.dataRow,
-                  open ? styles.dataRowExpanded : '',
-                  isExited ? styles.dataRowExited : '',
+                  open     ? styles.dataRowExpanded : '',
+                  isExited ? styles.dataRowExited   : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => toggleExpanded(h.symbol)}
                 style={{ display: 'grid', gridTemplateColumns: COL }}
@@ -212,8 +212,8 @@ export default function MFView() {
                     ].filter(Boolean).join(' ')}
                     style={{
                       background: `${sectorColor(h.sector || 'Other')}20`,
-                      color: sectorColor(h.sector || 'Other'),
-                      border: `1px solid ${sectorColor(h.sector || 'Other')}40`,
+                      color:      sectorColor(h.sector || 'Other'),
+                      border:     `1px solid ${sectorColor(h.sector || 'Other')}40`,
                     }}
                   >
                     {h.sector || 'Other'}
@@ -241,6 +241,11 @@ export default function MFView() {
 
                 {/* Invested */}
                 <div className={styles.monoCell}>{fmtCr(h.invested)}</div>
+
+                {/* Invested Price (avg cost per unit) */}
+                <div className={styles.monoCell}>
+                  {h.qty > 0 ? `₹${fmt(h.invested / h.qty, 2)}` : '—'}
+                </div>
 
                 {/* Value */}
                 <div className={[
