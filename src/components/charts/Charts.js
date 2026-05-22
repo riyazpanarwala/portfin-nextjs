@@ -533,3 +533,225 @@ export function AbsoluteChart({ portfolioSeries }) {
     </ResponsiveContainer>
   );
 }
+
+function DrawdownStat({ label, value, month, color }) {
+  const valueColor =
+    value < -20 ? '#f87171' :
+    value < -10 ? '#f59e0b' :
+                  '#34d399';
+
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 2,
+      padding: '8px 12px',
+      background: `${color}12`,
+      border: `1px solid ${color}35`,
+      borderRadius: 8,
+      minWidth: 148,
+      flex: '0 0 auto',
+    }}>
+      <div style={{
+        fontSize: 9, color: TICK_COLOR, fontWeight: 700,
+        letterSpacing: '0.07em', textTransform: 'uppercase',
+      }}>
+        {label}
+      </div>
+      <div style={{
+        fontSize: 18, fontWeight: 800,
+        fontFamily: "'JetBrains Mono', monospace",
+        color: valueColor,
+      }}>
+        {value.toFixed(2)}%
+      </div>
+      {month && (
+        <div style={{ fontSize: 10, color: TICK_COLOR }}>worst: {month}</div>
+      )}
+    </div>
+  );
+}
+
+function computeDrawdownSeries(series) {
+  // series: Array<{ month: string, indexed: number }>
+  // returns Array<{ month: string, dd: number }>  (dd <= 0)
+  let peak = -Infinity;
+  return series.map(d => {
+    if (d.indexed > peak) peak = d.indexed;
+    const dd = peak > 0 ? ((d.indexed - peak) / peak) * 100 : 0;
+    return { month: d.month, dd };
+  });
+}
+
+export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
+  if (!portfolioSeries || portfolioSeries.length < 2) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: 220, color: TICK_COLOR, fontSize: 13,
+      }}>
+        Not enough data — save more snapshots over time.
+      </div>
+    );
+  }
+
+  // Compute drawdown per series
+  const portDD = computeDrawdownSeries(portfolioSeries);
+
+  const activeBenches = benchmarkSeries.filter(b => b.data && b.data.length > 0);
+  const benchDDs = activeBenches.map(b => ({
+    key:   b.key,
+    label: b.label,
+    color: b.hexColor || b.color,
+    dd:    computeDrawdownSeries(b.data),
+  }));
+
+  // Build maps for O(1) lookup
+  const benchMaps = benchDDs.map(b =>
+    Object.fromEntries(b.dd.map(d => [d.month, d.dd]))
+  );
+
+  // Merged dataset
+  const merged = portDD.map(d => {
+    const row = { month: d.month, portfolio: parseFloat(d.dd.toFixed(2)) };
+    benchDDs.forEach((b, i) => {
+      const val = benchMaps[i][d.month];
+      row[b.key] = val != null ? parseFloat(val.toFixed(2)) : null;
+    });
+    return row;
+  });
+
+  // Max drawdown stats for summary chips
+  const portMaxDD    = Math.min(...portDD.map(d => d.dd));
+  const portMaxMonth = portDD.find(d => d.dd === portMaxDD)?.month;
+
+  const benchStats = benchDDs.map(b => {
+    const max   = Math.min(...b.dd.map(d => d.dd));
+    const month = b.dd.find(d => d.dd === max)?.month;
+    return { key: b.key, label: b.label, color: b.color, max, month };
+  });
+
+  // Recovery: months currently under water (dd < 0)
+  const currentDD     = portDD[portDD.length - 1]?.dd ?? 0;
+  const isInDrawdown  = currentDD < -0.1;
+
+  return (
+    <div>
+      {/* Summary stat chips */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <DrawdownStat
+          label="Portfolio max drawdown"
+          value={portMaxDD}
+          month={portMaxMonth}
+          color="#3b82f6"
+        />
+        {benchStats.map(b => (
+          <DrawdownStat
+            key={b.key}
+            label={`${b.label} max DD`}
+            value={b.max}
+            month={b.month}
+            color={b.color}
+          />
+        ))}
+        {isInDrawdown && (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 2,
+            padding: '8px 12px',
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: 8, minWidth: 148, flex: '0 0 auto',
+          }}>
+            <div style={{
+              fontSize: 9, color: TICK_COLOR, fontWeight: 700,
+              letterSpacing: '0.07em', textTransform: 'uppercase',
+            }}>
+              Current drawdown
+            </div>
+            <div style={{
+              fontSize: 18, fontWeight: 800,
+              fontFamily: "'JetBrains Mono', monospace",
+              color: '#f87171',
+            }}>
+              {currentDD.toFixed(2)}%
+            </div>
+            <div style={{ fontSize: 10, color: '#f87171' }}>still recovering</div>
+          </div>
+        )}
+      </div>
+
+      {/* Chart */}
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
+          <defs>
+            <linearGradient id="dd-portfolio-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stopColor="#3b82f6" stopOpacity={0.4} />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.04} />
+            </linearGradient>
+            {benchDDs.map(b => (
+              <linearGradient key={b.key} id={`dd-bench-${b.key}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"  stopColor={b.color} stopOpacity={0.25} />
+                <stop offset="100%" stopColor={b.color} stopOpacity={0.03} />
+              </linearGradient>
+            ))}
+          </defs>
+
+          <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+          <XAxis
+            dataKey="month"
+            tick={{ fill: TICK_COLOR, fontSize: 9 }}
+            axisLine={false}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tickFormatter={v => `${v.toFixed(0)}%`}
+            tick={{ fill: TICK_COLOR, fontSize: 9 }}
+            axisLine={false}
+            tickLine={false}
+            width={42}
+            domain={['auto', 0]}
+          />
+          <Tooltip
+            formatter={(v, name) => [v != null ? `${v.toFixed(2)}%` : '—', name]}
+            contentStyle={TOOLTIP_STYLE}
+          />
+          <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
+
+          {/* Render benchmark areas behind portfolio */}
+          {benchDDs.map((b, i) => (
+            <Area
+              key={b.key}
+              type="monotone"
+              dataKey={b.key}
+              name={b.label}
+              stroke={b.color}
+              strokeWidth={1.6}
+              strokeDasharray={i === 0 ? '6 3' : i === 1 ? '3 3' : '8 2 2 2'}
+              fill={`url(#dd-bench-${b.key})`}
+              dot={false}
+              connectNulls
+              activeDot={{ r: 4, fill: b.color, stroke: '#0b0f1a', strokeWidth: 1.5 }}
+            />
+          ))}
+
+          {/* Portfolio on top */}
+          <Area
+            type="monotone"
+            dataKey="portfolio"
+            name="Your Portfolio"
+            stroke="#3b82f6"
+            strokeWidth={2.5}
+            fill="url(#dd-portfolio-grad)"
+            dot={false}
+            activeDot={{ r: 5, fill: '#60a5fa', stroke: '#0b0f1a', strokeWidth: 1.5 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+
+      <div style={{ fontSize: 10, color: TICK_COLOR, marginTop: 6, lineHeight: 1.7 }}>
+        <strong style={{ color: '#94a9c4' }}>Drawdown</strong> = % decline from the highest
+        portfolio value reached up to that month. −20% means the portfolio was 20% below
+        its prior peak. A shallower curve vs the benchmark signals better downside protection.
+      </div>
+    </div>
+  );
+}

@@ -14,7 +14,12 @@ import {
   resolveBenchmarkColor,
 } from '@/lib/niftyData';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
-import { ComparisonChart, AbsoluteChart, CagrTrendChart } from '@/components/charts/Charts';
+import {
+  ComparisonChart,
+  AbsoluteChart,
+  CagrTrendChart,
+  DrawdownChart,
+} from '@/components/charts/Charts';
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 import styles from './PortfolioVsNiftyView.module.css';
 
@@ -29,7 +34,6 @@ function BenchmarkSelector({ active, onChange }) {
       {BENCH_KEYS.map(key => {
         const bench = BENCHMARKS[key];
         const on    = active.includes(key);
-        // bench.color is a CSS variable — used directly for dynamic border/bg/text
         return (
           <button
             key={key}
@@ -69,8 +73,8 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
     { label: '3Y',  months: 36 },
   ];
 
-  const pMap      = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
-  const allMonths = portfolioSeries.map(d => d.month).sort();
+  const pMap      = useMemo(() => Object.fromEntries(portfolioSeries.map(d => [d.month, d.value])), [portfolioSeries]);
+  const allMonths = useMemo(() => portfolioSeries.map(d => d.month).sort(), [portfolioSeries]);
   const lastMonth = allMonths[allMonths.length - 1];
 
   return (
@@ -91,7 +95,6 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
         const pRet = (pStart != null && pEnd != null && pStart > 0)
           ? ((pEnd / pStart) - 1) * 100 : null;
 
-        // border colour depends on loading state — stays inline (dynamic value)
         return (
           <div
             key={label}
@@ -121,7 +124,6 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
                 return (
                   <div key={b.key}>
                     <div className={styles.rollingRow}>
-                      {/* bench.color is a CSS var — inline only because it's dynamic per benchmark */}
                       <span className={styles.rollingBenchLabel} style={{ color: b.color }}>
                         ● {b.label}
                       </span>
@@ -201,7 +203,6 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
                   const bVal = benchMaps[bi][d.month] ?? null;
                   const base = b.data[0]?.value || 1;
                   return (
-                    /* bench.color is a CSS var — inline only because it's dynamic per benchmark */
                     <td key={b.key} className={styles.tdMonoBold} style={{ color: b.color }}>
                       {benchLoading ? '…' : bVal != null ? (bVal / base * 100).toFixed(1) : '—'}
                     </td>
@@ -291,7 +292,6 @@ function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys
 
         if (!info) return (
           <div key={key} className={styles.bannerRow}>
-            {/* bench.color is a CSS var — inline only because it's dynamic per benchmark */}
             <span style={{ color: bench.color }}>●</span>
             <span style={{ color: 'var(--yellow)' }}>
               {bench.label} — using static fallback (live fetch pending or failed)
@@ -319,7 +319,6 @@ function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys
 // ─── Mode toggle button ───────────────────────────────────────────────────────
 
 function ModeButton({ label, value, active, onClick }) {
-  // active state determines border/bg/color — stays inline (dynamic)
   return (
     <button
       onClick={() => onClick(value)}
@@ -336,6 +335,44 @@ function ModeButton({ label, value, active, onClick }) {
     >
       {label}
     </button>
+  );
+}
+
+// ─── Drawdown panel ───────────────────────────────────────────────────────────
+
+function DrawdownPanel({ rebasedPortfolio, rebasedBenchSeries, benchLoading }) {
+  return (
+    <div className={`glass ${styles.chartPanel}`}>
+      <div className={styles.chartHeader}>
+        <div>
+          <div className={styles.chartTitle}>Drawdown analysis</div>
+          <div className={styles.chartSubtitle}>
+            Peak-to-trough decline at each point — shows how deep losses got and how long recovery took
+            {benchLoading && (
+              <span className={styles.chartSubtitleWarning}>
+                {' '}(benchmark lines use static data while live fetch completes)
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      {benchLoading ? (
+        <div className={styles.drawdownLoadingRow}>
+          <svg width="14" height="14" viewBox="0 0 24 24" className={styles.bannerSpinner}>
+            <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(148,169,196,0.3)" strokeWidth="2.5" />
+            <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="var(--accent2)" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+          <span>Benchmark data loading — drawdown chart uses static fallback for now</span>
+        </div>
+      ) : null}
+      <DrawdownChart
+        portfolioSeries={rebasedPortfolio}
+        benchmarkSeries={rebasedBenchSeries.map(b => ({
+          ...b,
+          color: b.hexColor,
+        }))}
+      />
+    </div>
   );
 }
 
@@ -418,10 +455,12 @@ export default function PortfolioVsNiftyView() {
     }));
   }, [snapshots]);
 
+  // Only reset mode to indexed when number of snapshots changes (not on benchmark toggles)
   useEffect(() => {
     if (portfolioSeries.length !== prevSeriesLenRef.current) {
       prevSeriesLenRef.current = portfolioSeries.length;
-      setMode('indexed');
+      // Only reset if user is NOT on drawdown — drawdown stays meaningful as data grows
+      setMode(prev => prev === 'drawdown' ? 'drawdown' : 'indexed');
     }
   }, [portfolioSeries.length]);
 
@@ -442,14 +481,14 @@ export default function PortfolioVsNiftyView() {
         key,
         label:      bench.label,
         shortLabel: bench.label.split(' ').slice(0, 2).join(' '),
-        color:      bench.color,                        // CSS var — for inline styles
-        hexColor:   resolveBenchmarkColor(bench.color), // hex — for Recharts
+        color:      bench.color,
+        hexColor:   resolveBenchmarkColor(bench.color),
         data,
       };
     });
   }, [activeBenchKeys, benchHistories, portfolioSeries]);
 
-  // ── Rebased series for ComparisonChart ─────────────────────────────────────
+  // ── Rebased series ──────────────────────────────────────────────────────────
   const rebasedPortfolio = useMemo(() => {
     if (!portfolioSeries.length) return [];
     return rebaseToIndex(portfolioSeries, portfolioSeries[0].value);
@@ -511,11 +550,18 @@ export default function PortfolioVsNiftyView() {
     </div>
   );
 
-  // Alpha badge: gradient & border depend on sign — stays inline (dynamic)
   const alphaBg = alphaReturnPct > 0
     ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))'
     : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))';
   const alphaBorderColor = alphaReturnPct > 0 ? 'var(--green)' : 'var(--red)';
+
+  // Modes: indexed | absolute | cagr | drawdown
+  const MODES = [
+    ['indexed',  'Indexed'],
+    ['absolute', 'Absolute'],
+    ['cagr',     'CAGR'],
+    ['drawdown', 'Drawdown'],
+  ];
 
   return (
     <div className={`${styles.wrapper} fade-up`}>
@@ -592,25 +638,29 @@ export default function PortfolioVsNiftyView() {
         </div>
       )}
 
+      {/* ── Main chart panel ── */}
       <div className={`glass ${styles.chartPanel}`}>
         <div className={styles.chartHeader}>
           <div>
             <div className={styles.chartTitle}>
-              {mode === 'cagr' ? 'Sub-portfolio CAGR trend' : 'Portfolio vs benchmarks'}
+              {mode === 'cagr'     ? 'Sub-portfolio CAGR trend'     :
+               mode === 'drawdown' ? 'Drawdown analysis'            :
+                                     'Portfolio vs benchmarks'}
             </div>
             <div className={styles.chartSubtitle}>
-              {mode === 'cagr'
-                ? 'MF and stock CAGR captured in each saved snapshot'
-                : 'Indexed to 100 at first snapshot — shows relative performance'}
-              {mode === 'indexed' && benchLoading && (
+              {mode === 'cagr'     ? 'MF and stock CAGR captured in each saved snapshot'                             :
+               mode === 'drawdown' ? 'Peak-to-trough decline at each month — shallower is better'                   :
+               mode === 'absolute' ? 'Raw portfolio value and invested capital over time'                            :
+                                     'Indexed to 100 at first snapshot — shows relative performance'}
+              {(mode === 'indexed' || mode === 'drawdown') && benchLoading && (
                 <span className={styles.chartSubtitleWarning}>
-                  (benchmark lines use static data while live fetch completes)
+                  {' '}(benchmark lines use static data while live fetch completes)
                 </span>
               )}
             </div>
           </div>
           <div className={styles.chartModeGroup}>
-            {[['indexed', 'Indexed'], ['absolute', 'Absolute'], ['cagr', 'CAGR']].map(([v, l]) => (
+            {MODES.map(([v, l]) => (
               <ModeButton key={v} value={v} label={l} active={mode === v} onClick={setMode} />
             ))}
           </div>
@@ -621,12 +671,21 @@ export default function PortfolioVsNiftyView() {
             portfolioSeries={rebasedPortfolio}
             benchmarkSeries={rebasedBenchSeries.map(b => ({
               ...b,
-              color: b.hexColor, // Recharts needs resolved hex, not CSS vars
+              color: b.hexColor,
             }))}
           />
         )}
         {mode === 'absolute' && <AbsoluteChart portfolioSeries={portfolioSeries} />}
         {mode === 'cagr'     && <CagrTrendChart series={portfolioSeries} />}
+        {mode === 'drawdown' && (
+          <DrawdownChart
+            portfolioSeries={rebasedPortfolio}
+            benchmarkSeries={rebasedBenchSeries.map(b => ({
+              ...b,
+              color: b.hexColor,
+            }))}
+          />
+        )}
       </div>
 
       <div className={`glass ${styles.rollingPanel}`}>
@@ -675,6 +734,7 @@ export default function PortfolioVsNiftyView() {
         FD/Risk-free line is synthetic at 7.1% p.a. compounded monthly.
         All series rebased to 100 at first snapshot for fair comparison.
         Alpha = portfolio return % − primary benchmark return % over the same period.
+        Drawdown = % decline from rolling peak; computed on the rebased indexed series.
         Rolling returns use point-to-point % change on raw values.
         Save snapshots regularly for better chart granularity.
       </div>
