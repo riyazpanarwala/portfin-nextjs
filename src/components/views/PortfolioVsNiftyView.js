@@ -152,6 +152,296 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
   );
 }
 
+// ─── Calendar year returns table ─────────────────────────────────────────────
+//
+// For each calendar year covered by snapshot data:
+//   start value = last snapshot value in December of prior year
+//               (or first snapshot value if this is the first year and it started mid-year)
+//   end value   = last snapshot value in December of that year
+//               (or last snapshot value if the year is still in progress)
+//
+// Same logic applied to each active benchmark series using their raw (non-rebased) values.
+// A partial-year flag is shown when the year has no December snapshot yet.
+
+function computeCalendarYearReturns(portfolioSeries, activeBenchSeries) {
+  if (!portfolioSeries.length) return [];
+
+  // Build a map month → value for the portfolio
+  const pMap = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
+
+  // Collect all years that appear in the snapshot data
+  const years = [...new Set(portfolioSeries.map(d => d.month.slice(0, 4)))].sort();
+
+  // Build per-benchmark maps
+  const benchMaps = activeBenchSeries.map(b =>
+    Object.fromEntries(b.data.map(d => [d.month, d.value]))
+  );
+
+  // Helper: last snapshot value at or before a given month, within a year
+  function lastValueInYear(map, year) {
+    // Prefer Dec, then walk back month by month
+    for (let m = 12; m >= 1; m--) {
+      const key = `${year}-${String(m).padStart(2, '0')}`;
+      if (map[key] != null) return { value: map[key], month: key };
+    }
+    return null;
+  }
+
+  function firstValueInYear(map, year) {
+    for (let m = 1; m <= 12; m++) {
+      const key = `${year}-${String(m).padStart(2, '0')}`;
+      if (map[key] != null) return { value: map[key], month: key };
+    }
+    return null;
+  }
+
+  const currentYearStr = new Date().toISOString().slice(0, 4);
+
+  return years.map((year, idx) => {
+    const isCurrentYear = year === currentYearStr;
+    const isFirstYear   = idx === 0;
+
+    // Portfolio start: end of prior year, or first available month if first year
+    let pStart = null;
+    if (!isFirstYear) {
+      const prevYear = String(parseInt(year) - 1);
+      const prev = lastValueInYear(pMap, prevYear);
+      pStart = prev?.value ?? null;
+    }
+    if (pStart == null) {
+      // First year or no prior-year data — use first snapshot of this year
+      const first = firstValueInYear(pMap, year);
+      pStart = first?.value ?? null;
+    }
+
+    // Portfolio end: last snapshot of this year
+    const pEnd = lastValueInYear(pMap, year);
+    const isPartial = isCurrentYear || pEnd?.month?.slice(5) !== '12';
+    const pRet = pStart != null && pEnd?.value != null && pStart > 0
+      ? ((pEnd.value / pStart) - 1) * 100
+      : null;
+
+    // Benchmark returns
+    const benchReturns = activeBenchSeries.map((b, bi) => {
+      const map = benchMaps[bi];
+      let bStart = null;
+
+      if (!isFirstYear) {
+        const prevYear = String(parseInt(year) - 1);
+        const prev = lastValueInYear(map, prevYear);
+        bStart = prev?.value ?? null;
+      }
+      if (bStart == null) {
+        const first = firstValueInYear(map, year);
+        bStart = first?.value ?? null;
+      }
+
+      const bEnd = lastValueInYear(map, year);
+      const bRet = bStart != null && bEnd?.value != null && bStart > 0
+        ? ((bEnd.value / bStart) - 1) * 100
+        : null;
+
+      const alpha = pRet != null && bRet != null ? pRet - bRet : null;
+
+      return { key: b.key, label: b.label, color: b.color, ret: bRet, alpha };
+    });
+
+    return { year, pRet, benchReturns, isPartial, isFirstYear };
+  });
+}
+
+function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
+  const rows = useMemo(
+    () => computeCalendarYearReturns(portfolioSeries, activeBenchSeries),
+    [portfolioSeries, activeBenchSeries],
+  );
+
+  if (!rows.length) return null;
+
+  // Summary stats
+  const completedRows = rows.filter(r => !r.isPartial && r.pRet != null);
+  const bestRow  = completedRows.length
+    ? completedRows.reduce((a, b) => (b.pRet > a.pRet ? b : a))
+    : null;
+  const worstRow = completedRows.length
+    ? completedRows.reduce((a, b) => (b.pRet < a.pRet ? b : a))
+    : null;
+  const winsCount = completedRows.filter(r => {
+    const primary = r.benchReturns[0];
+    return primary && primary.alpha != null && primary.alpha > 0;
+  }).length;
+  const lossCount = completedRows.filter(r => {
+    const primary = r.benchReturns[0];
+    return primary && primary.alpha != null && primary.alpha <= 0;
+  }).length;
+
+  const hasBench = activeBenchSeries.length > 0;
+
+  return (
+    <div>
+      {/* Summary chips */}
+      {completedRows.length > 0 && (
+        <div className={styles.calSummaryRow}>
+          {bestRow && (
+            <div className={styles.calSummaryChip} style={{ borderColor: 'rgba(52,211,153,0.4)', background: 'rgba(52,211,153,0.07)' }}>
+              <div className={styles.calSummaryChipLabel}>Best year</div>
+              <div className={styles.calSummaryChipValue} style={{ color: 'var(--green2)' }}>
+                {bestRow.year} · {bestRow.pRet > 0 ? '+' : ''}{fmt(bestRow.pRet, 1)}%
+              </div>
+            </div>
+          )}
+          {worstRow && (
+            <div className={styles.calSummaryChip} style={{ borderColor: 'rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.07)' }}>
+              <div className={styles.calSummaryChipLabel}>Worst year</div>
+              <div className={styles.calSummaryChipValue} style={{ color: 'var(--red2)' }}>
+                {worstRow.year} · {worstRow.pRet > 0 ? '+' : ''}{fmt(worstRow.pRet, 1)}%
+              </div>
+            </div>
+          )}
+          {hasBench && (completedRows.length > 0) && (
+            <div className={styles.calSummaryChip} style={{ borderColor: 'rgba(59,130,246,0.3)', background: 'rgba(59,130,246,0.06)' }}>
+              <div className={styles.calSummaryChipLabel}>Beat {activeBenchSeries[0]?.label}</div>
+              <div className={styles.calSummaryChipValue} style={{ color: winsCount >= lossCount ? 'var(--green2)' : 'var(--red2)' }}>
+                {winsCount}W / {lossCount}L
+                <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 6 }}>
+                  ({completedRows.length} full years)
+                </span>
+              </div>
+            </div>
+          )}
+          {completedRows.length > 0 && (() => {
+            const avg = completedRows.reduce((s, r) => s + r.pRet, 0) / completedRows.length;
+            return (
+              <div className={styles.calSummaryChip} style={{ borderColor: 'rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.06)' }}>
+                <div className={styles.calSummaryChipLabel}>Avg annual return</div>
+                <div className={styles.calSummaryChipValue} style={{ color: 'var(--purple)' }}>
+                  {avg > 0 ? '+' : ''}{fmt(avg, 1)}%
+                  <span style={{ fontSize: 10, color: 'var(--text3)', marginLeft: 4 }}>arithmetic</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* Table */}
+      <div className={styles.calTableWrapper}>
+        <table>
+          <thead>
+            <tr>
+              <th className={styles.calTh}>Year</th>
+              <th className={styles.calThRight}>Portfolio</th>
+              {activeBenchSeries.map(b => (
+                <th key={b.key} className={styles.calThRight} style={{ color: b.color }}>
+                  {b.label}
+                </th>
+              ))}
+              {hasBench && activeBenchSeries.map(b => (
+                <th key={`alpha-${b.key}`} className={styles.calThRight}>
+                  Alpha vs {b.label.split(' ').slice(0, 2).join(' ')}
+                </th>
+              ))}
+              <th className={styles.calTh}>Bar</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...rows].reverse().map(({ year, pRet, benchReturns, isPartial, isFirstYear }) => {
+              const pColor = pRet == null ? 'var(--text3)' : colorPnl(pRet);
+              const partial = isPartial || isFirstYear;
+
+              return (
+                <tr key={year} className={partial ? styles.calRowPartial : styles.calRow}>
+                  {/* Year */}
+                  <td className={styles.calTdYear}>
+                    <span className={styles.calYearText}>{year}</span>
+                    {partial && (
+                      <span className={styles.calPartialBadge}>
+                        {year === new Date().toISOString().slice(0, 4) ? 'YTD' : 'partial'}
+                      </span>
+                    )}
+                    {isFirstYear && !isPartial && (
+                      <span className={styles.calPartialBadge}>first</span>
+                    )}
+                  </td>
+
+                  {/* Portfolio return */}
+                  <td className={styles.calTdValue} style={{ color: pColor }}>
+                    {pRet != null ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%` : '—'}
+                  </td>
+
+                  {/* Benchmark returns */}
+                  {benchLoading ? (
+                    activeBenchSeries.map(b => (
+                      <td key={b.key} className={styles.calTdMuted}>…</td>
+                    ))
+                  ) : (
+                    benchReturns.map(b => (
+                      <td
+                        key={b.key}
+                        className={styles.calTdValue}
+                        style={{ color: b.ret != null ? colorPnl(b.ret) : 'var(--text3)' }}
+                      >
+                        {b.ret != null ? `${b.ret > 0 ? '+' : ''}${fmt(b.ret, 1)}%` : '—'}
+                      </td>
+                    ))
+                  )}
+
+                  {/* Alpha columns */}
+                  {hasBench && (benchLoading ? (
+                    activeBenchSeries.map(b => (
+                      <td key={`alpha-${b.key}`} className={styles.calTdMuted}>…</td>
+                    ))
+                  ) : (
+                    benchReturns.map(b => {
+                      const a = b.alpha;
+                      return (
+                        <td key={`alpha-${b.key}`}>
+                          {a != null ? (
+                            <span
+                              className={`${styles.calAlphaChip} ${a > 0 ? styles.calAlphaWin : styles.calAlphaLoss}`}
+                            >
+                              {a > 0 ? '▲' : '▼'} {a > 0 ? '+' : ''}{fmt(a, 1)}%
+                            </span>
+                          ) : (
+                            <span className={styles.calTdMuted}>—</span>
+                          )}
+                        </td>
+                      );
+                    })
+                  ))}
+
+                  {/* Visual bar */}
+                  <td className={styles.calTdBar}>
+                    {pRet != null && (
+                      <div className={styles.calBarWrapper}>
+                        <div
+                          className={styles.calBar}
+                          style={{
+                            width: `${Math.min(100, Math.abs(pRet) * 1.5)}%`,
+                            background: pRet >= 0 ? 'var(--green2)' : 'var(--red2)',
+                            opacity: 0.75,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className={styles.calFootnote}>
+        Returns are Jan–Dec point-to-point using the last available snapshot in each month.
+        Partial/YTD rows use the most recent snapshot as the end value.
+        Alpha = portfolio return − benchmark return for the same calendar year.
+        {benchLoading && <span style={{ color: 'var(--yellow)', marginLeft: 6 }}>Benchmark data loading…</span>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Hypothetical growth table ────────────────────────────────────────────────
 
 function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, benchLoading }) {
@@ -705,6 +995,25 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
+      <div className={`glass ${styles.calPanel}`}>
+        <div className={styles.calPanelHeader}>
+          <div>
+            <div className={styles.calPanelTitle}>Calendar year returns</div>
+            <div className={styles.calPanelSub}>
+              Jan–Dec performance of your portfolio vs selected benchmarks, year by year
+            </div>
+          </div>
+          {benchLoading && (
+            <span className={styles.hypotheticalLoadingBadge}>⏳ Loading benchmark data…</span>
+          )}
+        </div>
+        <CalendarYearReturns
+          portfolioSeries={portfolioSeries}
+          activeBenchSeries={activeBenchSeries}
+          benchLoading={benchLoading}
+        />
+      </div>
+
       <div className={`glass ${styles.hypotheticalPanel}`}>
         <div className={styles.hypotheticalHeader}>
           <div>
@@ -735,6 +1044,7 @@ export default function PortfolioVsNiftyView() {
         All series rebased to 100 at first snapshot for fair comparison.
         Alpha = portfolio return % − primary benchmark return % over the same period.
         Drawdown = % decline from rolling peak; computed on the rebased indexed series.
+        Calendar year returns use Jan–Dec point-to-point on raw snapshot values; partial years marked YTD.
         Rolling returns use point-to-point % change on raw values.
         Save snapshots regularly for better chart granularity.
       </div>

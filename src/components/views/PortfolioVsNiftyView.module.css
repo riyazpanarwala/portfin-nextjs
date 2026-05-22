@@ -387,3 +387,225 @@
   background: rgba(59, 130, 246, 0.05);
   border: 1px solid rgba(59, 130, 246, 0.12);
 }
+
+.drawdownLoadingRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text3);
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+}
+
+.calPanel {
+  overflow: hidden;
+}
+
+.calPanelHeader {
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.calPanelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+
+.calPanelSub {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+/* Summary chips row */
+.calSummaryRow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px 18px 0;
+}
+
+.calSummaryChip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  min-width: 150px;
+  flex: 0 0 auto;
+}
+
+.calSummaryChipLabel {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.calSummaryChipValue {
+  font-size: 15px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+
+/* Table wrapper */
+.calTableWrapper {
+  overflow-x: auto;
+  padding: 14px 0 0;
+}
+
+/* Table header cells */
+.calTh {
+  background: var(--bg3);
+  color: var(--text3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.calThRight {
+  background: var(--bg3);
+  color: var(--text3);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* Table rows */
+.calRow {
+  transition: background 0.12s;
+}
+
+.calRow:hover td {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.calRowPartial {
+  opacity: 0.82;
+}
+
+.calRowPartial:hover td {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+/* Year cell */
+.calTdYear {
+  padding: 10px 14px;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(45, 64, 96, 0.4);
+}
+
+.calYearText {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+  margin-right: 6px;
+}
+
+.calPartialBadge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--yellow);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Value cells (portfolio, benchmark returns) */
+.calTdValue {
+  padding: 10px 14px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(45, 64, 96, 0.4);
+}
+
+/* Muted/loading placeholder cells */
+.calTdMuted {
+  padding: 10px 14px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text3);
+  border-bottom: 1px solid rgba(45, 64, 96, 0.4);
+}
+
+/* Alpha chip */
+.calAlphaChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.calAlphaWin {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--green2);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.calAlphaLoss {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--red2);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* Visual bar column */
+.calTdBar {
+  padding: 10px 14px;
+  min-width: 80px;
+  border-bottom: 1px solid rgba(45, 64, 96, 0.4);
+}
+
+.calBarWrapper {
+  height: 8px;
+  background: var(--bg3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.calBar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* Footnote */
+.calFootnote {
+  padding: 10px 18px 14px;
+  font-size: 10px;
+  color: var(--text3);
+  line-height: 1.7;
+}
