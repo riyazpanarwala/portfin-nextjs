@@ -6,6 +6,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import Sidebar from '@/components/ui/Sidebar';
 import Header from '@/components/ui/Header';
 import ToastContainer from '@/components/ui/Toast';
+import PriceRefreshOverlay from '@/components/ui/PriceRefreshOverlay';
 import OverviewView from '@/components/views/OverviewView';
 import MFView from '@/components/views/MFView';
 import StocksView from '@/components/views/StocksView';
@@ -36,37 +37,6 @@ const VIEW_TITLES = {
   trade:        'Add Trade',
 };
 
-/**
- * VIEWS_BYPASS_EMPTY_GUARD
- *
- * Views listed here are shown even when the portfolio has no trades.
- * Every view NOT in this set will render the EmptyState prompt instead.
- *
- * Inclusion criteria — a view belongs here if it is:
- *   (a) genuinely useful before any trades exist, OR
- *   (b) has its own internal zero-guard that shows a correct empty state
- *
- * FIX (Issue 13): 'analytics', 'rebalancer', and 'vs-nifty' were previously
- * reachable with 0 trades.  They rendered misleading content:
- *   • analytics  — Sharpe ratio of -0.46 and benchmark comparison at 0%
- *                  made the portfolio look like it was performing badly
- *   • rebalancer — action plan showed "Buy more MF: +₹0" for all categories
- *   • vs-nifty   — fired a useSnapshots() API call, then flashed
- *                  "₹0.00L invested" before its own EmptyState rendered
- *
- * These three are now excluded from the bypass set so the shared EmptyState
- * is shown instead, directing new users to add trades first.
- *
- * Views that remain in the bypass set and why:
- *   trade        — the primary data-entry screen; always accessible
- *   ai-advisor   — works with empty context, shows helpful onboarding
- *   instruments  — instrument management is pre-trade setup work
- *   goal         — pure SIP calculator, no trade data required
- *   snapshots    — "Save Snapshot" is valid even on a zero portfolio
- *   timeline     — internal guard: renders its own EmptyState ✓
- *   waterfall    — internal guard: renders its own EmptyState ✓
- *   action       — internal guard: renders its own EmptyState ✓
- */
 const VIEWS_BYPASS_EMPTY_GUARD = new Set([
   'trade',
   'ai-advisor',
@@ -83,7 +53,6 @@ export default function Dashboard() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showImporter, setShowImporter]         = useState(false);
 
-  // Derive once — used both in the render guard and in the title bar
   const noTrades        = trades.length === 0;
   const bypassEmptyGuard = VIEWS_BYPASS_EMPTY_GUARD.has(activeView);
 
@@ -96,7 +65,8 @@ export default function Dashboard() {
       />
 
       <div className="app-content">
-        <Header onRefreshPrices={refreshPrices} />
+        {/* Pass null = refresh ALL prices */}
+        <Header onRefreshPrices={() => refreshPrices(null)} />
 
         {/* Title bar */}
         <div className="page-titlebar">
@@ -163,17 +133,6 @@ export default function Dashboard() {
           ) : loading ? (
             <LoadingState />
           ) : noTrades && !bypassEmptyGuard ? (
-            /*
-             * FIX (Issue 13): condition changed from:
-             *   trades.length === 0
-             *     && activeView !== 'trade'
-             *     && activeView !== 'ai-advisor'
-             *     && activeView !== 'instruments'
-             *
-             * To a Set-based lookup that also excludes 'analytics',
-             * 'rebalancer', and 'vs-nifty' from rendering with zero data.
-             * The Set makes future additions/removals explicit and reviewable.
-             */
             <EmptyState onImport={() => setShowImporter(true)} />
           ) : (
             <ViewRenderer view={activeView} />
@@ -182,6 +141,8 @@ export default function Dashboard() {
       </div>
 
       <ToastContainer />
+      {/* Full-screen price refresh overlay — sits above everything */}
+      <PriceRefreshOverlay />
       {showImporter && <TradeImporter onClose={() => setShowImporter(false)} />}
     </div>
   );

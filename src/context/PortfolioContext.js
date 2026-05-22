@@ -33,6 +33,19 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// ── Initial price-refresh state ───────────────────────────────────────────────
+const REFRESH_IDLE = {
+  active:    false,
+  progress:  0,        // 0–100
+  current:   '',       // symbol currently being fetched
+  updated:   0,
+  failed:    0,
+  total:     0,
+  assetType: null,     // 'MF' | 'STOCK' | null (all)
+  done:      false,
+  error:     null,
+};
+
 export function PortfolioProvider({ children }) {
   const [trades, setTrades]               = useState([]);
   const [portfolioId, setPortfolioId]     = useState(null);
@@ -46,6 +59,9 @@ export function PortfolioProvider({ children }) {
   const [portfolioXIRR, setPortfolioXIRR] = useState(null);
   const [portfolioBeta, setPortfolioBeta] = useState(null);
   const [, startXIRRTransition]           = useTransition();
+
+  // ── Price-refresh overlay state ───────────────────────────────────────────
+  const [priceRefreshState, setPriceRefreshState] = useState(REFRESH_IDLE);
 
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -151,7 +167,7 @@ export function PortfolioProvider({ children }) {
     return () => clearTimeout(timeoutId);
   }, [trades, currentPrices, holdings, startXIRRTransition]);
 
-  // ── Stable price-merge helpers ────────────────────────────────────────────
+  // ── Portfolio beta ────────────────────────────────────────────────────────
   useEffect(() => {
     const activeHoldings = holdings.filter(h => h.qty > 0 && h.marketValue > 0);
     if (!activeHoldings.length) {
@@ -208,6 +224,7 @@ export function PortfolioProvider({ children }) {
     };
   }, [holdings]);
 
+  // ── Stable price-merge helpers ────────────────────────────────────────────
   function mergePrices(next = {}) {
     setCurrentPrices(prev => {
       const changed = Object.keys(next).some(k => prev[k] !== next[k]);
@@ -287,8 +304,6 @@ export function PortfolioProvider({ children }) {
       if (!res.ok) throw new Error('Snapshot failed');
       const data = await res.json();
 
-      // FIX (Bug 18): show a distinct, accurate message when the save within
-      // the same minute updated an existing entry rather than creating a new one.
       if (data.duplicateMinute) {
         toast('Snapshot updated (same minute — save again in a new minute for a fresh entry) 📸', 'blue');
       } else if (data.created) {
@@ -319,21 +334,57 @@ export function PortfolioProvider({ children }) {
     }
   }
 
-  // ── Refresh prices ────────────────────────────────────────────────────────
-  async function refreshPrices() {
-    const symbols = [...new Set(trades.map(t => t.symbol))];
-    if (!symbols.length) return;
+  // ── Refresh prices — with overlay state + optional assetType filter ────────
+  // assetTypeFilter: 'MF' | 'STOCK' | null (null = all)
+  async function refreshPrices(assetTypeFilter = null) {
+    // Collect symbols, optionally filtered by asset type
+    const tradeSymbols = [...new Set(
+      trades
+        .filter(t => !assetTypeFilter || t.assetType === assetTypeFilter)
+        .map(t => t.symbol)
+    )];
+
+    if (!tradeSymbols.length) {
+      toast('No symbols to refresh', 'blue');
+      return;
+    }
+
+    const label = assetTypeFilter === 'MF'    ? 'MF NAVs'
+                : assetTypeFilter === 'STOCK' ? 'stock prices'
+                : 'all prices';
 
     const CHUNK      = 20;
     const STAGGER_MS = 300;
+    const total      = tradeSymbols.length;
+
+    setPriceRefreshState({
+      active:    true,
+      progress:  0,
+      current:   '',
+      updated:   0,
+      failed:    0,
+      total,
+      assetType: assetTypeFilter,
+      done:      false,
+      error:     null,
+    });
 
     const allPrices = {};
     const allMeta   = {};
     let updatedCount = 0;
     let failedCount  = 0;
+    let processed    = 0;
 
-    for (let i = 0; i < symbols.length; i += CHUNK) {
-      const chunk = symbols.slice(i, i + CHUNK);
+    for (let i = 0; i < tradeSymbols.length; i += CHUNK) {
+      const chunk = tradeSymbols.slice(i, i + CHUNK);
+
+      // Show first symbol of chunk as "current"
+      setPriceRefreshState(prev => ({
+        ...prev,
+        current:  chunk[0],
+        progress: Math.round((processed / total) * 100),
+      }));
+
       try {
         const res = await fetch('/api/prices', {
           method: 'POST',
@@ -352,11 +403,20 @@ export function PortfolioProvider({ children }) {
         failedCount += chunk.length;
       }
 
-      if (i + CHUNK < symbols.length) {
+      processed += chunk.length;
+      setPriceRefreshState(prev => ({
+        ...prev,
+        progress: Math.round((processed / total) * 100),
+        updated:  updatedCount,
+        failed:   failedCount,
+      }));
+
+      if (i + CHUNK < tradeSymbols.length) {
         await new Promise(r => setTimeout(r, STAGGER_MS));
       }
     }
 
+    // Apply prices
     if (Object.keys(allPrices).length > 0) {
       setCurrentPrices(prev => {
         const changed = Object.keys(allPrices).some(k => prev[k] !== allPrices[k]);
@@ -365,12 +425,28 @@ export function PortfolioProvider({ children }) {
       setPriceMeta(prev => ({ ...prev, ...allMeta }));
     }
 
+    // Final state — show result for 2.5s then dismiss
+    setPriceRefreshState(prev => ({
+      ...prev,
+      active:   true,
+      progress: 100,
+      current:  '',
+      done:     true,
+      updated:  updatedCount,
+      failed:   failedCount,
+    }));
+
+    setTimeout(() => {
+      setPriceRefreshState(REFRESH_IDLE);
+    }, 2500);
+
+    // Toast summary
     if (updatedCount > 0 && failedCount === 0) {
-      toast(`Prices refreshed ✓ (${updatedCount} symbols)`, 'green');
+      toast(`${label} refreshed ✓ — ${updatedCount} updated`, 'green');
     } else if (updatedCount > 0) {
-      toast(`Prices refreshed — ${updatedCount} updated, ${failedCount} failed`, 'blue');
+      toast(`${label} refreshed — ${updatedCount} updated, ${failedCount} failed`, 'blue');
     } else {
-      toast('Price refresh failed — check network', 'red');
+      toast(`Price refresh failed — check network`, 'red');
     }
   }
 
@@ -389,6 +465,7 @@ export function PortfolioProvider({ children }) {
       portfolioId, loading, error,
       activeView, setActiveView,
       addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,
+      priceRefreshState,
       refreshData: loadData, toasts, toast,
     }}>
       {children}

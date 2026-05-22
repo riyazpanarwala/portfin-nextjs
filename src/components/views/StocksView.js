@@ -1,5 +1,6 @@
 'use client';
 
+import { RefreshCw } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, colorPnl, sectorColor } from '@/lib/store';
 import {
@@ -30,7 +31,7 @@ function HeaderRow({ isExited }) {
           className={[
             styles.headerCell,
             i === 5 && !isExited ? styles.headerCellHighlight : '',
-            i === 8              ? styles.headerCellYellow    : '',
+            i === 8 ? styles.headerCellYellow : '',
           ].filter(Boolean).join(' ')}
           style={{ textAlign: i > 2 && i < cols.length - 1 ? 'right' : 'left' }}
         >
@@ -42,7 +43,9 @@ function HeaderRow({ isExited }) {
 }
 
 export default function StocksView() {
-  const { stHoldings, stats, setActiveView, priceMeta } = usePortfolio();
+  const { stHoldings, stats, setActiveView, priceMeta, refreshPrices, priceRefreshState } = usePortfolio();
+
+  const isRefreshing = priceRefreshState?.active;
 
   const {
     sort, sector, setSector, filter, setFilter, expanded,
@@ -66,17 +69,51 @@ export default function StocksView() {
   return (
     <div className={`fade-up ${styles.wrapper}`}>
 
-      {/* Summary strip */}
-      <div className={styles.summaryStrip}>
-        {summaryItems.map((m, i) => (
-          <div key={i} className={styles.summaryCell}>
-            <div className={styles.summaryCellLabel}>{m.l}</div>
-            <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 17 }}>
-              {typeof m.v === 'string' ? m.v : fmtCr(m.v)}
+      {/* Summary strip + refresh button */}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+        <div className={styles.summaryStrip} style={{ flex: 1 }}>
+          {summaryItems.map((m, i) => (
+            <div key={i} className={styles.summaryCell}>
+              <div className={styles.summaryCellLabel}>{m.l}</div>
+              <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 17 }}>
+                {typeof m.v === 'string' ? m.v : fmtCr(m.v)}
+              </div>
+              {m.sub && <div className={styles.summaryCellSub}>{m.sub}</div>}
             </div>
-            {m.sub && <div className={styles.summaryCellSub}>{m.sub}</div>}
-          </div>
-        ))}
+          ))}
+        </div>
+
+        {/* Stocks-only refresh button */}
+        <button
+          onClick={isRefreshing ? undefined : () => refreshPrices('STOCK')}
+          disabled={isRefreshing}
+          title={isRefreshing ? 'Refresh in progress…' : 'Refresh stock prices from Yahoo Finance'}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '12px 18px',
+            background: isRefreshing ? 'var(--bg3)' : 'rgba(139,92,246,0.06)',
+            border: `1px solid ${isRefreshing ? 'var(--border)' : 'rgba(139,92,246,0.3)'}`,
+            borderRadius: 10,
+            cursor: isRefreshing ? 'not-allowed' : 'pointer',
+            opacity: isRefreshing ? 0.55 : 1,
+            color: 'var(--purple)',
+            minWidth: 88,
+            flexShrink: 0,
+            transition: 'all 0.2s',
+          }}
+        >
+          <RefreshCw
+            size={16}
+            style={isRefreshing ? { animation: 'spin 1s linear infinite' } : undefined}
+          />
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {isRefreshing ? 'Updating…' : 'Refresh Prices'}
+          </span>
+        </button>
       </div>
 
       {/* Data error banner if any */}
@@ -145,18 +182,18 @@ export default function StocksView() {
             {isExited ? 'No fully exited positions yet.' : 'No stocks match the selected filter.'}
           </div>
         ) : rows.map(h => {
-          const open           = !!expanded[h.symbol];
-          const hasRealized    = (h.realizedGain || 0) !== 0;
-          const concentration  = concentrationMap[h.symbol] ?? 0;
-          const daysSinceBuy   = daysSinceLastBuyMap[h.symbol];
+          const open = !!expanded[h.symbol];
+          const hasRealized = (h.realizedGain || 0) !== 0;
+          const concentration = concentrationMap[h.symbol] ?? 0;
+          const daysSinceBuy = daysSinceLastBuyMap[h.symbol];
 
           return (
             <div key={h.symbol} className={styles.rowOuter}>
               <div
                 className={[
                   styles.dataRow,
-                  open     ? styles.dataRowExpanded : '',
-                  isExited ? styles.dataRowExited   : '',
+                  open ? styles.dataRowExpanded : '',
+                  isExited ? styles.dataRowExited : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => toggleExpanded(h.symbol)}
                 style={{ display: 'grid', gridTemplateColumns: COL }}
@@ -201,8 +238,8 @@ export default function StocksView() {
                     ].filter(Boolean).join(' ')}
                     style={{
                       background: `${sectorColor(h.sector || 'Other')}20`,
-                      color:      sectorColor(h.sector || 'Other'),
-                      border:     `1px solid ${sectorColor(h.sector || 'Other')}40`,
+                      color: sectorColor(h.sector || 'Other'),
+                      border: `1px solid ${sectorColor(h.sector || 'Other')}40`,
                     }}
                   >
                     {h.sector || 'Other'}

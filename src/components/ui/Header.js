@@ -6,7 +6,9 @@ import { fmtCr, fmtPct, colorPnl } from '@/lib/store';
 import styles from './UI.module.css';
 
 export default function Header({ onRefreshPrices }) {
-  const { stats } = usePortfolio();
+  const { stats, priceRefreshState } = usePortfolio();
+  const isRefreshing = priceRefreshState?.active;
+
   const dateStr = new Date().toLocaleDateString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric',
   });
@@ -31,11 +33,21 @@ export default function Header({ onRefreshPrices }) {
       <div className={styles.headerRight}>
         {onRefreshPrices && (
           <button
-            onClick={onRefreshPrices}
+            onClick={isRefreshing ? undefined : onRefreshPrices}
+            disabled={isRefreshing}
             className={`btn btn-ghost ${styles.refreshBtn}`}
-            title="Refresh live prices"
+            title={isRefreshing ? 'Refresh in progress…' : 'Refresh all live prices'}
+            style={{
+              opacity:       isRefreshing ? 0.55 : 1,
+              cursor:        isRefreshing ? 'not-allowed' : 'pointer',
+              pointerEvents: isRefreshing ? 'none' : 'auto',
+            }}
           >
-            <RefreshCw size={14} /> Prices
+            <RefreshCw
+              size={14}
+              style={isRefreshing ? { animation: 'spin 1s linear infinite' } : undefined}
+            />
+            {isRefreshing ? 'Refreshing…' : 'Prices'}
           </button>
         )}
         <div className={styles.liveIndicator}>
