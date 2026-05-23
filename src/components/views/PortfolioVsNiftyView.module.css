@@ -163,6 +163,7 @@
 .chartModeGroup {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* ── Rolling returns ── */
@@ -188,9 +189,14 @@
   margin-left: 8px;
 }
 
+/*
+ * improvement #5: was `repeat(4, 1fr)` which broke on mobile.
+ * Now uses auto-fit with a 160px minimum so cards reflow to 2-per-row
+ * on ≤520px and 1-per-row on very narrow screens.
+ */
 .rollingGrid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 
@@ -388,19 +394,7 @@
   border: 1px solid rgba(59, 130, 246, 0.12);
 }
 
-.drawdownLoadingRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  margin-bottom: 12px;
-  border-radius: 6px;
-  font-size: 11px;
-  color: var(--text3);
-  background: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.12);
-}
-
+/* ── Calendar year returns panel ── */
 .calPanel {
   overflow: hidden;
 }
@@ -536,7 +530,7 @@
   text-transform: uppercase;
 }
 
-/* Value cells (portfolio, benchmark returns) */
+/* Value cells */
 .calTdValue {
   padding: 10px 14px;
   text-align: right;
@@ -547,7 +541,7 @@
   border-bottom: 1px solid rgba(45, 64, 96, 0.4);
 }
 
-/* Muted/loading placeholder cells */
+/* Muted / loading cells */
 .calTdMuted {
   padding: 10px 14px;
   text-align: right;
@@ -557,7 +551,7 @@
   border-bottom: 1px solid rgba(45, 64, 96, 0.4);
 }
 
-/* Alpha chip */
+/* Alpha chips */
 .calAlphaChip {
   display: inline-flex;
   align-items: center;
@@ -608,4 +602,43 @@
   font-size: 10px;
   color: var(--text3);
   line-height: 1.7;
+}
+
+/* ── Mobile overrides ── */
+@media (max-width: 760px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .alphaBadge {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .chartHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chartModeGroup {
+    flex-wrap: wrap;
+  }
+
+  /* rollingGrid already uses auto-fit — no override needed */
+
+  .calSummaryRow {
+    flex-direction: column;
+  }
+
+  .calSummaryChip {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .statsGrid {
+    grid-template-columns: 1fr 1fr;
+  }
 }

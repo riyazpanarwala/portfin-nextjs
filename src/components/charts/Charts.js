@@ -1,5 +1,14 @@
 'use client';
 
+/**
+ * components/charts/Charts.js
+ *
+ * CHANGE: CSS_VAR_MAP removed — resolveColor now imported from lib/colorResolver.js
+ * to keep a single source of truth shared with niftyData.js.
+ */
+
+import { resolveColor } from '@/lib/colorResolver';
+
 import {
   LineChart as ReLineChart,
   BarChart as ReBarChart,
@@ -15,27 +24,6 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-
-// ─── CSS var → hex (Recharts needs real colours) ──────────────────────────────
-const CSS_VAR_MAP = {
-  'var(--accent)':  '#3b82f6',
-  'var(--accent2)': '#60a5fa',
-  'var(--green)':   '#10b981',
-  'var(--green2)':  '#34d399',
-  'var(--red)':     '#ef4444',
-  'var(--red2)':    '#f87171',
-  'var(--yellow)':  '#f59e0b',
-  'var(--purple)':  '#8b5cf6',
-  'var(--orange)':  '#f97316',
-  'var(--teal)':    '#14b8a6',
-  'var(--text)':    '#e8eef8',
-  'var(--text2)':   '#94a9c4',
-  'var(--text3)':   '#5c7a9a',
-};
-function resolveColor(c, fallback = '#3b82f6') {
-  if (!c) return fallback;
-  return CSS_VAR_MAP[c] || (c.startsWith('var(') ? fallback : c);
-}
 
 // ─── Smart Y-axis formatter ───────────────────────────────────────────────────
 function yFmt(v, maxVal) {
@@ -298,24 +286,13 @@ export function HoldingPerformanceChart({ lots, cmp }) {
 }
 
 // ─── WaterfallChart ───────────────────────────────────────────────────────────
-const CSS_VAR_COLORS = {
-  'var(--teal)':   '#14b8a6',
-  'var(--purple)': '#8b5cf6',
-  'var(--green2)': '#34d399',
-  'var(--red2)':   '#f87171',
-  'var(--accent2)':'#60a5fa',
-};
-function resolveWaterfallColor(c) {
-  return CSS_VAR_COLORS[c] || c || '#60a5fa';
-}
-
 export function WaterfallChart({ steps }) {
   if (!steps || !steps.length) return null;
 
   let running = 0;
   const chartData = steps.map(s => {
     if (s.isTotal) {
-      return { label: s.label, spacer: 0, bar: s.value, color: resolveWaterfallColor(s.color) };
+      return { label: s.label, spacer: 0, bar: s.value, color: resolveColor(s.color, '#60a5fa') };
     }
     const base = running;
     running += s.value;
@@ -323,7 +300,7 @@ export function WaterfallChart({ steps }) {
       label: s.label,
       spacer: Math.min(base, base + s.value),
       bar:    Math.abs(s.value),
-      color:  resolveWaterfallColor(s.color),
+      color:  resolveColor(s.color, '#60a5fa'),
     };
   });
 
@@ -388,18 +365,7 @@ export function WealthProjectionChart({ data, stepData, goal }) {
 }
 
 // ─── ComparisonChart ──────────────────────────────────────────────────────────
-// Supports one portfolio series + N benchmark series.
-//
-// Props:
-//   portfolioSeries  Array<{ month, indexed }>
-//   benchmarkSeries  Array<{ key, label, color, data: Array<{ month, indexed }> }>
-//
-// The old two-prop signature (portfolioSeries, niftySeries) is still accepted
-// for backward compatibility; when niftySeries is passed it is wrapped
-// automatically into the new benchmarkSeries format.
-
 export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries }) {
-  // Backward-compat: wrap old niftySeries into new format
   const benchmarks = benchmarkSeries ?? (niftySeries ? [{
     key:   'nifty50',
     label: 'Nifty 50',
@@ -408,10 +374,6 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
   }] : []);
 
   if (!portfolioSeries.length) return null;
-
-  // Build merged dataset keyed by month
-  const monthSet = new Set(portfolioSeries.map(d => d.month));
-  benchmarks.forEach(b => b.data.forEach(d => monthSet.add(d.month)));
 
   const benchMaps = benchmarks.map(b =>
     Object.fromEntries(b.data.map(d => [d.month, d.indexed]))
@@ -433,8 +395,6 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
         <YAxis tickFormatter={v => v.toFixed(0)} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={38} />
         <Tooltip formatter={(v, name) => [v?.toFixed(1), name]} contentStyle={TOOLTIP_STYLE} />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
-
-        {/* Portfolio line — always first and most prominent */}
         <Line
           type="monotone"
           dataKey="portfolio"
@@ -444,20 +404,18 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
           dot={false}
           activeDot={{ r: 5, fill: '#60a5fa', stroke: '#0b0f1a', strokeWidth: 1.5 }}
         />
-
-        {/* One line per benchmark */}
         {benchmarks.map((b, i) => (
           <Line
             key={b.key}
             type="monotone"
             dataKey={b.key}
             name={b.label}
-            stroke={b.color}
+            stroke={resolveColor(b.color, b.color)}
             strokeWidth={1.8}
             strokeDasharray={i === 0 ? '6 3' : i === 1 ? '3 3' : '8 2 2 2'}
             dot={false}
             connectNulls
-            activeDot={{ r: 4, fill: b.color, stroke: '#0b0f1a', strokeWidth: 1.5 }}
+            activeDot={{ r: 4, fill: resolveColor(b.color, b.color), stroke: '#0b0f1a', strokeWidth: 1.5 }}
           />
         ))}
       </ReLineChart>
@@ -468,7 +426,6 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
 export function CagrTrendChart({ series }) {
   if (!series.length) return null;
 
-  // Check whether we have any non-null values to show
   const hasMF = series.some(d => d.mfCagr != null);
   const hasST = series.some(d => d.stCagr != null);
 
@@ -506,7 +463,7 @@ export function CagrTrendChart({ series }) {
   );
 }
 
-// ─── AbsoluteChart (Portfolio value + invested) ───────────────────────────────
+// ─── AbsoluteChart ────────────────────────────────────────────────────────────
 export function AbsoluteChart({ portfolioSeries }) {
   if (!portfolioSeries.length) return null;
 
@@ -534,6 +491,7 @@ export function AbsoluteChart({ portfolioSeries }) {
   );
 }
 
+// ─── DrawdownChart ────────────────────────────────────────────────────────────
 function DrawdownStat({ label, value, month, color }) {
   const valueColor =
     value < -20 ? '#f87171' :
@@ -571,8 +529,6 @@ function DrawdownStat({ label, value, month, color }) {
 }
 
 function computeDrawdownSeries(series) {
-  // series: Array<{ month: string, indexed: number }>
-  // returns Array<{ month: string, dd: number }>  (dd <= 0)
   let peak = -Infinity;
   return series.map(d => {
     if (d.indexed > peak) peak = d.indexed;
@@ -593,23 +549,20 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
     );
   }
 
-  // Compute drawdown per series
   const portDD = computeDrawdownSeries(portfolioSeries);
 
   const activeBenches = benchmarkSeries.filter(b => b.data && b.data.length > 0);
   const benchDDs = activeBenches.map(b => ({
     key:   b.key,
     label: b.label,
-    color: b.hexColor || b.color,
+    color: b.hexColor || resolveColor(b.color, '#94a9c4'),
     dd:    computeDrawdownSeries(b.data),
   }));
 
-  // Build maps for O(1) lookup
   const benchMaps = benchDDs.map(b =>
     Object.fromEntries(b.dd.map(d => [d.month, d.dd]))
   );
 
-  // Merged dataset
   const merged = portDD.map(d => {
     const row = { month: d.month, portfolio: parseFloat(d.dd.toFixed(2)) };
     benchDDs.forEach((b, i) => {
@@ -619,7 +572,6 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
     return row;
   });
 
-  // Max drawdown stats for summary chips
   const portMaxDD    = Math.min(...portDD.map(d => d.dd));
   const portMaxMonth = portDD.find(d => d.dd === portMaxDD)?.month;
 
@@ -629,13 +581,11 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
     return { key: b.key, label: b.label, color: b.color, max, month };
   });
 
-  // Recovery: months currently under water (dd < 0)
-  const currentDD     = portDD[portDD.length - 1]?.dd ?? 0;
-  const isInDrawdown  = currentDD < -0.1;
+  const currentDD    = portDD[portDD.length - 1]?.dd ?? 0;
+  const isInDrawdown = currentDD < -0.1;
 
   return (
     <div>
-      {/* Summary stat chips */}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <DrawdownStat
           label="Portfolio max drawdown"
@@ -644,13 +594,7 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
           color="#3b82f6"
         />
         {benchStats.map(b => (
-          <DrawdownStat
-            key={b.key}
-            label={`${b.label} max DD`}
-            value={b.max}
-            month={b.month}
-            color={b.color}
-          />
+          <DrawdownStat key={b.key} label={`${b.label} max DD`} value={b.max} month={b.month} color={b.color} />
         ))}
         {isInDrawdown && (
           <div style={{
@@ -660,17 +604,10 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
             border: '1px solid rgba(239,68,68,0.3)',
             borderRadius: 8, minWidth: 148, flex: '0 0 auto',
           }}>
-            <div style={{
-              fontSize: 9, color: TICK_COLOR, fontWeight: 700,
-              letterSpacing: '0.07em', textTransform: 'uppercase',
-            }}>
+            <div style={{ fontSize: 9, color: TICK_COLOR, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>
               Current drawdown
             </div>
-            <div style={{
-              fontSize: 18, fontWeight: 800,
-              fontFamily: "'JetBrains Mono', monospace",
-              color: '#f87171',
-            }}>
+            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", color: '#f87171' }}>
               {currentDD.toFixed(2)}%
             </div>
             <div style={{ fontSize: 10, color: '#f87171' }}>still recovering</div>
@@ -678,7 +615,6 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
         )}
       </div>
 
-      {/* Chart */}
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
           <defs>
@@ -693,30 +629,11 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
               </linearGradient>
             ))}
           </defs>
-
           <CartesianGrid vertical={false} stroke={GRID_COLOR} />
-          <XAxis
-            dataKey="month"
-            tick={{ fill: TICK_COLOR, fontSize: 9 }}
-            axisLine={false}
-            tickLine={false}
-            interval="preserveStartEnd"
-          />
-          <YAxis
-            tickFormatter={v => `${v.toFixed(0)}%`}
-            tick={{ fill: TICK_COLOR, fontSize: 9 }}
-            axisLine={false}
-            tickLine={false}
-            width={42}
-            domain={['auto', 0]}
-          />
-          <Tooltip
-            formatter={(v, name) => [v != null ? `${v.toFixed(2)}%` : '—', name]}
-            contentStyle={TOOLTIP_STYLE}
-          />
+          <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+          <YAxis tickFormatter={v => `${v.toFixed(0)}%`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={42} domain={['auto', 0]} />
+          <Tooltip formatter={(v, name) => [v != null ? `${v.toFixed(2)}%` : '—', name]} contentStyle={TOOLTIP_STYLE} />
           <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
-
-          {/* Render benchmark areas behind portfolio */}
           {benchDDs.map((b, i) => (
             <Area
               key={b.key}
@@ -732,8 +649,6 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
               activeDot={{ r: 4, fill: b.color, stroke: '#0b0f1a', strokeWidth: 1.5 }}
             />
           ))}
-
-          {/* Portfolio on top */}
           <Area
             type="monotone"
             dataKey="portfolio"

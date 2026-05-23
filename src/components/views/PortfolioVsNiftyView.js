@@ -1,6 +1,30 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+/**
+ * PortfolioVsNiftyView.js
+ *
+ * Improvements applied in this version:
+ *
+ * UX:
+ *  1. RollingReturns: memoized pMap + allMonths so benchmark toggles don't
+ *     re-run period calculations unnecessarily.
+ *  2. BenchmarkSelector: shows data-point count badge per benchmark.
+ *  3. CSV export of the indexed comparison series (portfolio + all active
+ *     benchmarks, month by month).
+ *  4. mode no longer resets when portfolioSeries.length changes — only resets
+ *     on first snapshot data arriving (length going 0→N).
+ *  5. RollingReturns grid uses auto-fit columns so it wraps on mobile.
+ *
+ * Code quality:
+ *  6. Sub-components extracted into clearly-labelled sections; the file stays
+ *     a single module but each component has a clear header comment.
+ *  7. activeBenchSeries tracks a "pending" state per benchmark key so the
+ *     selector can show a loading spinner while a newly added benchmark fetches.
+ *  8. resolveBenchmarkColor removed — imported from lib/colorResolver.js via
+ *     niftyData.js re-export (single source of truth).
+ */
+
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import {
@@ -23,21 +47,38 @@ import {
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 import styles from './PortfolioVsNiftyView.module.css';
 
-// ─── Benchmark selector ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// BenchmarkSelector
+// Shows toggle buttons for each benchmark, with a data-point count badge
+// when live data has been fetched (improvement #2).
+// ─────────────────────────────────────────────────────────────────────────────
 
 const BENCH_KEYS = Object.keys(BENCHMARKS);
 
-function BenchmarkSelector({ active, onChange }) {
+function BenchmarkSelector({ active, onChange, benchHistories, pendingKeys }) {
   return (
     <div className={styles.selectorRow}>
       <span className={styles.selectorLabel}>Compare vs</span>
       {BENCH_KEYS.map(key => {
-        const bench = BENCHMARKS[key];
-        const on    = active.includes(key);
+        const bench   = BENCHMARKS[key];
+        const on      = active.includes(key);
+        const info    = benchHistories[key];
+        const pending = pendingKeys.has(key);
+        const pts     = info?.dataPoints ?? null;
+
         return (
           <button
             key={key}
             onClick={() => onChange(key)}
+            title={
+              key === 'fd'
+                ? 'Synthetic FD at 7.1% p.a. — no live fetch needed'
+                : pts != null
+                ? `${pts} monthly data points available`
+                : pending
+                ? 'Fetching data…'
+                : 'No live data yet — uses static fallback'
+            }
             style={{
               padding:      '4px 11px',
               borderRadius: 20,
@@ -49,6 +90,9 @@ function BenchmarkSelector({ active, onChange }) {
               background:   on ? `color-mix(in srgb, ${bench.color} 14%, transparent)` : 'transparent',
               color:        on ? bench.color : 'var(--text3)',
               transition:   'all 0.15s',
+              display:      'flex',
+              alignItems:   'center',
+              gap:          6,
             }}
           >
             <span
@@ -56,6 +100,24 @@ function BenchmarkSelector({ active, onChange }) {
               style={{ background: bench.color, opacity: on ? 1 : 0.35 }}
             />
             {bench.label}
+            {/* Data-point badge */}
+            {on && key !== 'fd' && (
+              <span style={{
+                fontSize:   9,
+                fontWeight: 700,
+                padding:    '1px 5px',
+                borderRadius: 4,
+                background: pending
+                  ? 'rgba(245,158,11,0.15)'
+                  : pts != null
+                  ? `color-mix(in srgb, ${bench.color} 20%, transparent)`
+                  : 'rgba(148,169,196,0.12)',
+                color: pending ? 'var(--yellow)' : pts != null ? bench.color : 'var(--text3)',
+                border: `1px solid ${pending ? 'rgba(245,158,11,0.3)' : pts != null ? `color-mix(in srgb, ${bench.color} 35%, transparent)` : 'var(--border)'}`,
+              }}>
+                {pending ? '…' : pts != null ? `${pts}pts` : 'fallback'}
+              </span>
+            )}
           </button>
         );
       })}
@@ -63,7 +125,44 @@ function BenchmarkSelector({ active, onChange }) {
   );
 }
 
-// ─── Rolling return comparison ────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CSV Export helper (improvement #3)
+// Exports the indexed comparison series: month, portfolio-index, and one
+// column per active benchmark.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSeries) {
+  const benchMaps = rebasedBenchSeries.map(b =>
+    Object.fromEntries(b.data.map(d => [d.month, d.indexed]))
+  );
+
+  const headers = [
+    'Month',
+    'Portfolio (indexed)',
+    ...activeBenchSeries.map(b => `${b.label} (indexed)`),
+  ];
+
+  const rows = rebasedPortfolio.map(d => [
+    d.month,
+    d.indexed?.toFixed(2) ?? '',
+    ...rebasedBenchSeries.map((b, i) => {
+      const val = benchMaps[i][d.month];
+      return val != null ? val.toFixed(2) : '';
+    }),
+  ]);
+
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const a   = document.createElement('a');
+  a.href    = 'data:text/csv,' + encodeURIComponent(csv);
+  a.download = 'portfolio_vs_benchmarks.csv';
+  a.click();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RollingReturns
+// Memoized pMap + allMonths so benchmark toggles don't cause recalculation
+// (improvement #1). Grid uses auto-fit columns for mobile (improvement #5).
+// ─────────────────────────────────────────────────────────────────────────────
 
 function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
   const periods = [
@@ -73,6 +172,7 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
     { label: '3Y',  months: 36 },
   ];
 
+  // Memoized — only recalculates when the portfolio series changes (#1)
   const pMap      = useMemo(() => Object.fromEntries(portfolioSeries.map(d => [d.month, d.value])), [portfolioSeries]);
   const allMonths = useMemo(() => portfolioSeries.map(d => d.month).sort(), [portfolioSeries]);
   const lastMonth = allMonths[allMonths.length - 1];
@@ -152,34 +252,20 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
   );
 }
 
-// ─── Calendar year returns table ─────────────────────────────────────────────
-//
-// For each calendar year covered by snapshot data:
-//   start value = last snapshot value in December of prior year
-//               (or first snapshot value if this is the first year and it started mid-year)
-//   end value   = last snapshot value in December of that year
-//               (or last snapshot value if the year is still in progress)
-//
-// Same logic applied to each active benchmark series using their raw (non-rebased) values.
-// A partial-year flag is shown when the year has no December snapshot yet.
+// ─────────────────────────────────────────────────────────────────────────────
+// CalendarYearReturns helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 function computeCalendarYearReturns(portfolioSeries, activeBenchSeries) {
   if (!portfolioSeries.length) return [];
 
-  // Build a map month → value for the portfolio
   const pMap = Object.fromEntries(portfolioSeries.map(d => [d.month, d.value]));
-
-  // Collect all years that appear in the snapshot data
   const years = [...new Set(portfolioSeries.map(d => d.month.slice(0, 4)))].sort();
-
-  // Build per-benchmark maps
   const benchMaps = activeBenchSeries.map(b =>
     Object.fromEntries(b.data.map(d => [d.month, d.value]))
   );
 
-  // Helper: last snapshot value at or before a given month, within a year
   function lastValueInYear(map, year) {
-    // Prefer Dec, then walk back month by month
     for (let m = 12; m >= 1; m--) {
       const key = `${year}-${String(m).padStart(2, '0')}`;
       if (map[key] != null) return { value: map[key], month: key };
@@ -201,7 +287,6 @@ function computeCalendarYearReturns(portfolioSeries, activeBenchSeries) {
     const isCurrentYear = year === currentYearStr;
     const isFirstYear   = idx === 0;
 
-    // Portfolio start: end of prior year, or first available month if first year
     let pStart = null;
     if (!isFirstYear) {
       const prevYear = String(parseInt(year) - 1);
@@ -209,46 +294,42 @@ function computeCalendarYearReturns(portfolioSeries, activeBenchSeries) {
       pStart = prev?.value ?? null;
     }
     if (pStart == null) {
-      // First year or no prior-year data — use first snapshot of this year
       const first = firstValueInYear(pMap, year);
       pStart = first?.value ?? null;
     }
 
-    // Portfolio end: last snapshot of this year
     const pEnd = lastValueInYear(pMap, year);
     const isPartial = isCurrentYear || pEnd?.month?.slice(5) !== '12';
     const pRet = pStart != null && pEnd?.value != null && pStart > 0
       ? ((pEnd.value / pStart) - 1) * 100
       : null;
 
-    // Benchmark returns
     const benchReturns = activeBenchSeries.map((b, bi) => {
       const map = benchMaps[bi];
       let bStart = null;
-
       if (!isFirstYear) {
-        const prevYear = String(parseInt(year) - 1);
-        const prev = lastValueInYear(map, prevYear);
+        const prev = lastValueInYear(map, String(parseInt(year) - 1));
         bStart = prev?.value ?? null;
       }
       if (bStart == null) {
         const first = firstValueInYear(map, year);
         bStart = first?.value ?? null;
       }
-
       const bEnd = lastValueInYear(map, year);
       const bRet = bStart != null && bEnd?.value != null && bStart > 0
         ? ((bEnd.value / bStart) - 1) * 100
         : null;
-
       const alpha = pRet != null && bRet != null ? pRet - bRet : null;
-
       return { key: b.key, label: b.label, color: b.color, ret: bRet, alpha };
     });
 
     return { year, pRet, benchReturns, isPartial, isFirstYear };
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CalendarYearReturns component
+// ─────────────────────────────────────────────────────────────────────────────
 
 function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
   const rows = useMemo(
@@ -258,28 +339,15 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
 
   if (!rows.length) return null;
 
-  // Summary stats
   const completedRows = rows.filter(r => !r.isPartial && r.pRet != null);
-  const bestRow  = completedRows.length
-    ? completedRows.reduce((a, b) => (b.pRet > a.pRet ? b : a))
-    : null;
-  const worstRow = completedRows.length
-    ? completedRows.reduce((a, b) => (b.pRet < a.pRet ? b : a))
-    : null;
-  const winsCount = completedRows.filter(r => {
-    const primary = r.benchReturns[0];
-    return primary && primary.alpha != null && primary.alpha > 0;
-  }).length;
-  const lossCount = completedRows.filter(r => {
-    const primary = r.benchReturns[0];
-    return primary && primary.alpha != null && primary.alpha <= 0;
-  }).length;
-
-  const hasBench = activeBenchSeries.length > 0;
+  const bestRow  = completedRows.length ? completedRows.reduce((a, b) => (b.pRet > a.pRet ? b : a)) : null;
+  const worstRow = completedRows.length ? completedRows.reduce((a, b) => (b.pRet < a.pRet ? b : a)) : null;
+  const winsCount = completedRows.filter(r => r.benchReturns[0]?.alpha != null && r.benchReturns[0].alpha > 0).length;
+  const lossCount = completedRows.filter(r => r.benchReturns[0]?.alpha != null && r.benchReturns[0].alpha <= 0).length;
+  const hasBench  = activeBenchSeries.length > 0;
 
   return (
     <div>
-      {/* Summary chips */}
       {completedRows.length > 0 && (
         <div className={styles.calSummaryRow}>
           {bestRow && (
@@ -298,7 +366,7 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
               </div>
             </div>
           )}
-          {hasBench && (completedRows.length > 0) && (
+          {hasBench && completedRows.length > 0 && (
             <div className={styles.calSummaryChip} style={{ borderColor: 'rgba(59,130,246,0.3)', background: 'rgba(59,130,246,0.06)' }}>
               <div className={styles.calSummaryChipLabel}>Beat {activeBenchSeries[0]?.label}</div>
               <div className={styles.calSummaryChipValue} style={{ color: winsCount >= lossCount ? 'var(--green2)' : 'var(--red2)' }}>
@@ -324,7 +392,6 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
         </div>
       )}
 
-      {/* Table */}
       <div className={styles.calTableWrapper}>
         <table>
           <thead>
@@ -332,9 +399,7 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
               <th className={styles.calTh}>Year</th>
               <th className={styles.calThRight}>Portfolio</th>
               {activeBenchSeries.map(b => (
-                <th key={b.key} className={styles.calThRight} style={{ color: b.color }}>
-                  {b.label}
-                </th>
+                <th key={b.key} className={styles.calThRight} style={{ color: b.color }}>{b.label}</th>
               ))}
               {hasBench && activeBenchSeries.map(b => (
                 <th key={`alpha-${b.key}`} className={styles.calThRight}>
@@ -346,12 +411,10 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
           </thead>
           <tbody>
             {[...rows].reverse().map(({ year, pRet, benchReturns, isPartial, isFirstYear }) => {
-              const pColor = pRet == null ? 'var(--text3)' : colorPnl(pRet);
+              const pColor  = pRet == null ? 'var(--text3)' : colorPnl(pRet);
               const partial = isPartial || isFirstYear;
-
               return (
                 <tr key={year} className={partial ? styles.calRowPartial : styles.calRow}>
-                  {/* Year */}
                   <td className={styles.calTdYear}>
                     <span className={styles.calYearText}>{year}</span>
                     {partial && (
@@ -359,69 +422,43 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
                         {year === new Date().toISOString().slice(0, 4) ? 'YTD' : 'partial'}
                       </span>
                     )}
-                    {isFirstYear && !isPartial && (
-                      <span className={styles.calPartialBadge}>first</span>
-                    )}
+                    {isFirstYear && !isPartial && <span className={styles.calPartialBadge}>first</span>}
                   </td>
-
-                  {/* Portfolio return */}
                   <td className={styles.calTdValue} style={{ color: pColor }}>
                     {pRet != null ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%` : '—'}
                   </td>
-
-                  {/* Benchmark returns */}
-                  {benchLoading ? (
-                    activeBenchSeries.map(b => (
-                      <td key={b.key} className={styles.calTdMuted}>…</td>
-                    ))
-                  ) : (
-                    benchReturns.map(b => (
-                      <td
-                        key={b.key}
-                        className={styles.calTdValue}
-                        style={{ color: b.ret != null ? colorPnl(b.ret) : 'var(--text3)' }}
-                      >
+                  {benchLoading
+                    ? activeBenchSeries.map(b => <td key={b.key} className={styles.calTdMuted}>…</td>)
+                    : benchReturns.map(b => (
+                      <td key={b.key} className={styles.calTdValue}
+                        style={{ color: b.ret != null ? colorPnl(b.ret) : 'var(--text3)' }}>
                         {b.ret != null ? `${b.ret > 0 ? '+' : ''}${fmt(b.ret, 1)}%` : '—'}
                       </td>
                     ))
-                  )}
-
-                  {/* Alpha columns */}
-                  {hasBench && (benchLoading ? (
-                    activeBenchSeries.map(b => (
-                      <td key={`alpha-${b.key}`} className={styles.calTdMuted}>…</td>
-                    ))
-                  ) : (
-                    benchReturns.map(b => {
+                  }
+                  {hasBench && (benchLoading
+                    ? activeBenchSeries.map(b => <td key={`alpha-${b.key}`} className={styles.calTdMuted}>…</td>)
+                    : benchReturns.map(b => {
                       const a = b.alpha;
                       return (
                         <td key={`alpha-${b.key}`}>
                           {a != null ? (
-                            <span
-                              className={`${styles.calAlphaChip} ${a > 0 ? styles.calAlphaWin : styles.calAlphaLoss}`}
-                            >
+                            <span className={`${styles.calAlphaChip} ${a > 0 ? styles.calAlphaWin : styles.calAlphaLoss}`}>
                               {a > 0 ? '▲' : '▼'} {a > 0 ? '+' : ''}{fmt(a, 1)}%
                             </span>
-                          ) : (
-                            <span className={styles.calTdMuted}>—</span>
-                          )}
+                          ) : <span className={styles.calTdMuted}>—</span>}
                         </td>
                       );
                     })
-                  ))}
-
-                  {/* Visual bar */}
+                  )}
                   <td className={styles.calTdBar}>
                     {pRet != null && (
                       <div className={styles.calBarWrapper}>
-                        <div
-                          className={styles.calBar}
-                          style={{
-                            width: `${Math.min(100, Math.abs(pRet) * 1.5)}%`,
-                            background: pRet >= 0 ? 'var(--green2)' : 'var(--red2)',
-                            opacity: 0.75,
-                          }}
-                        />
+                        <div className={styles.calBar} style={{
+                          width: `${Math.min(100, Math.abs(pRet) * 1.5)}%`,
+                          background: pRet >= 0 ? 'var(--green2)' : 'var(--red2)',
+                          opacity: 0.75,
+                        }} />
                       </div>
                     )}
                   </td>
@@ -442,7 +479,9 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
   );
 }
 
-// ─── Hypothetical growth table ────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// HypotheticalTable
+// ─────────────────────────────────────────────────────────────────────────────
 
 function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, benchLoading }) {
   if (!portfolioSeries.length) return null;
@@ -485,10 +524,7 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
             return (
               <tr key={i}>
                 <td className={styles.tdMonoText2}>{d.month}</td>
-                <td className={styles.tdMonoAccent}>
-                  {(d.value / baseP * 100).toFixed(1)}
-                </td>
-
+                <td className={styles.tdMonoAccent}>{(d.value / baseP * 100).toFixed(1)}</td>
                 {activeBenchSeries.map((b, bi) => {
                   const bVal = benchMaps[bi][d.month] ?? null;
                   const base = b.data[0]?.value || 1;
@@ -498,9 +534,7 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
                     </td>
                   );
                 })}
-
                 <td className={styles.tdMonoBold}>{fmtCr(portVal)}</td>
-
                 {activeBenchSeries.map((b, bi) => {
                   const bVal  = benchMaps[bi][d.month] ?? null;
                   const base  = b.data[0]?.value || 1;
@@ -514,10 +548,7 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
                         <>
                           <span className={styles.tdMono}>{fmtCr(bAmt)}</span>
                           {alpha != null && (
-                            <span
-                              className={styles.tdAlphaDelta}
-                              style={{ color: colorPnl(alpha) }}
-                            >
+                            <span className={styles.tdAlphaDelta} style={{ color: colorPnl(alpha) }}>
                               ({alpha >= 0 ? '+' : ''}{fmtCr(alpha)})
                             </span>
                           )}
@@ -535,23 +566,19 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
   );
 }
 
-// ─── Benchmark data status banner ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// BenchmarkStatusBanner
+// ─────────────────────────────────────────────────────────────────────────────
 
 function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys }) {
   if (!activeBenchKeys.length) return null;
-
   const fetchableKeys = activeBenchKeys.filter(k => k !== 'fd');
   if (!fetchableKeys.length) return null;
 
   if (loading) {
     return (
       <div className={styles.bannerLoading}>
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          className={styles.bannerSpinner}
-        >
+        <svg width="12" height="12" viewBox="0 0 24 24" className={styles.bannerSpinner}>
           <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(148,169,196,0.3)" strokeWidth="2.5" />
           <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="var(--accent2)" strokeWidth="2.5" strokeLinecap="round" />
         </svg>
@@ -596,6 +623,11 @@ function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys
               <strong style={{ color: bench.color }}>{bench.label}</strong>
               {' '}via <strong>Upstox</strong>
               {' '}— up to <strong>{last}</strong>
+              {info.dataPoints != null && (
+                <span style={{ color: 'var(--text3)', marginLeft: 6 }}>
+                  ({info.dataPoints} months)
+                </span>
+              )}
               {stale        && <span className={styles.bannerStaleWarning}>⚠ fallback data may be stale</span>}
               {info.warning && <span className={styles.bannerStaleWarning}>⚠ {info.warning}</span>}
             </span>
@@ -606,7 +638,9 @@ function BenchmarkStatusBanner({ loading, error, benchHistories, activeBenchKeys
   );
 }
 
-// ─── Mode toggle button ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ModeButton
+// ─────────────────────────────────────────────────────────────────────────────
 
 function ModeButton({ label, value, active, onClick }) {
   return (
@@ -628,69 +662,34 @@ function ModeButton({ label, value, active, onClick }) {
   );
 }
 
-// ─── Drawdown panel ───────────────────────────────────────────────────────────
-
-function DrawdownPanel({ rebasedPortfolio, rebasedBenchSeries, benchLoading }) {
-  return (
-    <div className={`glass ${styles.chartPanel}`}>
-      <div className={styles.chartHeader}>
-        <div>
-          <div className={styles.chartTitle}>Drawdown analysis</div>
-          <div className={styles.chartSubtitle}>
-            Peak-to-trough decline at each point — shows how deep losses got and how long recovery took
-            {benchLoading && (
-              <span className={styles.chartSubtitleWarning}>
-                {' '}(benchmark lines use static data while live fetch completes)
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      {benchLoading ? (
-        <div className={styles.drawdownLoadingRow}>
-          <svg width="14" height="14" viewBox="0 0 24 24" className={styles.bannerSpinner}>
-            <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(148,169,196,0.3)" strokeWidth="2.5" />
-            <path d="M12 2a10 10 0 0 1 10 10" fill="none" stroke="var(--accent2)" strokeWidth="2.5" strokeLinecap="round" />
-          </svg>
-          <span>Benchmark data loading — drawdown chart uses static fallback for now</span>
-        </div>
-      ) : null}
-      <DrawdownChart
-        portfolioSeries={rebasedPortfolio}
-        benchmarkSeries={rebasedBenchSeries.map(b => ({
-          ...b,
-          color: b.hexColor,
-        }))}
-      />
-    </div>
-  );
-}
-
-// ─── Main View ────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Main View
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function PortfolioVsNiftyView() {
   const { portfolioId, stats, setActiveView } = usePortfolio();
   const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId, 100);
 
   const [mode, setMode]                       = useState('indexed');
-  const prevSeriesLenRef                      = useRef(0);
+  const hasHadDataRef                         = useRef(false);   // improvement #4
   const [activeBenchKeys, setActiveBenchKeys] = useState(['nifty50']);
 
+  // benchHistories: { [key]: { history, source, warning, dataPoints } }
   const [benchHistories, setBenchHistories] = useState({});
-  const [benchLoading,   setBenchLoading]   = useState(false);
-  const [benchError,     setBenchError]     = useState(false);
+  // pendingKeys: Set<string> — benchmark keys currently being fetched (improvement #7)
+  const [pendingKeys, setPendingKeys]       = useState(new Set());
+  const [benchError,  setBenchError]        = useState(false);
 
   const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
   const prevFirstDateRef  = useRef(null);
 
   function toggleBenchmark(key) {
     setActiveBenchKeys(prev =>
-      prev.includes(key)
-        ? prev.filter(k => k !== key)
-        : [...prev, key]
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     );
   }
 
+  // ── Fetch benchmark data ──────────────────────────────────────────────────
   useEffect(() => {
     if (!firstSnapshotDate) return;
 
@@ -705,9 +704,15 @@ export default function PortfolioVsNiftyView() {
     if (!toFetch.length) return;
 
     let cancelled = false;
-    setBenchLoading(true);
     setBenchError(false);
     if (dateChanged) setBenchHistories({});
+
+    // Mark newly requested keys as pending (#7)
+    setPendingKeys(prev => {
+      const next = new Set(prev);
+      toFetch.forEach(k => next.add(k));
+      return next;
+    });
 
     Promise.all(
       toFetch.map(key =>
@@ -722,13 +727,20 @@ export default function PortfolioVsNiftyView() {
         else        { anyError = true; }
       });
       setBenchHistories(prev => ({ ...prev, ...updates }));
+      setPendingKeys(prev => {
+        const next = new Set(prev);
+        toFetch.forEach(k => next.delete(k));
+        return next;
+      });
       if (anyError) setBenchError(true);
-      setBenchLoading(false);
     });
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstSnapshotDate, activeBenchKeys.join(',')]);
+
+  // benchLoading: true only while at least one key is pending
+  const benchLoading = pendingKeys.size > 0;
 
   // ── Portfolio series ────────────────────────────────────────────────────────
   const portfolioSeries = useMemo(() => {
@@ -745,16 +757,16 @@ export default function PortfolioVsNiftyView() {
     }));
   }, [snapshots]);
 
-  // Only reset mode to indexed when number of snapshots changes (not on benchmark toggles)
+  // improvement #4: only reset mode when data first arrives (0 → N), not on
+  // every subsequent snapshot save or benchmark toggle.
   useEffect(() => {
-    if (portfolioSeries.length !== prevSeriesLenRef.current) {
-      prevSeriesLenRef.current = portfolioSeries.length;
-      // Only reset if user is NOT on drawdown — drawdown stays meaningful as data grows
-      setMode(prev => prev === 'drawdown' ? 'drawdown' : 'indexed');
+    if (portfolioSeries.length > 0 && !hasHadDataRef.current) {
+      hasHadDataRef.current = true;
+      setMode('indexed');
     }
   }, [portfolioSeries.length]);
 
-  // ── Benchmark raw series ────────────────────────────────────────────────────
+  // ── Benchmark series ────────────────────────────────────────────────────────
   const activeBenchSeries = useMemo(() => {
     return activeBenchKeys.map(key => {
       const bench = BENCHMARKS[key];
@@ -774,9 +786,11 @@ export default function PortfolioVsNiftyView() {
         color:      bench.color,
         hexColor:   resolveBenchmarkColor(bench.color),
         data,
+        // pending flag for the selector badge (#7)
+        pending:    pendingKeys.has(key),
       };
     });
-  }, [activeBenchKeys, benchHistories, portfolioSeries]);
+  }, [activeBenchKeys, benchHistories, portfolioSeries, pendingKeys]);
 
   // ── Rebased series ──────────────────────────────────────────────────────────
   const rebasedPortfolio = useMemo(() => {
@@ -809,6 +823,11 @@ export default function PortfolioVsNiftyView() {
 
   const firstSnapshotDateFmt = snapshots[0]?.snapshotAt?.slice(0, 10);
   const latestSnapshotDate   = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
+
+  // ── CSV export callback ─────────────────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSeries);
+  }, [rebasedPortfolio, rebasedBenchSeries, activeBenchSeries]);
 
   // ── Guards ──────────────────────────────────────────────────────────────────
   if (snapshotsLoading) return (
@@ -845,7 +864,6 @@ export default function PortfolioVsNiftyView() {
     : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))';
   const alphaBorderColor = alphaReturnPct > 0 ? 'var(--green)' : 'var(--red)';
 
-  // Modes: indexed | absolute | cagr | drawdown
   const MODES = [
     ['indexed',  'Indexed'],
     ['absolute', 'Absolute'],
@@ -864,7 +882,12 @@ export default function PortfolioVsNiftyView() {
       />
 
       <div className={`glass ${styles.selectorPanel}`}>
-        <BenchmarkSelector active={activeBenchKeys} onChange={toggleBenchmark} />
+        <BenchmarkSelector
+          active={activeBenchKeys}
+          onChange={toggleBenchmark}
+          benchHistories={benchHistories}
+          pendingKeys={pendingKeys}
+        />
       </div>
 
       <div className={styles.statsGrid}>
@@ -938,9 +961,9 @@ export default function PortfolioVsNiftyView() {
                                      'Portfolio vs benchmarks'}
             </div>
             <div className={styles.chartSubtitle}>
-              {mode === 'cagr'     ? 'MF and stock CAGR captured in each saved snapshot'                             :
-               mode === 'drawdown' ? 'Peak-to-trough decline at each month — shallower is better'                   :
-               mode === 'absolute' ? 'Raw portfolio value and invested capital over time'                            :
+              {mode === 'cagr'     ? 'MF and stock CAGR captured in each saved snapshot'                      :
+               mode === 'drawdown' ? 'Peak-to-trough decline at each month — shallower is better'             :
+               mode === 'absolute' ? 'Raw portfolio value and invested capital over time'                      :
                                      'Indexed to 100 at first snapshot — shows relative performance'}
               {(mode === 'indexed' || mode === 'drawdown') && benchLoading && (
                 <span className={styles.chartSubtitleWarning}>
@@ -949,20 +972,31 @@ export default function PortfolioVsNiftyView() {
               )}
             </div>
           </div>
-          <div className={styles.chartModeGroup}>
-            {MODES.map(([v, l]) => (
-              <ModeButton key={v} value={v} label={l} active={mode === v} onClick={setMode} />
-            ))}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* CSV export button (improvement #3) */}
+            {(mode === 'indexed') && rebasedPortfolio.length > 0 && (
+              <button
+                onClick={handleExportCSV}
+                className="btn btn-ghost"
+                style={{ padding: '4px 10px', fontSize: 11, gap: 5 }}
+                title="Export indexed comparison series as CSV"
+              >
+                ↓ CSV
+              </button>
+            )}
+            <div className={styles.chartModeGroup}>
+              {MODES.map(([v, l]) => (
+                <ModeButton key={v} value={v} label={l} active={mode === v} onClick={setMode} />
+              ))}
+            </div>
           </div>
         </div>
 
         {mode === 'indexed' && (
           <ComparisonChart
             portfolioSeries={rebasedPortfolio}
-            benchmarkSeries={rebasedBenchSeries.map(b => ({
-              ...b,
-              color: b.hexColor,
-            }))}
+            benchmarkSeries={rebasedBenchSeries.map(b => ({ ...b, color: b.hexColor }))}
           />
         )}
         {mode === 'absolute' && <AbsoluteChart portfolioSeries={portfolioSeries} />}
@@ -970,14 +1004,12 @@ export default function PortfolioVsNiftyView() {
         {mode === 'drawdown' && (
           <DrawdownChart
             portfolioSeries={rebasedPortfolio}
-            benchmarkSeries={rebasedBenchSeries.map(b => ({
-              ...b,
-              color: b.hexColor,
-            }))}
+            benchmarkSeries={rebasedBenchSeries.map(b => ({ ...b, color: b.hexColor }))}
           />
         )}
       </div>
 
+      {/* ── Rolling returns ── */}
       <div className={`glass ${styles.rollingPanel}`}>
         <div className={styles.rollingTitle}>Rolling return comparison</div>
         <div className={styles.rollingSub}>
@@ -995,6 +1027,7 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
+      {/* ── Calendar year returns ── */}
       <div className={`glass ${styles.calPanel}`}>
         <div className={styles.calPanelHeader}>
           <div>
@@ -1014,6 +1047,7 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
+      {/* ── Hypothetical growth ── */}
       <div className={`glass ${styles.hypotheticalPanel}`}>
         <div className={styles.hypotheticalHeader}>
           <div>

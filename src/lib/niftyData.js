@@ -12,7 +12,11 @@
  *
  * All live data is fetched via Upstox V3 historical candle API.
  * The NIFTY_FALLBACK export is kept for backward compatibility.
+ *
+ * CHANGE: CSS_VAR_HEX map removed — import resolveColor from lib/colorResolver.js.
  */
+
+export { resolveColor as resolveBenchmarkColor } from '@/lib/colorResolver';
 
 // ─── Benchmark registry ───────────────────────────────────────────────────────
 
@@ -111,44 +115,16 @@ export const BENCHMARKS = {
 // Backward-compat alias
 export const NIFTY_FALLBACK = BENCHMARKS.nifty50.fallback;
 
-// ─── CSS variable → hex resolver (for Recharts which needs real colours) ──────
-// Keep the mapping here so chart components don't hard-code hex values.
-const CSS_VAR_HEX = {
-  'var(--accent)':  '#3b82f6',
-  'var(--accent2)': '#60a5fa',
-  'var(--green)':   '#10b981',
-  'var(--green2)':  '#34d399',
-  'var(--red)':     '#ef4444',
-  'var(--red2)':    '#f87171',
-  'var(--yellow)':  '#f59e0b',
-  'var(--purple)':  '#8b5cf6',
-  'var(--orange)':  '#f97316',
-  'var(--teal)':    '#14b8a6',
-  'var(--text3)':   '#5c7a9a',
-  'var(--text2)':   '#94a9c4',
-  'var(--text)':    '#e8eef8',
-};
-
-/**
- * resolveBenchmarkColor
- * Converts a CSS variable colour string to a hex string safe for Recharts.
- * Falls back to the provided default when the variable is unrecognised.
- *
- * @param {string} cssVar   e.g. 'var(--yellow)'
- * @param {string} fallback hex fallback
- * @returns {string}
- */
-export function resolveBenchmarkColor(cssVar, fallback = '#94a9c4') {
-  return CSS_VAR_HEX[cssVar] || fallback;
-}
-
 // ─── Fetch ────────────────────────────────────────────────────────────────────
 
 /**
  * fetchBenchmarkHistory
  * Calls /api/nifty-history with the given benchmark key.
- * Returns { history, source, warning } or null on total failure.
+ * Returns { history, source, warning, dataPoints } or null on total failure.
  * For the synthetic FD benchmark returns null (caller uses getFDSeries instead).
+ *
+ * dataPoints: number of monthly entries in the returned history — lets the
+ * BenchmarkSelector show data quality at a glance without extra fetches.
  *
  * @param {string} from       'YYYY-MM-DD'
  * @param {string} benchKey   key of BENCHMARKS (default 'nifty50')
@@ -164,9 +140,10 @@ export async function fetchBenchmarkHistory(from, benchKey = 'nifty50') {
     const data = await res.json();
     if (!data.history || Object.keys(data.history).length === 0) return null;
     return {
-      history: data.history,
-      source:  data.source  || 'unknown',
-      warning: data.warning || null,
+      history:    data.history,
+      source:     data.source  || 'unknown',
+      warning:    data.warning || null,
+      dataPoints: Object.keys(data.history).length,
     };
   } catch {
     return null;
