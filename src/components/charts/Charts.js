@@ -423,6 +423,68 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
   );
 }
 
+// Custom tooltip for CagrTrendChart — always renders both series so neither
+// is silently dropped when the cursor is closer to the other line.
+function CagrTooltip({ active, payload, label, hasMF, hasST }) {
+  if (!active || !payload) return null;
+
+  // Build a lookup from the payload array so we can pull each series by key.
+  const byKey = {};
+  payload.forEach(p => { byKey[p.dataKey] = p.value; });
+
+  const rows = [
+    hasMF && { key: 'mfCagr',  label: 'MF CAGR',    color: '#a78bfa' },
+    hasST && { key: 'stCagr',  label: 'Stock CAGR',  color: '#2dd4bf' },
+  ].filter(Boolean);
+
+  return (
+    <div style={{
+      ...TOOLTIP_STYLE,
+      padding: '10px 14px',
+      minWidth: 160,
+    }}>
+      <div style={{
+        fontSize: 10,
+        color: TICK_COLOR,
+        fontWeight: 700,
+        letterSpacing: '0.06em',
+        marginBottom: 8,
+      }}>
+        {label}
+      </div>
+      {rows.map(({ key, label: name, color }) => {
+        const val = byKey[key];
+        return (
+          <div key={key} style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 20,
+            marginBottom: 4,
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a9c4' }}>
+              <span style={{
+                display: 'inline-block',
+                width: 8, height: 8, borderRadius: '50%',
+                background: color, flexShrink: 0,
+              }} />
+              {name}
+            </span>
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 12,
+              fontWeight: 700,
+              color,
+            }}>
+              {val != null ? `${val.toFixed(2)}%` : '—'}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function CagrTrendChart({ series }) {
   if (!series.length) return null;
 
@@ -446,7 +508,19 @@ export function CagrTrendChart({ series }) {
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
         <YAxis tickFormatter={v => `${v.toFixed(0)}%`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={42} />
-        <Tooltip formatter={(v, name) => [v != null ? `${v.toFixed(2)}%` : '—', name]} contentStyle={TOOLTIP_STYLE} />
+        {/*
+          Key fix: the default Recharts Tooltip only includes whichever series
+          the cursor is geometrically nearest to. Setting itemSorter is not
+          enough — we need a custom `content` renderer that receives the full
+          payload for ALL active data keys at the hovered x position, which
+          Recharts always provides; the default renderer just happens to filter
+          it. Our CagrTooltip explicitly renders every series regardless of
+          proximity, so both MF CAGR and Stock CAGR are always visible.
+        */}
+        <Tooltip
+          content={<CagrTooltip hasMF={hasMF} hasST={hasST} />}
+          cursor={{ stroke: 'rgba(148,169,196,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
+        />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
         {hasMF && (
           <Line type="monotone" dataKey="mfCagr" name="MF CAGR"
