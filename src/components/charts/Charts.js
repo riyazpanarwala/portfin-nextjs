@@ -3,8 +3,15 @@
 /**
  * components/charts/Charts.js
  *
- * CHANGE: CSS_VAR_MAP removed — resolveColor now imported from lib/colorResolver.js
- * to keep a single source of truth shared with niftyData.js.
+ * CHANGES:
+ *  - CSS_VAR_MAP removed — resolveColor imported from lib/colorResolver.js
+ *  - SharedTooltip: single reusable custom tooltip that always renders ALL
+ *    series at the hovered x-position, regardless of cursor proximity.
+ *    Applied to ComparisonChart (Indexed), AbsoluteChart, CagrTrendChart,
+ *    and DrawdownChart.
+ *  - AbsoluteChart: fixed the <AreaChart> + mixed <Line> bug where Recharts
+ *    doesn't fire hover events for <Line> inside <AreaChart>. Switched to
+ *    <ComposedChart> so both series track correctly.
  */
 
 import { resolveColor } from '@/lib/colorResolver';
@@ -12,6 +19,7 @@ import { resolveColor } from '@/lib/colorResolver';
 import {
   LineChart as ReLineChart,
   BarChart as ReBarChart,
+  ComposedChart,
   AreaChart,
   Line,
   Bar,
@@ -48,6 +56,89 @@ const TOOLTIP_STYLE = {
   fontFamily: "'JetBrains Mono', monospace",
   color: '#e8eef8',
 };
+
+// ─── SharedTooltip ────────────────────────────────────────────────────────────
+// Always renders every series at the hovered x-position, regardless of which
+// line the cursor is geometrically nearest to.
+//
+// Props (Recharts injects active / payload / label automatically):
+//   series  – ordered array of { key, name, color, formatter? }
+//             When provided, rows are rendered in this exact order and any
+//             key missing from Recharts' payload shows '—' instead of being
+//             silently dropped.
+//   formatter – fallback (value: number) => string when a row has no own formatter
+//
+// Why this is needed:
+//   Recharts' default <Tooltip> only puts the nearest dataKey into its payload
+//   rendering when lines are far apart vertically (e.g. MF CAGR at 13% and
+//   Stock CAGR at -3%). The raw `payload` array from Recharts DOES contain all
+//   series; the built-in renderer simply filters by proximity. We bypass that
+//   by reading payload into a Map and rendering from our own `series` list.
+
+function SharedTooltip({ active, payload, label, formatter, series }) {
+  if (!active) return null;
+
+  // Build a keyed map from whatever Recharts provides at this x-position
+  const byKey = {};
+  if (payload) {
+    payload.forEach(p => {
+      byKey[p.dataKey] = { value: p.value, color: p.color, name: p.name };
+    });
+  }
+
+  // Render rows in the caller-supplied order, or fall back to payload order
+  const rows = series
+    ? series.map(s => ({
+        key:   s.key,
+        name:  s.name,
+        color: s.color,
+        value: byKey[s.key]?.value ?? null,
+        fmt:   s.formatter ?? formatter,
+      }))
+    : (payload ?? []).map(p => ({
+        key:   p.dataKey,
+        name:  p.name,
+        color: p.color,
+        value: p.value,
+        fmt:   formatter,
+      }));
+
+  if (!rows.length) return null;
+
+  return (
+    <div style={{ ...TOOLTIP_STYLE, padding: '10px 14px', minWidth: 178 }}>
+      <div style={{
+        fontSize: 10, color: TICK_COLOR, fontWeight: 700,
+        letterSpacing: '0.06em', marginBottom: 8,
+      }}>
+        {label}
+      </div>
+      {rows.map(({ key, name, color, value, fmt }) => {
+        const display = value == null ? '—' : fmt ? fmt(value) : String(value);
+        return (
+          <div key={key} style={{
+            display: 'flex', justifyContent: 'space-between',
+            alignItems: 'center', gap: 20, marginBottom: 4,
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a9c4' }}>
+              <span style={{
+                display: 'inline-block', width: 8, height: 8,
+                borderRadius: '50%', background: color, flexShrink: 0,
+              }} />
+              {name}
+            </span>
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 12, fontWeight: 700, color,
+            }}>
+              {display}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── DonutChart ───────────────────────────────────────────────────────────────
 export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = true }) {
@@ -170,12 +261,6 @@ export function LineChart({ data, width = 300, height = 120, color = '#3b82f6', 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ReLineChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
-        <defs>
-          <linearGradient id={`line-fill-${c.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%"  stopColor={c} stopOpacity={0.18} />
-            <stop offset="95%" stopColor={c} stopOpacity={0}    />
-          </linearGradient>
-        </defs>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey={xKey} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} />
         <YAxis tickFormatter={v => yFmt(v, maxVal)} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={52} />
@@ -261,21 +346,20 @@ export function HoldingPerformanceChart({ lots, cmp }) {
     series.push({ month, value: cumQty * cmp, invested: cumInv });
   });
 
+  const hpSeries = [
+    { key: 'value',    name: 'Market Value', color: '#60a5fa', formatter: v => `₹${(v / 100000).toFixed(2)}L` },
+    { key: 'invested', name: 'Invested',     color: '#94a9c4', formatter: v => `₹${(v / 100000).toFixed(2)}L` },
+  ];
+
   return (
     <ResponsiveContainer width="100%" height={190}>
       <ReLineChart data={series} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
-        <defs>
-          <linearGradient id="hp-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.15} />
-            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}    />
-          </linearGradient>
-        </defs>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
         <YAxis tickFormatter={v => `₹${(v / 100000).toFixed(1)}L`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={52} />
         <Tooltip
-          formatter={(v, name) => [`₹${(v / 100000).toFixed(2)}L`, name]}
-          contentStyle={TOOLTIP_STYLE}
+          content={<SharedTooltip series={hpSeries} />}
+          cursor={{ stroke: 'rgba(148,169,196,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
         />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
         <Line type="monotone" dataKey="value"    name="Market Value" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
@@ -364,7 +448,9 @@ export function WealthProjectionChart({ data, stepData, goal }) {
   );
 }
 
-// ─── ComparisonChart ──────────────────────────────────────────────────────────
+// ─── ComparisonChart (Indexed view) ──────────────────────────────────────────
+// Fix: replaced the default formatter-based tooltip with SharedTooltip so all
+// benchmark lines are always visible at every hover point.
 export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries }) {
   const benchmarks = benchmarkSeries ?? (niftySeries ? [{
     key:   'nifty50',
@@ -387,13 +473,27 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
     return row;
   });
 
+  // Build the fixed series list for SharedTooltip
+  const tooltipSeries = [
+    { key: 'portfolio', name: 'Your Portfolio', color: '#60a5fa', formatter: v => v?.toFixed(1) },
+    ...benchmarks.map(b => ({
+      key:       b.key,
+      name:      b.label,
+      color:     resolveColor(b.color, b.color),
+      formatter: v => v?.toFixed(1),
+    })),
+  ];
+
   return (
     <ResponsiveContainer width="100%" height={260}>
       <ReLineChart data={merged} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
         <YAxis tickFormatter={v => v.toFixed(0)} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={38} />
-        <Tooltip formatter={(v, name) => [v?.toFixed(1), name]} contentStyle={TOOLTIP_STYLE} />
+        <Tooltip
+          content={<SharedTooltip series={tooltipSeries} />}
+          cursor={{ stroke: 'rgba(148,169,196,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
+        />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
         <Line
           type="monotone"
@@ -423,68 +523,9 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
   );
 }
 
-// Custom tooltip for CagrTrendChart — always renders both series so neither
-// is silently dropped when the cursor is closer to the other line.
-function CagrTooltip({ active, payload, label, hasMF, hasST }) {
-  if (!active || !payload) return null;
-
-  // Build a lookup from the payload array so we can pull each series by key.
-  const byKey = {};
-  payload.forEach(p => { byKey[p.dataKey] = p.value; });
-
-  const rows = [
-    hasMF && { key: 'mfCagr',  label: 'MF CAGR',    color: '#a78bfa' },
-    hasST && { key: 'stCagr',  label: 'Stock CAGR',  color: '#2dd4bf' },
-  ].filter(Boolean);
-
-  return (
-    <div style={{
-      ...TOOLTIP_STYLE,
-      padding: '10px 14px',
-      minWidth: 160,
-    }}>
-      <div style={{
-        fontSize: 10,
-        color: TICK_COLOR,
-        fontWeight: 700,
-        letterSpacing: '0.06em',
-        marginBottom: 8,
-      }}>
-        {label}
-      </div>
-      {rows.map(({ key, label: name, color }) => {
-        const val = byKey[key];
-        return (
-          <div key={key} style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 20,
-            marginBottom: 4,
-          }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a9c4' }}>
-              <span style={{
-                display: 'inline-block',
-                width: 8, height: 8, borderRadius: '50%',
-                background: color, flexShrink: 0,
-              }} />
-              {name}
-            </span>
-            <span style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 12,
-              fontWeight: 700,
-              color,
-            }}>
-              {val != null ? `${val.toFixed(2)}%` : '—'}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
+// ─── CagrTrendChart ───────────────────────────────────────────────────────────
+// Fix: uses SharedTooltip so both MF CAGR and Stock CAGR always show even when
+// cursor is far from one of the lines.
 export function CagrTrendChart({ series }) {
   if (!series.length) return null;
 
@@ -502,23 +543,19 @@ export function CagrTrendChart({ series }) {
     );
   }
 
+  const tooltipSeries = [
+    hasMF && { key: 'mfCagr', name: 'MF CAGR',    color: '#a78bfa', formatter: v => `${v.toFixed(2)}%` },
+    hasST && { key: 'stCagr', name: 'Stock CAGR',  color: '#2dd4bf', formatter: v => `${v.toFixed(2)}%` },
+  ].filter(Boolean);
+
   return (
     <ResponsiveContainer width="100%" height={260}>
       <ReLineChart data={series} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
         <YAxis tickFormatter={v => `${v.toFixed(0)}%`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={42} />
-        {/*
-          Key fix: the default Recharts Tooltip only includes whichever series
-          the cursor is geometrically nearest to. Setting itemSorter is not
-          enough — we need a custom `content` renderer that receives the full
-          payload for ALL active data keys at the hovered x position, which
-          Recharts always provides; the default renderer just happens to filter
-          it. Our CagrTooltip explicitly renders every series regardless of
-          proximity, so both MF CAGR and Stock CAGR are always visible.
-        */}
         <Tooltip
-          content={<CagrTooltip hasMF={hasMF} hasST={hasST} />}
+          content={<SharedTooltip series={tooltipSeries} />}
           cursor={{ stroke: 'rgba(148,169,196,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
         />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
@@ -538,12 +575,22 @@ export function CagrTrendChart({ series }) {
 }
 
 // ─── AbsoluteChart ────────────────────────────────────────────────────────────
+// Fix: was <AreaChart> with a mix of <Area> + <Line>. Recharts does not fire
+// hover/tooltip events for <Line> children inside <AreaChart>, so the "Total
+// Invested" dashed line never updated the tooltip — it always showed the last
+// rendered value. Switched to <ComposedChart> which supports both <Area> and
+// <Line> with full hover tracking.
 export function AbsoluteChart({ portfolioSeries }) {
   if (!portfolioSeries.length) return null;
 
+  const tooltipSeries = [
+    { key: 'value',    name: 'Portfolio Value', color: '#60a5fa', formatter: v => `₹${(v / 100000).toFixed(2)}L` },
+    { key: 'invested', name: 'Total Invested',  color: '#94a9c4', formatter: v => `₹${(v / 100000).toFixed(2)}L` },
+  ];
+
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <AreaChart data={portfolioSeries} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
+      <ComposedChart data={portfolioSeries} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
         <defs>
           <linearGradient id="abs-grad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.18} />
@@ -554,13 +601,33 @@ export function AbsoluteChart({ portfolioSeries }) {
         <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
         <YAxis tickFormatter={v => `₹${(v / 100000).toFixed(0)}L`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={52} />
         <Tooltip
-          formatter={(v, name) => [`₹${(v / 100000).toFixed(2)}L`, name]}
-          contentStyle={TOOLTIP_STYLE}
+          content={<SharedTooltip series={tooltipSeries} />}
+          cursor={{ stroke: 'rgba(148,169,196,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
         />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
-        <Area type="monotone" dataKey="value"    name="Portfolio Value" stroke="#3b82f6" strokeWidth={2.5} fill="url(#abs-grad)" dot={false} />
-        <Line type="monotone" dataKey="invested" name="Total Invested"  stroke="rgba(148,169,196,0.55)" strokeWidth={1.5} strokeDasharray="5 3" dot={false} />
-      </AreaChart>
+        {/* Area for portfolio value — fills below the line */}
+        <Area
+          type="monotone"
+          dataKey="value"
+          name="Portfolio Value"
+          stroke="#3b82f6"
+          strokeWidth={2.5}
+          fill="url(#abs-grad)"
+          dot={false}
+          activeDot={{ r: 5, fill: '#60a5fa', stroke: '#0b0f1a', strokeWidth: 1.5 }}
+        />
+        {/* Line for invested — no fill, just a dashed reference line */}
+        <Line
+          type="monotone"
+          dataKey="invested"
+          name="Total Invested"
+          stroke="rgba(148,169,196,0.7)"
+          strokeWidth={1.5}
+          strokeDasharray="5 3"
+          dot={false}
+          activeDot={{ r: 4, fill: '#94a9c4', stroke: '#0b0f1a', strokeWidth: 1.5 }}
+        />
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }
@@ -658,6 +725,16 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
   const currentDD    = portDD[portDD.length - 1]?.dd ?? 0;
   const isInDrawdown = currentDD < -0.1;
 
+  const ddTooltipSeries = [
+    { key: 'portfolio', name: 'Your Portfolio', color: '#60a5fa', formatter: v => `${v.toFixed(2)}%` },
+    ...benchDDs.map(b => ({
+      key:       b.key,
+      name:      b.label,
+      color:     b.color,
+      formatter: v => `${v.toFixed(2)}%`,
+    })),
+  ];
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -706,7 +783,10 @@ export function DrawdownChart({ portfolioSeries, benchmarkSeries = [] }) {
           <CartesianGrid vertical={false} stroke={GRID_COLOR} />
           <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
           <YAxis tickFormatter={v => `${v.toFixed(0)}%`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={42} domain={['auto', 0]} />
-          <Tooltip formatter={(v, name) => [v != null ? `${v.toFixed(2)}%` : '—', name]} contentStyle={TOOLTIP_STYLE} />
+          <Tooltip
+            content={<SharedTooltip series={ddTooltipSeries} />}
+            cursor={{ stroke: 'rgba(148,169,196,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
+          />
           <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />
           {benchDDs.map((b, i) => (
             <Area
