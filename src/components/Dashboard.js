@@ -16,6 +16,7 @@ import RebalancerView from '@/components/views/RebalancerView';
 import AIAdvisorView from '@/components/views/AIAdvisorView';
 import PortfolioVsNiftyView from '@/components/views/PortfolioVsNiftyView';
 import InstrumentsView from '@/components/views/InstrumentsView';
+import BackfillView from '@/components/views/BackfillView';
 import TradeImporter from '@/components/views/TradeImporter';
 import { TradeForm } from '@/components/views/TradeForm';
 import { TimelineView, WaterfallView, ActionView, SnapshotView } from '@/components/views/OtherViews';
@@ -34,6 +35,7 @@ const VIEW_TITLES = {
   'vs-nifty':   'Portfolio vs Nifty 50',
   'ai-advisor': 'AI Portfolio Advisor',
   instruments:  'Instrument Manager',
+  backfill:     'Backfill Historical Snapshots',
   trade:        'Add Trade',
 };
 
@@ -41,6 +43,7 @@ const VIEWS_BYPASS_EMPTY_GUARD = new Set([
   'trade',
   'ai-advisor',
   'instruments',
+  'backfill',
   'goal',
   'snapshots',
   'timeline',
@@ -105,6 +108,15 @@ export default function Dashboard() {
                 color: 'var(--orange)', letterSpacing: '0.04em',
               }}>NSE · BSE · AMFI</span>
             )}
+            {activeView === 'backfill' && (
+              <span className="title-badge" style={{
+                fontSize: '10px', fontWeight: '700', padding: '3px 8px',
+                borderRadius: '5px',
+                background: 'rgba(16,185,129,0.15)',
+                border: '1px solid rgba(16,185,129,0.35)',
+                color: 'var(--green2)', letterSpacing: '0.04em',
+              }}>YAHOO · AMFI · mfapi.in</span>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -165,6 +177,7 @@ function ViewRenderer({ view }) {
     case 'vs-nifty':    return <PortfolioVsNiftyView />;
     case 'ai-advisor':  return <AIAdvisorView />;
     case 'instruments': return <InstrumentsView />;
+    case 'backfill':    return <BackfillView />;
     case 'trade':       return <TradeForm />;
     default:            return <OverviewView />;
   }

@@ -19,6 +19,7 @@ import {
   Upload,
   WalletCards,
   Waves,
+  CalendarRange,
 } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 
@@ -41,12 +42,13 @@ const NAV = [
   {
     group: 'Tools',
     items: [
-      { id: 'rebalancer',   icon: Scale,    label: 'Rebalancer' },
-      { id: 'ai-advisor',   icon: Bot,      label: 'AI Advisor', badge: 'AI' },
-      { id: 'instruments',  icon: Database, label: 'Instruments', badge: 'NEW' },
-      { id: 'trade',        icon: Plus,     label: 'Add Trade' },
+      { id: 'rebalancer',   icon: Scale,        label: 'Rebalancer' },
+      { id: 'ai-advisor',   icon: Bot,          label: 'AI Advisor', badge: 'AI' },
+      { id: 'instruments',  icon: Database,     label: 'Instruments', badge: 'NEW' },
+      { id: 'backfill',     icon: CalendarRange, label: 'Backfill History', badge: 'NEW' },
+      { id: 'trade',        icon: Plus,         label: 'Add Trade' },
       // Import is handled as a modal — clicking triggers onImport prop, not a view nav
-      { id: '__import',     icon: Upload,   label: 'Import CSV/XLS', badge: 'CSV', _isAction: true },
+      { id: '__import',     icon: Upload,       label: 'Import CSV/XLS', badge: 'CSV', _isAction: true },
     ]
   }
 ];
@@ -116,11 +118,30 @@ export default function Sidebar({ collapsed, onToggle, onImport }) {
                       borderColor: 'rgba(20,184,166,0.15)',
                       background: 'rgba(20,184,166,0.04)',
                     }),
+                    // Backfill item gets a subtle green tint
+                    ...(item.id === 'backfill' && !collapsed && !isActive && {
+                      borderColor: 'rgba(16,185,129,0.15)',
+                      background: 'rgba(16,185,129,0.04)',
+                    }),
                   }}
                 >
-                  <Icon size={16} style={{ minWidth: '18px', color: item._isAction ? 'var(--teal)' : undefined }} />
+                  <Icon size={16} style={{
+                    minWidth: '18px',
+                    color: item._isAction
+                      ? 'var(--teal)'
+                      : item.id === 'backfill' && !isActive
+                      ? 'var(--green2)'
+                      : undefined,
+                  }} />
                   {!collapsed && (
-                    <span style={{ flex: 1, color: item._isAction ? 'var(--teal)' : undefined }}>{item.label}</span>
+                    <span style={{
+                      flex: 1,
+                      color: item._isAction
+                        ? 'var(--teal)'
+                        : item.id === 'backfill' && !isActive
+                        ? 'var(--green2)'
+                        : undefined,
+                    }}>{item.label}</span>
                   )}
                   {!collapsed && item.badge && (
                     <span style={{
