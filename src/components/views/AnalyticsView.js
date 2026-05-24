@@ -7,6 +7,7 @@ import { BarChart, HBar } from '@/components/charts/Charts';
 import { StatCard } from '@/components/ui/SharedUI';
 import { useAnalyticsView } from '@/hooks/useAnalyticsView';
 import { useSnapshots } from '@/hooks/useSnapshots';
+import { YearByYearView } from './YearByYearView';
 import styles from './AnalyticsView.module.css';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1173,6 +1174,7 @@ export default function AnalyticsView() {
     { key: 'overview',      label: '📊 Overview' },
     { key: 'realized',      label: `💰 Realized P&L${realizedSummary.sells.length > 0 ? ` (${realizedSummary.sells.length})` : ''}` },
     { key: 'sectors',       label: '🎯 Sectors' },
+    { key: 'yearByYear',    label: '📅 Year-by-Year' },
     { key: 'drawdown',      label: '📉 Drawdown' },
     { key: 'sip',           label: '📆 SIP Tracker' },
     { key: 'concentration', label: '⚖️ Risk Score' },
@@ -1282,6 +1284,14 @@ export default function AnalyticsView() {
 
       {analyticsTab === 'sectors' && (
         <div className="glass"><SectorRotationWheel holdings={holdings} stats={stats} /></div>
+      )}
+
+      {analyticsTab === 'yearByYear' && (
+        <div className="glass" style={{ padding: 20 }}>
+          {snapsLoading
+            ? <div style={{ color: 'var(--text3)', fontSize: 13, padding: 20 }}>Loading snapshots…</div>
+            : <YearByYearView snapshots={snapshots} />}
+        </div>
       )}
 
       {/* ── New Tabs ── */}
