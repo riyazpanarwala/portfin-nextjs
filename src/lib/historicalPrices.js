@@ -14,6 +14,29 @@ const yahoo = new YahooFinance({
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 });
 
+/* ────────────────────────────────────────────────────────────────────────────
+   Known fund mergers / renames
+   ────────────────────────────────────────────────────────────────────────────
+   When a mutual fund is merged into another AMC or renamed, AMFI assigns a
+   new scheme code.  The old scheme code stops updating on the merger date and
+   the new one starts from that date.  To get a continuous history we must
+   fetch BOTH codes and stitch them at the merger date.
+
+   Key:   current scheme code (post-merger)
+   Value: { predecessorCode, effectiveDate }  — predecessor data is used
+          strictly BEFORE effectiveDate; current data is used FROM
+          effectiveDate onwards.
+   ────────────────────────────────────────────────────────────────────────── */
+const FUND_MERGER_MAP = {
+  /* HSBC Small Cap Fund — Direct Plan — Growth
+     Formerly: L&T Emerging Businesses Fund — Direct Plan — Growth
+     Merger effective: 2022-11-26 (L&T MF merged into HSBC MF) */
+  151130: {
+    predecessorCode: "129220",
+    effectiveDate: "2022-11-26",
+  },
+};
+
 /**
  * getLastTradingDayOfMonth
  * Returns 'YYYY-MM-DD' for the last calendar day of the given month.
@@ -75,25 +98,126 @@ export async function fetchStockMonthlyPrices(symbol, exchange, fromDate) {
   }
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+   Mutual-fund NAV helpers
+   ────────────────────────────────────────────────────────────────────────── */
+
 /**
  * fetchMFHistoricalNAV
  * Fetches full NAV history for a mutual fund scheme from AMFI's mfhistorical API.
  * Returns a map { 'YYYY-MM': nav } — last NAV of each month.
  *
- * AMFI provides a free daily NAV file AND a historical NAV lookup at:
- *   https://api.mfapi.in/mf/{schemeCode}
- * We use mfapi.in (a free community wrapper over AMFI data).
+ * If the fund has a known predecessor (merger/rename), this function
+ * automatically stitches the predecessor history (before merger date) with the
+ * current history (from merger date onwards) so callers get one continuous
+ * series.
  *
  * @param {string} isin       ISIN of the MF scheme (e.g. INF179K01VL3)
  * @param {string} fromDate   'YYYY-MM-DD'
  * @returns {Promise<Record<string, number>>}
  */
 export async function fetchMFHistoricalNAV(isin, fromDate) {
-  // Step 1: resolve ISIN → scheme code via mfapi search
+  // Step 1: resolve ISIN → scheme code via AMFI daily NAV file
   const schemeCode = await resolveISINtoSchemeCode(isin);
-  if (!schemeCode) return {};
+  if (!schemeCode) {
+    console.warn(
+      `[historicalPrices] Could not resolve ISIN ${isin} to scheme code`,
+    );
+    return {};
+  }
 
-  // Step 2: fetch full NAV history
+  const mergerInfo = FUND_MERGER_MAP[schemeCode];
+
+  // No known merger — single fetch
+  if (!mergerInfo) {
+    return fetchMFHistoricalNAV_byCode(schemeCode, fromDate);
+  }
+
+  // Known merger — fetch predecessor + current in parallel
+  console.log(
+    `[historicalPrices] Fund ${schemeCode} has predecessor ${mergerInfo.predecessorCode} ` +
+      `(merger on ${mergerInfo.effectiveDate}). Fetching stitched history…`,
+  );
+
+  const [predecessorMap, currentMap] = await Promise.all([
+    // Predecessor: from the user's fromDate up to (but not including) merger date
+    fetchMFHistoricalNAV_byCode(
+      mergerInfo.predecessorCode,
+      fromDate,
+      mergerInfo.effectiveDate,
+    ),
+    // Current: from merger date onwards
+    fetchMFHistoricalNAV_byCode(schemeCode, mergerInfo.effectiveDate),
+  ]);
+
+  // Merge: current overrides predecessor on the merger month (if overlap)
+  const stitched = { ...predecessorMap, ...currentMap };
+
+  console.log(
+    `[historicalPrices] Stitched ${Object.keys(predecessorMap).length} (pre) + ` +
+      `${Object.keys(currentMap).length} (post) = ${Object.keys(stitched).length} monthly NAVs ` +
+      `for schemeCode ${schemeCode}`,
+  );
+
+  return stitched;
+}
+
+/**
+ * fetchMFHistoricalNAVByName
+ * Fallback when ISIN is unavailable — searches mfapi by scheme name.
+ * Also checks the merger map so stitched histories work by name too.
+ *
+ * @param {string} name       Fund name (partial is fine)
+ * @param {string} fromDate   'YYYY-MM-DD'
+ */
+export async function fetchMFHistoricalNAVByName(name, fromDate) {
+  try {
+    const res = await fetch(
+      `https://api.mfapi.in/mf/search?q=${encodeURIComponent(name)}`,
+      { signal: AbortSignal.timeout(10000) },
+    );
+    if (!res.ok) return {};
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return {};
+
+    // Pick first result
+    const schemeCode = String(data[0].schemeCode);
+    const mergerInfo = FUND_MERGER_MAP[schemeCode];
+
+    if (!mergerInfo) {
+      return fetchMFHistoricalNAV_byCode(schemeCode, fromDate);
+    }
+
+    const [predecessorMap, currentMap] = await Promise.all([
+      fetchMFHistoricalNAV_byCode(
+        mergerInfo.predecessorCode,
+        fromDate,
+        mergerInfo.effectiveDate,
+      ),
+      fetchMFHistoricalNAV_byCode(schemeCode, mergerInfo.effectiveDate),
+    ]);
+
+    return { ...predecessorMap, ...currentMap };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * fetchMFHistoricalNAV_byCode
+ * Low-level fetcher.  Calls mfapi.in for a specific AMFI scheme code and
+ * returns { 'YYYY-MM': nav } for the last NAV of each month.
+ *
+ * @param {string} schemeCode   AMFI scheme code
+ * @param {string} fromDate     'YYYY-MM-DD' — inclusive start
+ * @param {string|null} toDate  'YYYY-MM-DD' — exclusive end (optional)
+ * @returns {Promise<Record<string, number>>}
+ */
+async function fetchMFHistoricalNAV_byCode(
+  schemeCode,
+  fromDate,
+  toDate = null,
+) {
   try {
     const res = await fetch(`https://api.mfapi.in/mf/${schemeCode}`, {
       signal: AbortSignal.timeout(20000),
@@ -103,15 +227,18 @@ export async function fetchMFHistoricalNAV(isin, fromDate) {
 
     const navData = data?.data ?? [];
     // navData: [{ date: 'DD-MM-YYYY', nav: '123.456' }] — newest first
+
     const fromMs = new Date(fromDate).getTime();
+    const toMs = toDate ? new Date(toDate).getTime() : Infinity;
 
     const monthMap = {};
     for (const row of navData) {
       // Parse 'DD-MM-YYYY'
       const [dd, mm, yyyy] = (row.date || "").split("-");
       if (!dd || !mm || !yyyy) continue;
+
       const dateMs = new Date(`${yyyy}-${mm}-${dd}`).getTime();
-      if (isNaN(dateMs) || dateMs < fromMs) continue;
+      if (isNaN(dateMs) || dateMs < fromMs || dateMs >= toMs) continue;
 
       const nav = parseFloat(row.nav);
       if (isNaN(nav) || nav <= 0) continue;
@@ -136,7 +263,7 @@ export async function fetchMFHistoricalNAV(isin, fromDate) {
 
 /**
  * resolveISINtoSchemeCode
- * Uses mfapi.in's search endpoint to find the AMFI scheme code for an ISIN.
+ * Uses AMFI's daily NAV text file to find the AMFI scheme code for an ISIN.
  * Returns null on failure.
  */
 async function resolveISINtoSchemeCode(isin) {
@@ -169,58 +296,6 @@ async function resolveISINtoSchemeCode(isin) {
     return null;
   } catch {
     return null;
-  }
-}
-
-/**
- * fetchMFHistoricalNAVByName
- * Fallback when ISIN is unavailable — searches mfapi by scheme name.
- *
- * @param {string} name       Fund name (partial is fine)
- * @param {string} fromDate   'YYYY-MM-DD'
- */
-export async function fetchMFHistoricalNAVByName(name, fromDate) {
-  try {
-    const res = await fetch(
-      `https://api.mfapi.in/mf/search?q=${encodeURIComponent(name)}`,
-      { signal: AbortSignal.timeout(10000) },
-    );
-    if (!res.ok) return {};
-    const data = await res.json();
-    if (!Array.isArray(data) || !data.length) return {};
-    // Pick first result
-    const schemeCode = String(data[0].schemeCode);
-    return fetchMFHistoricalNAV_byCode(schemeCode, fromDate);
-  } catch {
-    return {};
-  }
-}
-
-async function fetchMFHistoricalNAV_byCode(schemeCode, fromDate) {
-  try {
-    const res = await fetch(`https://api.mfapi.in/mf/${schemeCode}`, {
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) return {};
-    const data = await res.json();
-    const navData = data?.data ?? [];
-    const fromMs = new Date(fromDate).getTime();
-    const monthMap = {};
-    for (const row of navData) {
-      const [dd, mm, yyyy] = (row.date || "").split("-");
-      if (!dd || !mm || !yyyy) continue;
-      const dateMs = new Date(`${yyyy}-${mm}-${dd}`).getTime();
-      if (isNaN(dateMs) || dateMs < fromMs) continue;
-      const nav = parseFloat(row.nav);
-      if (isNaN(nav) || nav <= 0) continue;
-      const monthKey = `${yyyy}-${mm}`;
-      if (!monthMap[monthKey]) {
-        monthMap[monthKey] = Math.round(nav * 10000) / 10000;
-      }
-    }
-    return monthMap;
-  } catch {
-    return {};
   }
 }
 
