@@ -668,7 +668,7 @@ function ModeButton({ label, value, active, onClick }) {
 
 export default function PortfolioVsNiftyView() {
   const { portfolioId, stats, setActiveView } = usePortfolio();
-  const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId, 100);
+  const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId);
 
   const [mode, setMode]                       = useState('indexed');
   const hasHadDataRef                         = useRef(false);   // improvement #4

@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export const GET = withErrorHandler('GET /api/snapshots', async (request) => {
   const { searchParams } = new URL(request.url);
   const portfolioId = searchParams.get('portfolioId');
-  const limit = Math.min(100, parseInt(searchParams.get('limit') || '30'));
+  const limit = parseInt(searchParams.get('limit') || '30');
   if (!portfolioId) return badRequest('portfolioId required');
 
   const snapshots = await prisma.snapshot.findMany({

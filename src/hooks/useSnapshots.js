@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export function useSnapshots(portfolioId, limit = 100) {
+export function useSnapshots(portfolioId, limit = 200) {
   const [snapshots, setSnapshots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

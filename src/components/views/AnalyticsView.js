@@ -1151,7 +1151,7 @@ export default function AnalyticsView() {
   const { stats, holdings, taxData, monthlyFlow, realizedSummary,
     portfolioXIRR, portfolioBeta, trades, currentPrices, portfolioId } = usePortfolio();
 
-  const { snapshots, loading: snapsLoading } = useSnapshots(portfolioId, 100);
+  const { snapshots, loading: snapsLoading } = useSnapshots(portfolioId);
 
   const {
     analyticsTab, setAnalyticsTab,
