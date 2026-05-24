@@ -9,8 +9,35 @@ import styles from './YearByYearView.module.css';
 // Compute year-by-year returns from snapshots
 // ─────────────────────────────────────────────────────────────────────────────
 
-function computeYearByYearReturns(snapshots) {
-  if (!snapshots || snapshots.length < 2) return [];
+function tradeAmount(trade) {
+  const gross = parseFloat(trade.quantity) * parseFloat(trade.price);
+  const brokerage = trade.brokerage ? parseFloat(trade.brokerage) : 0;
+  return trade.tradeType === 'BUY' ? gross + brokerage : -(gross - brokerage);
+}
+
+function buildTradeYearMap(trades) {
+  const map = {};
+  (trades || []).forEach(trade => {
+    const year = (trade.tradeDate || '').slice(0, 4);
+    if (!year) return;
+    if (!map[year]) {
+      map[year] = { netFlow: 0, buyAmount: 0, sellAmount: 0, tradeCount: 0 };
+    }
+
+    const amount = tradeAmount(trade);
+    map[year].netFlow += amount;
+    map[year].tradeCount += 1;
+    if (trade.tradeType === 'BUY') {
+      map[year].buyAmount += amount;
+    } else {
+      map[year].sellAmount += Math.abs(amount);
+    }
+  });
+  return map;
+}
+
+function computeYearByYearReturns(snapshots, trades) {
+  const tradeYearMap = buildTradeYearMap(trades);
 
   // Sort snapshots by date
   const sorted = [...snapshots].sort((a, b) =>
@@ -27,38 +54,58 @@ function computeYearByYearReturns(snapshots) {
     yearMap[year].push(snap);
   });
 
-  const years = Object.keys(yearMap).sort();
+  const allYears = new Set([
+    ...Object.keys(tradeYearMap),
+    ...Object.keys(yearMap),
+  ]);
+  const years = [...allYears].sort();
   const results = [];
+  let cumulativeInvested = 0;
 
   years.forEach((year, idx) => {
-    const yearSnapshots = yearMap[year];
+    const yearSnapshots = yearMap[year] || [];
+    const tradeYear = tradeYearMap[year] || {
+      netFlow: 0,
+      buyAmount: 0,
+      sellAmount: 0,
+      tradeCount: 0,
+    };
     const isCurrentYear = year === new Date().getFullYear().toString();
+    const startInvested = cumulativeInvested;
+    cumulativeInvested += tradeYear.netFlow;
 
     // Get start value (last snapshot of previous year or first of current year)
     let startValue = null;
     let startDate = null;
+    let endValue = null;
+    let endDate = null;
 
-    if (idx > 0) {
-      const prevYear = years[idx - 1];
-      const prevYearSnapshots = yearMap[prevYear];
-      const lastPrevSnap = prevYearSnapshots[prevYearSnapshots.length - 1];
-      startValue = parseFloat(lastPrevSnap.totalValue);
-      startDate = lastPrevSnap.snapshotAt.slice(0, 10);
-    } else {
-      const firstSnap = yearSnapshots[0];
-      startValue = parseFloat(firstSnap.totalValue);
-      startDate = firstSnap.snapshotAt.slice(0, 10);
+    if (yearSnapshots.length > 0) {
+      const prevYear = years
+        .slice(0, idx)
+        .reverse()
+        .find(y => yearMap[y]?.length > 0);
+
+      if (prevYear) {
+        const prevYearSnapshots = yearMap[prevYear];
+        const lastPrevSnap = prevYearSnapshots[prevYearSnapshots.length - 1];
+        startValue = parseFloat(lastPrevSnap.totalValue);
+        startDate = lastPrevSnap.snapshotAt.slice(0, 10);
+      } else {
+        const firstSnap = yearSnapshots[0];
+        startValue = parseFloat(firstSnap.totalValue);
+        startDate = firstSnap.snapshotAt.slice(0, 10);
+      }
+
+      const lastSnap = yearSnapshots[yearSnapshots.length - 1];
+      endValue = parseFloat(lastSnap.totalValue);
+      endDate = lastSnap.snapshotAt.slice(0, 10);
     }
-
-    // Get end value (last snapshot of current year)
-    const lastSnap = yearSnapshots[yearSnapshots.length - 1];
-    const endValue = parseFloat(lastSnap.totalValue);
-    const endDate = lastSnap.snapshotAt.slice(0, 10);
 
     // Compute return
     const returnPct =
-      startValue > 0 ? ((endValue / startValue - 1) * 100).toFixed(2) : null;
-    const absoluteGain = endValue - startValue;
+      startValue > 0 && endValue != null ? ((endValue / startValue - 1) * 100).toFixed(2) : null;
+    const absoluteGain = startValue != null && endValue != null ? endValue - startValue : null;
 
     results.push({
       year,
@@ -66,10 +113,17 @@ function computeYearByYearReturns(snapshots) {
       endValue,
       startDate,
       endDate,
-      returnPct: parseFloat(returnPct),
+      startInvested,
+      netInvested: cumulativeInvested,
+      buyAmount: tradeYear.buyAmount,
+      sellAmount: tradeYear.sellAmount,
+      netFlow: tradeYear.netFlow,
+      tradeCount: tradeYear.tradeCount,
+      returnPct: returnPct == null ? null : parseFloat(returnPct),
       absoluteGain,
       isCurrentYear,
       snapshotCount: yearSnapshots.length,
+      hasSnapshotValue: yearSnapshots.length > 0,
     });
   });
 
@@ -204,11 +258,12 @@ function getISOWeek(date) {
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function YearByYearView({ snapshots }) {
+export function YearByYearView({ snapshots = [], trades = [] }) {
   const [selectedYear, setSelectedYear] = useState(null);
   const [viewMode, setViewMode] = useState('monthly'); // 'monthly' or 'weekly'
 
-  const yearlyData = useMemo(() => computeYearByYearReturns(snapshots), [snapshots]);
+  const yearlyData = useMemo(() => computeYearByYearReturns(snapshots, trades), [snapshots, trades]);
+  const snapshotYears = useMemo(() => yearlyData.filter(d => d.hasSnapshotValue), [yearlyData]);
 
   const breakdownData = useMemo(() => {
     if (!selectedYear) return [];
@@ -221,19 +276,19 @@ export function YearByYearView({ snapshots }) {
 
   // Prepare chart data for year-by-year returns
   const yearlyReturnChartData = useMemo(() => {
-    return yearlyData.map(d => ({
+    return snapshotYears.map(d => ({
       label: d.year,
-      value: d.returnPct || 0,
+      value: d.returnPct,
       color: d.returnPct >= 0 ? '#10b981' : '#ef4444',
     }));
-  }, [yearlyData]);
+  }, [snapshotYears]);
 
   // Prepare chart data for year-by-year invested capital
   const yearlyInvestedChartData = useMemo(() => {
     return yearlyData.map(d => ({
       label: d.year,
-      value: d.endValue,
-      color: '#3b82f6',
+      value: d.hasSnapshotValue ? d.endValue : d.netInvested,
+      color: d.hasSnapshotValue ? '#3b82f6' : '#64748b',
     }));
   }, [yearlyData]);
 
@@ -264,16 +319,18 @@ export function YearByYearView({ snapshots }) {
     );
   }
 
-  const bestYear = yearlyData.reduce((a, b) =>
+  const yearsWithReturns = yearlyData.filter(d => d.returnPct != null);
+  const bestYear = yearsWithReturns.reduce((a, b) =>
     (b.returnPct || -Infinity) > (a.returnPct || -Infinity) ? b : a
-  );
-  const worstYear = yearlyData.reduce((a, b) =>
+  , yearsWithReturns[0]);
+  const worstYear = yearsWithReturns.reduce((a, b) =>
     (b.returnPct || Infinity) < (a.returnPct || Infinity) ? b : a
-  );
+  , yearsWithReturns[0]);
   const avgReturn =
-    yearlyData.length > 0
-      ? yearlyData.reduce((s, d) => s + (d.returnPct || 0), 0) / yearlyData.length
-      : 0;
+    yearsWithReturns.length > 0
+      ? yearsWithReturns.reduce((s, d) => s + d.returnPct, 0) / yearsWithReturns.length
+      : null;
+  const latestSnapshotYear = snapshotYears[snapshotYears.length - 1];
 
   return (
     <div className={styles.container}>
@@ -282,38 +339,38 @@ export function YearByYearView({ snapshots }) {
         <div className={styles.summaryCard}>
           <div className={styles.summaryLabel}>Best Year</div>
           <div className={styles.summaryValue} style={{ color: '#10b981' }}>
-            {bestYear.year}
+            {bestYear?.year || '—'}
           </div>
           <div className={styles.summarySub}>
-            {fmt(bestYear.returnPct, 2)}% return
+            {bestYear ? `${fmt(bestYear.returnPct, 2)}% return` : 'Need year-end snapshots'}
           </div>
         </div>
 
         <div className={styles.summaryCard}>
           <div className={styles.summaryLabel}>Worst Year</div>
           <div className={styles.summaryValue} style={{ color: '#ef4444' }}>
-            {worstYear.year}
+            {worstYear?.year || '—'}
           </div>
           <div className={styles.summarySub}>
-            {fmt(worstYear.returnPct, 2)}% return
+            {worstYear ? `${fmt(worstYear.returnPct, 2)}% return` : 'Need year-end snapshots'}
           </div>
         </div>
 
         <div className={styles.summaryCard}>
           <div className={styles.summaryLabel}>Average Return</div>
           <div className={styles.summaryValue} style={{ color: '#3b82f6' }}>
-            {fmt(avgReturn, 2)}%
+            {avgReturn == null ? '—' : `${fmt(avgReturn, 2)}%`}
           </div>
           <div className={styles.summarySub}>
-            Across {yearlyData.length} years
+            Across {yearsWithReturns.length} snapshot year{yearsWithReturns.length !== 1 ? 's' : ''}
           </div>
         </div>
 
         <div className={styles.summaryCard}>
-          <div className={styles.summaryLabel}>Current Portfolio</div>
-          <div className={styles.summaryValue}>{fmtCr(yearlyData[yearlyData.length - 1].endValue)}</div>
+          <div className={styles.summaryLabel}>Years Tracked</div>
+          <div className={styles.summaryValue}>{yearlyData[0].year}–{yearlyData[yearlyData.length - 1].year}</div>
           <div className={styles.summarySub}>
-            {yearlyData[yearlyData.length - 1].isCurrentYear ? 'Year in progress' : 'Latest snapshot'}
+            {latestSnapshotYear ? `${fmtCr(latestSnapshotYear.endValue)} latest snapshot` : 'Trade history only'}
           </div>
         </div>
       </div>
@@ -324,14 +381,16 @@ export function YearByYearView({ snapshots }) {
         <div className={styles.chartSub}>
           Annual return percentage for each calendar year
         </div>
-        <BarChart data={yearlyReturnChartData} height={200} />
+        {yearlyReturnChartData.length > 0
+          ? <BarChart data={yearlyReturnChartData} height={200} />
+          : <div className={styles.chartEmpty}>Returns need snapshots in each year. Your older years are shown from trades below.</div>}
       </div>
 
       {/* Year-by-Year Invested Capital Chart */}
       <div className={styles.chartBox}>
-        <div className={styles.chartTitle}>Year-End Portfolio Value</div>
+        <div className={styles.chartTitle}>Year-End Portfolio Value / Invested Capital</div>
         <div className={styles.chartSub}>
-          Total portfolio value at the end of each calendar year
+          Snapshot value where available; trade-derived net invested capital for earlier years
         </div>
         <BarChart data={yearlyInvestedChartData} height={200} />
       </div>
@@ -456,8 +515,10 @@ export function YearByYearView({ snapshots }) {
                     <th>Year</th>
                     <th style={{ textAlign: 'right' }}>Start Value</th>
                     <th style={{ textAlign: 'right' }}>End Value</th>
+                    <th style={{ textAlign: 'right' }}>Net Invested</th>
                     <th style={{ textAlign: 'right' }}>Absolute Gain</th>
                     <th style={{ textAlign: 'right' }}>Return %</th>
+                    <th style={{ textAlign: 'right' }}>Trades</th>
                     <th style={{ textAlign: 'right' }}>Snapshots</th>
                   </tr>
                 </thead>
@@ -471,11 +532,14 @@ export function YearByYearView({ snapshots }) {
                       <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                         {fmtCr(d.endValue)}
                       </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
+                        {fmtCr(d.netInvested)}
+                      </td>
                       <td
                         style={{
                           textAlign: 'right',
                           fontFamily: 'var(--font-mono)',
-                          color: d.absoluteGain >= 0 ? '#10b981' : '#ef4444',
+                          color: d.absoluteGain == null ? 'var(--text3)' : d.absoluteGain >= 0 ? '#10b981' : '#ef4444',
                           fontWeight: 600,
                         }}
                       >
@@ -485,11 +549,14 @@ export function YearByYearView({ snapshots }) {
                         style={{
                           textAlign: 'right',
                           fontFamily: 'var(--font-mono)',
-                          color: d.returnPct >= 0 ? '#10b981' : '#ef4444',
-                          fontWeight: 700,
-                        }}
-                      >
-                        {fmt(d.returnPct, 2)}%
+                              color: d.returnPct == null ? 'var(--text3)' : d.returnPct >= 0 ? '#10b981' : '#ef4444',
+                              fontWeight: 700,
+                            }}
+                          >
+                        {d.returnPct == null ? '—' : `${fmt(d.returnPct, 2)}%`}
+                      </td>
+                      <td style={{ textAlign: 'right', color: 'var(--text2)' }}>
+                        {d.tradeCount}
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--text2)' }}>
                         {d.snapshotCount}

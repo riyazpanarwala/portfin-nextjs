@@ -1290,7 +1290,7 @@ export default function AnalyticsView() {
         <div className="glass" style={{ padding: 20 }}>
           {snapsLoading
             ? <div style={{ color: 'var(--text3)', fontSize: 13, padding: 20 }}>Loading snapshots…</div>
-            : <YearByYearView snapshots={snapshots} />}
+            : <YearByYearView snapshots={snapshots} trades={trades} />}
         </div>
       )}
 
