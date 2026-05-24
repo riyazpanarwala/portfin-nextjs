@@ -1,38 +1,5 @@
-'use client';
-
-/**
- * lib/xirr.js
- * ─────────────────────────────────────────────────────────────────────────────
- * Newton-Raphson XIRR solver, extracted from store.js and HoldingsShared.js
- * where it was duplicated under different names (newtonXIRR / computeXIRR).
- *
- * All XIRR computations across the app import from here.
- *
- * ── Issue-12 fixes ───────────────────────────────────────────────────────────
- * The original solver had four problems that could silently produce garbage
- * values displayed raw in the UI:
- *
- *  1. Clamp ceiling was 100 (= 10,000% p.a.).  A non-converging run would
- *     hit the limit and return "+10000.00%" as a valid-looking XIRR.
- *     Fix: tighten ceiling to 50 (5,000% p.a.) and add a post-solve
- *     reasonableness cap: anything above MAX_REASONABLE_RATE is rejected.
- *
- *  2. No convergence flag — the loop always returned `rate` whether it
- *     converged or not, passing the iteration-limit value straight to the UI.
- *     Fix: track `converged` boolean; return null when false.
- *
- *  3. No oscillation detection — the solver could bounce between two values
- *     forever (e.g. +50% / -50%) across all 200 iterations.
- *     Fix: record the previous rate each iteration; if |Δrate| stops
- *     decreasing for STALL_PATIENCE consecutive steps, bail out early.
- *
- *  4. Newton step from a near-zero derivative produced ±Infinity which was
- *     clamped and then treated as a normal rate.
- *     Fix: explicit Infinity / NaN guard before the clamp.
- */
-
 /** Annualised rates outside this range are treated as non-convergent. */
-const MAX_REASONABLE_RATE = 5.0;   // 500% p.a. as a decimal fraction
+const MAX_REASONABLE_RATE = 5.0; // 500% p.a. as a decimal fraction
 const MIN_REASONABLE_RATE = -0.99; // -99% p.a.
 
 /** If the step size hasn't shrunk for this many consecutive iterations,
@@ -50,13 +17,18 @@ const STALL_PATIENCE = 12;
 export function xirr(cashflows) {
   if (!cashflows || cashflows.length < 2) return null;
 
-  const dates   = cashflows.map(c => new Date(c.date));
-  const amounts = cashflows.map(c => c.amount);
-  const d0      = dates[0];
-  const yr      = i => (dates[i] - d0) / (365.25 * 864e5);
+  const dates = cashflows.map((c) => new Date(c.date));
+  const amounts = cashflows.map((c) => c.amount);
+  const d0 = dates[0];
+  const yr = (i) => (dates[i] - d0) / (365.25 * 864e5);
 
-  const npv  = r => amounts.reduce((s, a, i) => s + a / Math.pow(1 + r, yr(i)), 0);
-  const dnpv = r => amounts.reduce((s, a, i) => s - yr(i) * a / Math.pow(1 + r, yr(i) + 1), 0);
+  const npv = (r) =>
+    amounts.reduce((s, a, i) => s + a / Math.pow(1 + r, yr(i)), 0);
+  const dnpv = (r) =>
+    amounts.reduce(
+      (s, a, i) => s - (yr(i) * a) / Math.pow(1 + r, yr(i) + 1),
+      0,
+    );
 
   // Try multiple starting points so the solver is less sensitive to the
   // initial guess.  For most real portfolios one of these will converge.
@@ -75,10 +47,10 @@ export function xirr(cashflows) {
  * Returns the converged rate as a decimal fraction, or null.
  */
 function _solve(seed, npv, dnpv) {
-  let rate     = seed;
+  let rate = seed;
   let converged = false;
   let prevDelta = Infinity;
-  let stall     = 0;
+  let stall = 0;
 
   for (let k = 0; k < 200; k++) {
     const f = npv(rate);
@@ -97,7 +69,7 @@ function _solve(seed, npv, dnpv) {
     // Convergence check
     const delta = Math.abs(nr - rate);
     if (delta < 1e-8) {
-      rate      = nr;
+      rate = nr;
       converged = true;
       break;
     }
@@ -142,12 +114,19 @@ function _solve(seed, npv, dnpv) {
 export function holdingXIRR(lots, sells, cmp) {
   const totalQty = lots.reduce((s, l) => s + l.qty, 0);
   return xirr([
-    ...lots.map(l  => ({ amount: -(l.qty * l.price), date: l.date })),
-    ...(sells || []).map(s => ({ amount: s.qty * s.sellPrice, date: s.date })),
+    ...lots.map((l) => ({ amount: -(l.qty * l.price), date: l.date })),
+    ...(sells || []).map((s) => ({
+      amount: s.qty * s.sellPrice,
+      date: s.date,
+    })),
     ...(totalQty > 0
-      ? [{ amount: totalQty * cmp, date: new Date().toISOString().slice(0, 10) }]
-      : []
-    ),
+      ? [
+          {
+            amount: totalQty * cmp,
+            date: new Date().toISOString().slice(0, 10),
+          },
+        ]
+      : []),
   ]);
 }
 
@@ -161,6 +140,6 @@ export function holdingXIRR(lots, sells, cmp) {
 export function lotXIRR(lot, cmp) {
   return xirr([
     { amount: -(lot.qty * lot.price), date: lot.date },
-    { amount:   lot.qty * cmp,        date: new Date().toISOString().slice(0, 10) },
+    { amount: lot.qty * cmp, date: new Date().toISOString().slice(0, 10) },
   ]);
 }
