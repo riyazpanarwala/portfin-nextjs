@@ -226,20 +226,29 @@ export function Sparkline({ data, width = 120, height = 36, color = '#3b82f6' })
 }
 
 // ─── BarChart ─────────────────────────────────────────────────────────────────
-export function BarChart({ data, width = 300, height = 120, color = '#3b82f6' }) {
+export function BarChart({
+  data,
+  width = 300,
+  height = 120,
+  color = '#3b82f6',
+  valueFormatter,
+}) {
   if (!data || !data.length) return null;
   const resolvedColor = resolveColor(color, '#3b82f6');
   const maxVal = Math.max(...data.map(d => d.value), 1);
+  const formatValue = valueFormatter || (v => yFmt(v, maxVal));
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ReBarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis dataKey="label" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} />
-        <YAxis tickFormatter={v => yFmt(v, maxVal)} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={52} />
+        <YAxis tickFormatter={formatValue} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={52} />
         <Tooltip
-          formatter={v => yFmt(v, maxVal)}
+          formatter={v => formatValue(v)}
           contentStyle={TOOLTIP_STYLE}
+          labelStyle={{ color: '#e8eef8', fontWeight: 700, marginBottom: 6 }}
+          itemStyle={{ color: '#e8eef8' }}
           cursor={{ fill: 'rgba(59,130,246,0.08)' }}
         />
         <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={40}>

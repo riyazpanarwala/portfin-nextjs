@@ -59,6 +59,7 @@ function computeYearByYearReturns(snapshots, trades) {
     ...Object.keys(yearMap),
   ]);
   const years = [...allYears].sort();
+  const firstSnapshotYear = Object.keys(yearMap).sort()[0] || null;
   const results = [];
   let cumulativeInvested = 0;
 
@@ -71,6 +72,7 @@ function computeYearByYearReturns(snapshots, trades) {
       tradeCount: 0,
     };
     const isCurrentYear = year === new Date().getFullYear().toString();
+    const isFirstSnapshotYear = year === firstSnapshotYear;
     const startInvested = cumulativeInvested;
     cumulativeInvested += tradeYear.netFlow;
 
@@ -106,6 +108,9 @@ function computeYearByYearReturns(snapshots, trades) {
     const returnPct =
       startValue > 0 && endValue != null ? ((endValue / startValue - 1) * 100).toFixed(2) : null;
     const absoluteGain = startValue != null && endValue != null ? endValue - startValue : null;
+    const isPartialSnapshotYear =
+      yearSnapshots.length > 0 &&
+      (isCurrentYear || isFirstSnapshotYear || endDate?.slice(5, 7) !== '12');
 
     results.push({
       year,
@@ -122,6 +127,8 @@ function computeYearByYearReturns(snapshots, trades) {
       returnPct: returnPct == null ? null : parseFloat(returnPct),
       absoluteGain,
       isCurrentYear,
+      isFirstSnapshotYear,
+      isPartialSnapshotYear,
       snapshotCount: yearSnapshots.length,
       hasSnapshotValue: yearSnapshots.length > 0,
     });
@@ -319,16 +326,16 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
     );
   }
 
-  const yearsWithReturns = yearlyData.filter(d => d.returnPct != null);
-  const bestYear = yearsWithReturns.reduce((a, b) =>
+  const completedReturnYears = yearlyData.filter(d => d.returnPct != null && !d.isPartialSnapshotYear);
+  const bestYear = completedReturnYears.reduce((a, b) =>
     (b.returnPct || -Infinity) > (a.returnPct || -Infinity) ? b : a
-  , yearsWithReturns[0]);
-  const worstYear = yearsWithReturns.reduce((a, b) =>
+  , completedReturnYears[0]);
+  const worstYear = completedReturnYears.reduce((a, b) =>
     (b.returnPct || Infinity) < (a.returnPct || Infinity) ? b : a
-  , yearsWithReturns[0]);
+  , completedReturnYears[0]);
   const avgReturn =
-    yearsWithReturns.length > 0
-      ? yearsWithReturns.reduce((s, d) => s + d.returnPct, 0) / yearsWithReturns.length
+    completedReturnYears.length > 0
+      ? completedReturnYears.reduce((s, d) => s + d.returnPct, 0) / completedReturnYears.length
       : null;
   const latestSnapshotYear = snapshotYears[snapshotYears.length - 1];
 
@@ -342,7 +349,7 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
             {bestYear?.year || '—'}
           </div>
           <div className={styles.summarySub}>
-            {bestYear ? `${fmt(bestYear.returnPct, 2)}% return` : 'Need year-end snapshots'}
+            {bestYear ? `${fmt(bestYear.returnPct, 2)}% return` : 'Need full-year snapshots'}
           </div>
         </div>
 
@@ -352,7 +359,7 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
             {worstYear?.year || '—'}
           </div>
           <div className={styles.summarySub}>
-            {worstYear ? `${fmt(worstYear.returnPct, 2)}% return` : 'Need year-end snapshots'}
+            {worstYear ? `${fmt(worstYear.returnPct, 2)}% return` : 'Need full-year snapshots'}
           </div>
         </div>
 
@@ -362,7 +369,7 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
             {avgReturn == null ? '—' : `${fmt(avgReturn, 2)}%`}
           </div>
           <div className={styles.summarySub}>
-            Across {yearsWithReturns.length} snapshot year{yearsWithReturns.length !== 1 ? 's' : ''}
+            Across {completedReturnYears.length} full snapshot year{completedReturnYears.length !== 1 ? 's' : ''}
           </div>
         </div>
 
@@ -377,12 +384,12 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
 
       {/* Year-by-Year Returns Chart */}
       <div className={styles.chartBox}>
-        <div className={styles.chartTitle}>Year-by-Year Returns (%)</div>
+        <div className={styles.chartTitle}>Snapshot-Based Returns (%)</div>
         <div className={styles.chartSub}>
-          Annual return percentage for each calendar year
+          Point-to-point returns from saved snapshots; partial and YTD years are excluded from best/worst/average
         </div>
         {yearlyReturnChartData.length > 0
-          ? <BarChart data={yearlyReturnChartData} height={200} />
+          ? <BarChart data={yearlyReturnChartData} height={200} valueFormatter={v => `${fmt(v, 2)}%`} />
           : <div className={styles.chartEmpty}>Returns need snapshots in each year. Your older years are shown from trades below.</div>}
       </div>
 
@@ -400,9 +407,9 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
         <>
           <div className={styles.controlsRow}>
             <div className={styles.yearSelector}>
-              <div className={styles.selectorLabel}>Select Year for Breakdown</div>
+              <div className={styles.selectorLabel}>Select Snapshot Year for Breakdown</div>
               <div className={styles.yearButtons}>
-                {yearlyData.map(d => (
+                {snapshotYears.map(d => (
                   <button
                     key={d.year}
                     className={`${styles.yearBtn} ${
@@ -411,6 +418,7 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
                     onClick={() => setSelectedYear(d.year)}
                   >
                     {d.year}
+                    {d.isPartialSnapshotYear && <span className={styles.yearBtnMeta}>partial</span>}
                   </button>
                 ))}
               </div>
@@ -507,7 +515,7 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
 
           {/* Year-by-Year Summary Table */}
           <div className={styles.tableBox}>
-            <div className={styles.tableTitle}>Year-by-Year Summary</div>
+            <div className={styles.tableTitle}>Portfolio History Summary</div>
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
                 <thead>
@@ -517,7 +525,7 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
                     <th style={{ textAlign: 'right' }}>End Value</th>
                     <th style={{ textAlign: 'right' }}>Net Invested</th>
                     <th style={{ textAlign: 'right' }}>Absolute Gain</th>
-                    <th style={{ textAlign: 'right' }}>Return %</th>
+                    <th style={{ textAlign: 'right' }}>Snapshot Return %</th>
                     <th style={{ textAlign: 'right' }}>Trades</th>
                     <th style={{ textAlign: 'right' }}>Snapshots</th>
                   </tr>
@@ -525,7 +533,16 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
                 <tbody>
                   {yearlyData.map((d, i) => (
                     <tr key={i}>
-                      <td style={{ fontWeight: 600 }}>{d.year}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        <span className={styles.yearCell}>
+                          {d.year}
+                          {d.isPartialSnapshotYear && (
+                            <span className={styles.partialBadge}>
+                              {d.isCurrentYear ? 'YTD' : d.isFirstSnapshotYear ? 'first' : 'partial'}
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
                         {fmtCr(d.startValue)}
                       </td>
@@ -549,11 +566,14 @@ export function YearByYearView({ snapshots = [], trades = [] }) {
                         style={{
                           textAlign: 'right',
                           fontFamily: 'var(--font-mono)',
-                              color: d.returnPct == null ? 'var(--text3)' : d.returnPct >= 0 ? '#10b981' : '#ef4444',
-                              fontWeight: 700,
-                            }}
-                          >
+                          color: d.returnPct == null ? 'var(--text3)' : d.returnPct >= 0 ? '#10b981' : '#ef4444',
+                          fontWeight: 700,
+                        }}
+                      >
                         {d.returnPct == null ? '—' : `${fmt(d.returnPct, 2)}%`}
+                        {d.returnPct != null && d.isPartialSnapshotYear && (
+                          <span className={styles.returnNote}>snapshot period</span>
+                        )}
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--text2)' }}>
                         {d.tradeCount}
