@@ -16,7 +16,9 @@
     "postinstall": "prisma generate",
     "update-prices": "node prisma/updatePrices.js",
     "update-prices-stocks": "node prisma/updatePrices.js --stocks",
-    "update-prices-mf": "node prisma/updatePrices.js --mf"
+    "update-prices-mf": "node prisma/updatePrices.js --mf",
+    "update-instruments": "node scripts/updateInstrumentsData.js",
+    "update-instruments:watch": "node scripts/updateInstrumentsData.js --watch"
   },
   "prisma": {
     "seed": "node --experimental-vm-modules prisma/seed.js"
