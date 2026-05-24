@@ -140,16 +140,33 @@ export async function fetchMFHistoricalNAV(isin, fromDate) {
  * Returns null on failure.
  */
 async function resolveISINtoSchemeCode(isin) {
+  const normalizedIsin = (isin || "").trim().toUpperCase();
+  if (!normalizedIsin) return null;
+
   try {
-    const res = await fetch(
-      `https://api.mfapi.in/mf/search?q=${encodeURIComponent(isin)}`,
-      { signal: AbortSignal.timeout(10000) },
-    );
+    const res = await fetch("https://portal.amfiindia.com/spages/NAVAll.txt", {
+      signal: AbortSignal.timeout(20000),
+    });
     if (!res.ok) return null;
-    const data = await res.json();
-    // data: [{ schemeCode, schemeName, ... }]
-    if (!Array.isArray(data) || !data.length) return null;
-    return String(data[0].schemeCode);
+    const text = await res.text();
+
+    for (const line of text.split("\n")) {
+      const parts = line.split(";");
+      if (parts.length < 5) continue;
+
+      const schemeCode = parts[0]?.trim();
+      const isinGrowth = parts[1]?.trim().toUpperCase();
+      const isinDiv = parts[2]?.trim().toUpperCase();
+
+      if (
+        schemeCode &&
+        (isinGrowth === normalizedIsin || isinDiv === normalizedIsin)
+      ) {
+        return schemeCode;
+      }
+    }
+
+    return null;
   } catch {
     return null;
   }
