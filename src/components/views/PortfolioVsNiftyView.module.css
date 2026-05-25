@@ -189,11 +189,6 @@
   margin-left: 8px;
 }
 
-/*
- * improvement #5: was `repeat(4, 1fr)` which broke on mobile.
- * Now uses auto-fit with a 160px minimum so cards reflow to 2-per-row
- * on ≤520px and 1-per-row on very narrow screens.
- */
 .rollingGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -281,117 +276,6 @@
 .alphaChipText {
   font-size: 11px;
   font-weight: 700;
-}
-
-/* ── Hypothetical table panel ── */
-.hypotheticalPanel {
-  overflow: hidden;
-}
-
-.hypotheticalHeader {
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.hypotheticalTitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.hypotheticalSub {
-  margin-left: 8px;
-  font-size: 11px;
-  color: var(--text3);
-}
-
-.hypotheticalLoadingBadge {
-  font-size: 11px;
-  color: var(--yellow);
-}
-
-.hypotheticalTableWrapper {
-  overflow-x: auto;
-}
-
-.tdMono {
-  font-family: var(--font-mono);
-}
-
-.tdMonoBold {
-  font-family: var(--font-mono);
-  font-weight: 700;
-}
-
-.tdMonoAccent {
-  font-family: var(--font-mono);
-  color: var(--accent2);
-  font-weight: 600;
-}
-
-.tdMonoText2 {
-  font-family: var(--font-mono);
-  color: var(--text2);
-}
-
-.tdLoadingHint {
-  color: var(--text3);
-}
-
-.tdAlphaDelta {
-  font-family: var(--font-mono);
-  margin-left: 6px;
-  font-weight: 700;
-}
-
-/* ── Methodology note ── */
-.methodologyNote {
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 11px;
-  color: var(--text3);
-  background: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.15);
-  line-height: 1.7;
-}
-
-.methodologyNoteStrong {
-  color: var(--text2);
-}
-
-/* ── Empty state pro-tip box ── */
-.proTipBox {
-  background: rgba(59, 130, 246, 0.08);
-  border-radius: 10px;
-  padding: 14px 20px;
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  max-width: 380px;
-  font-size: 12px;
-  color: var(--text2);
-  text-align: left;
-  line-height: 1.8;
-}
-
-.proTipLabel {
-  font-weight: 700;
-  color: var(--accent2);
-  margin-bottom: 6px;
-}
-
-.drawdownLoadingRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  margin-bottom: 12px;
-  border-radius: 6px;
-  font-size: 11px;
-  color: var(--text3);
-  background: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.12);
 }
 
 /* ── Calendar year returns panel ── */
@@ -604,6 +488,40 @@
   line-height: 1.7;
 }
 
+/* ── Methodology note ── */
+.methodologyNote {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--text3);
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  line-height: 1.7;
+}
+
+.methodologyNoteStrong {
+  color: var(--text2);
+}
+
+/* ── Empty state pro-tip box ── */
+.proTipBox {
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 10px;
+  padding: 14px 20px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  max-width: 380px;
+  font-size: 12px;
+  color: var(--text2);
+  text-align: left;
+  line-height: 1.8;
+}
+
+.proTipLabel {
+  font-weight: 700;
+  color: var(--accent2);
+  margin-bottom: 6px;
+}
+
 /* ── Mobile overrides ── */
 @media (max-width: 760px) {
   .statsGrid {
@@ -624,8 +542,6 @@
   .chartModeGroup {
     flex-wrap: wrap;
   }
-
-  /* rollingGrid already uses auto-fit — no override needed */
 
   .calSummaryRow {
     flex-direction: column;
