@@ -548,7 +548,8 @@ export default function PortfolioVsNiftyView() {
   const [pendingKeys, setPendingKeys]       = useState(new Set());
   const [benchError,  setBenchError]        = useState(false);
 
-  const firstSnapshotDate = snapshots[0]?.snapshotAt?.slice(0, 10);
+  const firstSnapshotDate = [...snapshots].sort((a,b) =>
+			a.snapshotAt.localeCompare(b.snapshotAt))[0]?.snapshotAt?.slice(0, 10);
   const prevFirstDateRef  = useRef(null);
 
   function toggleBenchmark(key) {
@@ -676,13 +677,9 @@ export default function PortfolioVsNiftyView() {
       }));
   }, [activeBenchSeries]);
 
-  // ── Summary stat cards ────────────────────────────────────────────────────
-  // Use raw values to compute % returns — avoids the indexed-value-as-% bug.
-  const firstPortfolioValue = portfolioSeries[0]?.value || 1;
-  const lastPortfolioValue  = portfolioSeries[portfolioSeries.length - 1]?.value || 1;
   // Simple point-to-point % return from first to last snapshot
   const pTotal = portfolioSeries.length >= 2
-    ? ((lastPortfolioValue / firstPortfolioValue) - 1) * 100
+    ? (portfolioSeries[portfolioSeries.length - 1]?.returnPct ?? 0)
     : 0;
 
   const primaryBench = activeBenchSeries[0];
@@ -704,8 +701,8 @@ export default function PortfolioVsNiftyView() {
     ? lastP.indexed - lastPrimBench.indexed
     : null;
 
-  const firstSnapshotDateFmt = snapshots[0]?.snapshotAt?.slice(0, 10);
-  const latestSnapshotDate   = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
+  const firstSnapshotDateFmt = portfolioSeries[0]?.date?.slice(0, 10);
+  const latestSnapshotDate   = portfolioSeries[portfolioSeries.length - 1]?.date?.slice(0, 10);
 
   const handleExportCSV = useCallback(() => {
     exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSeries);
