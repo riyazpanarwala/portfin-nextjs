@@ -1,29 +1,5 @@
 'use client';
 
-/**
- * PortfolioVsNiftyView.js
- *
- * Improvements applied in this version:
- *
- * UX:
- *  1. RollingReturns: memoized pMap + allMonths so benchmark toggles don't
- *     re-run period calculations unnecessarily.
- *  2. BenchmarkSelector: shows data-point count badge per benchmark.
- *  3. CSV export of the indexed comparison series (portfolio + all active
- *     benchmarks, month by month).
- *  4. mode no longer resets when portfolioSeries.length changes — only resets
- *     on first snapshot data arriving (length going 0→N).
- *  5. RollingReturns grid uses auto-fit columns so it wraps on mobile.
- *
- * Code quality:
- *  6. Sub-components extracted into clearly-labelled sections; the file stays
- *     a single module but each component has a clear header comment.
- *  7. activeBenchSeries tracks a "pending" state per benchmark key so the
- *     selector can show a loading spinner while a newly added benchmark fetches.
- *  8. resolveBenchmarkColor removed — imported from lib/colorResolver.js via
- *     niftyData.js re-export (single source of truth).
- */
-
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
@@ -48,9 +24,33 @@ import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 import styles from './PortfolioVsNiftyView.module.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute annualised CAGR between two snapshot data points.
+ * Returns null if there is insufficient data (< 30 days apart).
+ */
+function snapshotCagr(startValue, endValue, startMonth, endMonth) {
+  if (!startValue || !endValue || startValue <= 0) return null;
+  const [sy, sm] = startMonth.split('-').map(Number);
+  const [ey, em] = endMonth.split('-').map(Number);
+  const months = (ey - sy) * 12 + (em - sm);
+  if (months < 1) return null;
+  const years = months / 12;
+  return (Math.pow(endValue / startValue, 1 / years) - 1) * 100;
+}
+
+/**
+ * Total return % between two values (point-to-point, not annualised).
+ */
+function totalReturnPct(startValue, endValue) {
+  if (!startValue || startValue <= 0) return null;
+  return ((endValue / startValue) - 1) * 100;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BenchmarkSelector
-// Shows toggle buttons for each benchmark, with a data-point count badge
-// when live data has been fetched (improvement #2).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BENCH_KEYS = Object.keys(BENCHMARKS);
@@ -100,7 +100,6 @@ function BenchmarkSelector({ active, onChange, benchHistories, pendingKeys }) {
               style={{ background: bench.color, opacity: on ? 1 : 0.35 }}
             />
             {bench.label}
-            {/* Data-point badge */}
             {on && key !== 'fd' && (
               <span style={{
                 fontSize:   9,
@@ -126,9 +125,7 @@ function BenchmarkSelector({ active, onChange, benchHistories, pendingKeys }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CSV Export helper (improvement #3)
-// Exports the indexed comparison series: month, portfolio-index, and one
-// column per active benchmark.
+// CSV Export
 // ─────────────────────────────────────────────────────────────────────────────
 
 function exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSeries) {
@@ -160,8 +157,6 @@ function exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSe
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RollingReturns
-// Memoized pMap + allMonths so benchmark toggles don't cause recalculation
-// (improvement #1). Grid uses auto-fit columns for mobile (improvement #5).
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
@@ -172,7 +167,6 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
     { label: '3Y',  months: 36 },
   ];
 
-  // Memoized — only recalculates when the portfolio series changes (#1)
   const pMap      = useMemo(() => Object.fromEntries(portfolioSeries.map(d => [d.month, d.value])), [portfolioSeries]);
   const allMonths = useMemo(() => portfolioSeries.map(d => d.month).sort(), [portfolioSeries]);
   const lastMonth = allMonths[allMonths.length - 1];
@@ -192,8 +186,9 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
         const fromMonth = allMonths[fromIdx];
         const pStart    = pMap[fromMonth];
         const pEnd      = pMap[lastMonth];
+        // FIX: use totalReturnPct helper (point-to-point for rolling periods)
         const pRet = (pStart != null && pEnd != null && pStart > 0)
-          ? ((pEnd / pStart) - 1) * 100 : null;
+          ? totalReturnPct(pStart, pEnd) : null;
 
         return (
           <div
@@ -218,7 +213,7 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
                 const bStart = bMap[fromMonth];
                 const bEnd   = bMap[lastMonth];
                 const bRet   = (bStart != null && bEnd != null && bStart > 0)
-                  ? ((bEnd / bStart) - 1) * 100 : null;
+                  ? totalReturnPct(bStart, bEnd) : null;
                 const alpha  = pRet != null && bRet != null ? pRet - bRet : null;
 
                 return (
@@ -287,37 +282,51 @@ function computeCalendarYearReturns(portfolioSeries, activeBenchSeries) {
     const isCurrentYear = year === currentYearStr;
     const isFirstYear   = idx === 0;
 
-    let pStart = null;
-    if (!isFirstYear) {
-      const prevYear = String(parseInt(year) - 1);
-      const prev = lastValueInYear(pMap, prevYear);
-      pStart = prev?.value ?? null;
+    // FIX: For the first year, we don't have a Jan 1 starting value,
+    // so any return calculation is misleading (partial year from first purchase).
+    // Mark as partial and return null for pRet so we display '—'.
+    if (isFirstYear) {
+      const pEnd = lastValueInYear(pMap, year);
+      const isPartial = true; // always partial — we don't have Jan 1 baseline
+
+      const benchReturns = activeBenchSeries.map((b, bi) => {
+        const map = benchMaps[bi];
+        return { key: b.key, label: b.label, color: b.color, ret: null, alpha: null };
+      });
+
+      return { year, pRet: null, benchReturns, isPartial, isFirstYear };
     }
+
+    // For subsequent years: use Dec 31 of prior year as start
+    const prevYear = String(parseInt(year) - 1);
+    const prevEnd  = lastValueInYear(pMap, prevYear);
+    let pStart = prevEnd?.value ?? null;
+
+    // Fallback: if no prior-year snapshot, use first snapshot of this year
     if (pStart == null) {
       const first = firstValueInYear(pMap, year);
       pStart = first?.value ?? null;
     }
 
-    const pEnd = lastValueInYear(pMap, year);
-    const isPartial = isCurrentYear || pEnd?.month?.slice(5) !== '12';
-    const pRet = pStart != null && pEnd?.value != null && pStart > 0
-      ? ((pEnd.value / pStart) - 1) * 100
+    const pEnd    = lastValueInYear(pMap, year);
+    const isPartial = isCurrentYear || (pEnd?.month?.slice(5) !== '12');
+    const pRet = (pStart != null && pEnd?.value != null && pStart > 0)
+      ? totalReturnPct(pStart, pEnd.value)
       : null;
 
     const benchReturns = activeBenchSeries.map((b, bi) => {
       const map = benchMaps[bi];
+      // Use Dec 31 of prior year as benchmark start
       let bStart = null;
-      if (!isFirstYear) {
-        const prev = lastValueInYear(map, String(parseInt(year) - 1));
-        bStart = prev?.value ?? null;
-      }
+      const prevBEnd = lastValueInYear(map, prevYear);
+      bStart = prevBEnd?.value ?? null;
       if (bStart == null) {
         const first = firstValueInYear(map, year);
         bStart = first?.value ?? null;
       }
       const bEnd = lastValueInYear(map, year);
-      const bRet = bStart != null && bEnd?.value != null && bStart > 0
-        ? ((bEnd.value / bStart) - 1) * 100
+      const bRet = (bStart != null && bEnd?.value != null && bStart > 0)
+        ? totalReturnPct(bStart, bEnd.value)
         : null;
       const alpha = pRet != null && bRet != null ? pRet - bRet : null;
       return { key: b.key, label: b.label, color: b.color, ret: bRet, alpha };
@@ -339,7 +348,8 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
 
   if (!rows.length) return null;
 
-  const completedRows = rows.filter(r => !r.isPartial && r.pRet != null);
+  // FIX: exclude first year and current partial year from summary stats
+  const completedRows = rows.filter(r => !r.isPartial && !r.isFirstYear && r.pRet != null);
   const bestRow  = completedRows.length ? completedRows.reduce((a, b) => (b.pRet > a.pRet ? b : a)) : null;
   const worstRow = completedRows.length ? completedRows.reduce((a, b) => (b.pRet < a.pRet ? b : a)) : null;
   const winsCount = completedRows.filter(r => r.benchReturns[0]?.alpha != null && r.benchReturns[0].alpha > 0).length;
@@ -412,27 +422,34 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
           <tbody>
             {[...rows].reverse().map(({ year, pRet, benchReturns, isPartial, isFirstYear }) => {
               const pColor  = pRet == null ? 'var(--text3)' : colorPnl(pRet);
-              const partial = isPartial || isFirstYear;
               return (
-                <tr key={year} className={partial ? styles.calRowPartial : styles.calRow}>
+                <tr key={year} className={isPartial ? styles.calRowPartial : styles.calRow}>
                   <td className={styles.calTdYear}>
                     <span className={styles.calYearText}>{year}</span>
-                    {partial && (
+                    {isFirstYear && (
+                      <span className={styles.calPartialBadge}>first</span>
+                    )}
+                    {!isFirstYear && isPartial && (
                       <span className={styles.calPartialBadge}>
                         {year === new Date().toISOString().slice(0, 4) ? 'YTD' : 'partial'}
                       </span>
                     )}
-                    {isFirstYear && !isPartial && <span className={styles.calPartialBadge}>first</span>}
                   </td>
+                  {/* FIX: show '—' for first year — no valid Jan 1 baseline exists */}
                   <td className={styles.calTdValue} style={{ color: pColor }}>
-                    {pRet != null ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%` : '—'}
+                    {isFirstYear
+                      ? <span style={{ color: 'var(--text3)', fontSize: 11 }}>— no Jan baseline</span>
+                      : pRet != null
+                      ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%`
+                      : '—'}
                   </td>
                   {benchLoading
                     ? activeBenchSeries.map(b => <td key={b.key} className={styles.calTdMuted}>…</td>)
                     : benchReturns.map(b => (
                       <td key={b.key} className={styles.calTdValue}
                         style={{ color: b.ret != null ? colorPnl(b.ret) : 'var(--text3)' }}>
-                        {b.ret != null ? `${b.ret > 0 ? '+' : ''}${fmt(b.ret, 1)}%` : '—'}
+                        {isFirstYear ? <span style={{ color: 'var(--text3)' }}>—</span>
+                          : b.ret != null ? `${b.ret > 0 ? '+' : ''}${fmt(b.ret, 1)}%` : '—'}
                       </td>
                     ))
                   }
@@ -442,7 +459,9 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
                       const a = b.alpha;
                       return (
                         <td key={`alpha-${b.key}`}>
-                          {a != null ? (
+                          {isFirstYear
+                            ? <span className={styles.calTdMuted}>—</span>
+                            : a != null ? (
                             <span className={`${styles.calAlphaChip} ${a > 0 ? styles.calAlphaWin : styles.calAlphaLoss}`}>
                               {a > 0 ? '▲' : '▼'} {a > 0 ? '+' : ''}{fmt(a, 1)}%
                             </span>
@@ -452,7 +471,7 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
                     })
                   )}
                   <td className={styles.calTdBar}>
-                    {pRet != null && (
+                    {pRet != null && !isFirstYear && (
                       <div className={styles.calBarWrapper}>
                         <div className={styles.calBar} style={{
                           width: `${Math.min(100, Math.abs(pRet) * 1.5)}%`,
@@ -471,6 +490,7 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
 
       <div className={styles.calFootnote}>
         Returns are Jan–Dec point-to-point using the last available snapshot in each month.
+        The first year row shows "—" because no Jan 1 baseline exists (portfolio started mid-year).
         Partial/YTD rows use the most recent snapshot as the end value.
         Alpha = portfolio return − benchmark return for the same calendar year.
         {benchLoading && <span style={{ color: 'var(--yellow)', marginLeft: 6 }}>Benchmark data loading…</span>}
@@ -481,13 +501,22 @@ function CalendarYearReturns({ portfolioSeries, activeBenchSeries, benchLoading 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HypotheticalTable
+//
+// KEY INSIGHT: portfolioSeries.value = totalValue from snapshots.
+// totalValue grows with NEW capital (SIPs, lump sums) — not just market returns.
+// So ratio (currentValue / firstValue) = portfolio size growth, NOT investment return.
+// A portfolio that went from ₹21K → ₹39.65L looks like 1889x growth, but most
+// of that is new money added, not market returns.
+//
+// CORRECT APPROACH: Use totalReturnPct from snapshot (computed by FIFO engine)
+// to drive the hypothetical. This is the true return on invested capital.
+// For benchmark: use the actual index level ratio (pure price return, no new money).
 // ─────────────────────────────────────────────────────────────────────────────
 
-function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, benchLoading }) {
-  if (!portfolioSeries.length) return null;
+const HYPOTHETICAL_BASE = 100000; // ₹1L standard base
 
-  const baseP   = portfolioSeries[0]?.value || 1;
-  const baseAmt = totalInvested || 100000;
+function HypotheticalTable({ portfolioSeries, activeBenchSeries, benchLoading }) {
+  if (!portfolioSeries.length) return null;
 
   const milestones = useMemo(() => {
     if (!portfolioSeries.length) return [];
@@ -510,46 +539,65 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
         <thead>
           <tr>
             <th>Period</th>
-            <th>Portfolio index</th>
-            {activeBenchSeries.map(b => <th key={b.key}>{b.label} index</th>)}
-            <th>₹{fmt(baseAmt / 100000, 1)}L in Portfolio</th>
+            <th>Portfolio return</th>
+            {activeBenchSeries.map(b => <th key={b.key}>{b.label} return</th>)}
+            <th>₹1L → Portfolio value</th>
             {activeBenchSeries.map(b => (
-              <th key={b.key}>₹{fmt(baseAmt / 100000, 1)}L in {b.shortLabel ?? b.label}</th>
+              <th key={b.key}>₹1L → {b.shortLabel ?? b.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {milestones.map((d, i) => {
-            const portVal = baseAmt * (d.value / baseP);
+            // Use totalReturnPct from snapshot — this is return on invested capital,
+            // not ratio of portfolio sizes (which includes new SIP contributions).
+            const portRetPct = d.returnPct ?? 0;
+            // ₹1L grown by portfolio return
+            const portVal = HYPOTHETICAL_BASE * (1 + portRetPct / 100);
+
             return (
               <tr key={i}>
                 <td className={styles.tdMonoText2}>{d.month}</td>
-                <td className={styles.tdMonoAccent}>{(d.value / baseP * 100).toFixed(1)}</td>
+                {/* Show actual portfolio return % from FIFO engine */}
+                <td className={styles.tdMonoAccent} style={{ color: colorPnl(portRetPct) }}>
+                  {portRetPct > 0 ? '+' : ''}{fmt(portRetPct, 1)}%
+                </td>
                 {activeBenchSeries.map((b, bi) => {
-                  const bVal = benchMaps[bi][d.month] ?? null;
-                  const base = b.data[0]?.value || 1;
+                  const bVal  = benchMaps[bi][d.month] ?? null;
+                  const bBase = b.data[0]?.value || 1;
+                  // Benchmark return = pure index-level price return (correct)
+                  const bRetPct = bVal != null ? ((bVal / bBase) - 1) * 100 : null;
                   return (
-                    <td key={b.key} className={styles.tdMonoBold} style={{ color: b.color }}>
-                      {benchLoading ? '…' : bVal != null ? (bVal / base * 100).toFixed(1) : '—'}
+                    <td key={b.key} className={styles.tdMonoBold}
+                      style={{ color: bRetPct != null ? colorPnl(bRetPct) : 'var(--text3)' }}>
+                      {benchLoading ? '…'
+                        : bRetPct != null ? `${bRetPct > 0 ? '+' : ''}${fmt(bRetPct, 1)}%`
+                        : '—'}
                     </td>
                   );
                 })}
-                <td className={styles.tdMonoBold}>{fmtCr(portVal)}</td>
+                {/* ₹1L hypothetical: use FIFO return % for portfolio */}
+                <td className={styles.tdMonoBold}>
+                  {portVal >= 100000 ? fmtCr(portVal) : `₹${fmt(portVal, 0)}`}
+                </td>
                 {activeBenchSeries.map((b, bi) => {
-                  const bVal  = benchMaps[bi][d.month] ?? null;
-                  const base  = b.data[0]?.value || 1;
-                  const bAmt  = bVal != null ? baseAmt * (bVal / base) : null;
-                  const alpha = bAmt != null ? portVal - bAmt : null;
+                  const bVal    = benchMaps[bi][d.month] ?? null;
+                  const bBase   = b.data[0]?.value || 1;
+                  const bRetPct = bVal != null ? ((bVal / bBase) - 1) * 100 : null;
+                  const bAmt    = bRetPct != null ? HYPOTHETICAL_BASE * (1 + bRetPct / 100) : null;
+                  const alpha   = bAmt != null ? portVal - bAmt : null;
                   return (
                     <td key={b.key}>
                       {benchLoading ? (
                         <span className={styles.tdLoadingHint}>…</span>
                       ) : bAmt != null ? (
                         <>
-                          <span className={styles.tdMono}>{fmtCr(bAmt)}</span>
+                          <span className={styles.tdMono}>
+                            {bAmt >= 100000 ? fmtCr(bAmt) : `₹${fmt(bAmt, 0)}`}
+                          </span>
                           {alpha != null && (
                             <span className={styles.tdAlphaDelta} style={{ color: colorPnl(alpha) }}>
-                              ({alpha >= 0 ? '+' : ''}{fmtCr(alpha)})
+                              &nbsp;({alpha >= 0 ? '+' : ''}{Math.abs(alpha) >= 100000 ? fmtCr(alpha) : `₹${fmt(Math.abs(alpha), 0)}`})
                             </span>
                           )}
                         </>
@@ -562,6 +610,13 @@ function HypotheticalTable({ portfolioSeries, activeBenchSeries, totalInvested, 
           })}
         </tbody>
       </table>
+      <div style={{ padding: '10px 14px', fontSize: 10, color: 'var(--text3)', lineHeight: 1.7 }}>
+        <strong style={{ color: 'var(--text2)' }}>Note:</strong>{' '}
+        Portfolio return % is from the FIFO engine (totalReturnPct) — the actual return on invested capital
+        at each snapshot date. This accounts for cost basis, not portfolio size (which grows with new SIPs).
+        Benchmark return is pure index price return since the first snapshot date.
+        ₹1L values show what ₹1,00,000 invested at the first snapshot would be worth at each date.
+      </div>
     </div>
   );
 }
@@ -671,12 +726,10 @@ export default function PortfolioVsNiftyView() {
   const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId);
 
   const [mode, setMode]                       = useState('indexed');
-  const hasHadDataRef                         = useRef(false);   // improvement #4
+  const hasHadDataRef                         = useRef(false);
   const [activeBenchKeys, setActiveBenchKeys] = useState(['nifty50']);
 
-  // benchHistories: { [key]: { history, source, warning, dataPoints } }
   const [benchHistories, setBenchHistories] = useState({});
-  // pendingKeys: Set<string> — benchmark keys currently being fetched (improvement #7)
   const [pendingKeys, setPendingKeys]       = useState(new Set());
   const [benchError,  setBenchError]        = useState(false);
 
@@ -707,7 +760,6 @@ export default function PortfolioVsNiftyView() {
     setBenchError(false);
     if (dateChanged) setBenchHistories({});
 
-    // Mark newly requested keys as pending (#7)
     setPendingKeys(prev => {
       const next = new Set(prev);
       toFetch.forEach(k => next.add(k));
@@ -739,7 +791,6 @@ export default function PortfolioVsNiftyView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstSnapshotDate, activeBenchKeys.join(',')]);
 
-  // benchLoading: true only while at least one key is pending
   const benchLoading = pendingKeys.size > 0;
 
   // ── Portfolio series ────────────────────────────────────────────────────────
@@ -757,8 +808,6 @@ export default function PortfolioVsNiftyView() {
     }));
   }, [snapshots]);
 
-  // improvement #4: only reset mode when data first arrives (0 → N), not on
-  // every subsequent snapshot save or benchmark toggle.
   useEffect(() => {
     if (portfolioSeries.length > 0 && !hasHadDataRef.current) {
       hasHadDataRef.current = true;
@@ -786,7 +835,6 @@ export default function PortfolioVsNiftyView() {
         color:      bench.color,
         hexColor:   resolveBenchmarkColor(bench.color),
         data,
-        // pending flag for the selector badge (#7)
         pending:    pendingKeys.has(key),
       };
     });
@@ -809,22 +857,69 @@ export default function PortfolioVsNiftyView() {
       }));
   }, [activeBenchSeries]);
 
-  // ── Summary stats ───────────────────────────────────────────────────────────
-  const primaryBench  = activeBenchSeries[0];
-  const lastP         = rebasedPortfolio[rebasedPortfolio.length - 1];
-  const lastPrimBench = primaryBench
-    ? rebasedBenchSeries.find(b => b.key === primaryBench.key)?.data?.slice(-1)[0]
+  // ── Summary stats — FIX: use CAGR-based metrics, not indexed-series math ────
+  //
+  // OLD (wrong): pTotal = ((lastP.indexed / 100) - 1) * 100
+  //   This gives the total return of the indexed series which can be 49,000%+
+  //   for a long-running portfolio, making the stat card unreadable.
+  //
+  // NEW (correct): compute CAGR between first and last snapshot value.
+  //   This gives the annualised return (e.g. 13.82% p.a.) which matches
+  //   the "Portfolio CAGR" stat in the Overview and is meaningful.
+  //   Also show total point-to-point return as a sub-label.
+
+  const firstSnap = portfolioSeries[0];
+  const lastSnap  = portfolioSeries[portfolioSeries.length - 1];
+
+  // Portfolio CAGR from first to last snapshot
+  const portfolioSnapshotCagr = useMemo(() => {
+    if (!firstSnap || !lastSnap) return null;
+    return snapshotCagr(firstSnap.value, lastSnap.value, firstSnap.month, lastSnap.month);
+  }, [firstSnap, lastSnap]);
+
+  // Portfolio total point-to-point return (for sub-label)
+  const portfolioTotalReturn = useMemo(() => {
+    if (!firstSnap || !lastSnap) return null;
+    return totalReturnPct(firstSnap.value, lastSnap.value);
+  }, [firstSnap, lastSnap]);
+
+  // Primary benchmark CAGR from first to last snapshot date
+  const primaryBench     = activeBenchSeries[0];
+  const primaryBenchData = primaryBench?.data ?? [];
+
+  const benchmarkSnapshotCagr = useMemo(() => {
+    if (!primaryBench || !firstSnap || !lastSnap) return null;
+    const bFirst = primaryBenchData.find(d => d.month === firstSnap.month)?.value
+      ?? primaryBenchData[0]?.value ?? null;
+    const bLast  = primaryBenchData.find(d => d.month === lastSnap.month)?.value
+      ?? primaryBenchData[primaryBenchData.length - 1]?.value ?? null;
+    if (!bFirst || !bLast) return null;
+    const fromM = primaryBenchData.find(d => d.value === bFirst)?.month ?? firstSnap.month;
+    const toM   = primaryBenchData.find(d => d.value === bLast)?.month  ?? lastSnap.month;
+    return snapshotCagr(bFirst, bLast, fromM, toM);
+  }, [primaryBench, primaryBenchData, firstSnap, lastSnap]);
+
+  // Benchmark total return (for sub-label)
+  const benchmarkTotalReturn = useMemo(() => {
+    if (!primaryBenchData.length) return null;
+    const bFirst = primaryBenchData[0]?.value;
+    const bLast  = primaryBenchData[primaryBenchData.length - 1]?.value;
+    return totalReturnPct(bFirst, bLast);
+  }, [primaryBenchData]);
+
+  // Alpha = portfolio CAGR − benchmark CAGR (in percentage points p.a.)
+  const alphaCagr = (portfolioSnapshotCagr != null && benchmarkSnapshotCagr != null)
+    ? portfolioSnapshotCagr - benchmarkSnapshotCagr
     : null;
 
-  const pTotal         = lastP ? ((lastP.indexed / 100) - 1) * 100 : 0;
-  const bTotal         = lastPrimBench ? ((lastPrimBench.indexed / 100) - 1) * 100 : 0;
-  const alphaReturnPct = primaryBench ? pTotal - bTotal : null;
-  const alphaIndexPts  = lastP && lastPrimBench ? lastP.indexed - lastPrimBench.indexed : null;
+  // Also compute total-return alpha for the alpha badge text
+  const alphaTotalReturn = (portfolioTotalReturn != null && benchmarkTotalReturn != null)
+    ? portfolioTotalReturn - benchmarkTotalReturn
+    : null;
 
   const firstSnapshotDateFmt = snapshots[0]?.snapshotAt?.slice(0, 10);
   const latestSnapshotDate   = snapshots[snapshots.length - 1]?.snapshotAt?.slice(0, 10);
 
-  // ── CSV export callback ─────────────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
     exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSeries);
   }, [rebasedPortfolio, rebasedBenchSeries, activeBenchSeries]);
@@ -859,10 +954,10 @@ export default function PortfolioVsNiftyView() {
     </div>
   );
 
-  const alphaBg = alphaReturnPct > 0
+  const alphaBg = (alphaCagr ?? alphaTotalReturn ?? 0) > 0
     ? 'linear-gradient(135deg, rgba(16,185,129,0.12), rgba(20,184,166,0.06))'
     : 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(245,158,11,0.06))';
-  const alphaBorderColor = alphaReturnPct > 0 ? 'var(--green)' : 'var(--red)';
+  const alphaBorderColor = (alphaCagr ?? alphaTotalReturn ?? 0) > 0 ? 'var(--green)' : 'var(--red)';
 
   const MODES = [
     ['indexed',  'Indexed'],
@@ -890,34 +985,40 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
+      {/* FIX: Summary stat cards now show CAGR (annualised), not raw indexed % */}
       <div className={styles.statsGrid}>
         <StatCard
-          label="Portfolio return"
-          value={`${pTotal >= 0 ? '+' : ''}${fmt(pTotal, 1)}%`}
-          color={colorPnl(pTotal)}
-          sub={`Since ${firstSnapshotDateFmt}`}
+          label="Portfolio CAGR"
+          value={portfolioSnapshotCagr != null ? fmtPct(portfolioSnapshotCagr, true) : '—'}
+          color={colorPnl(portfolioSnapshotCagr)}
+          sub={portfolioTotalReturn != null
+            ? `${portfolioTotalReturn > 0 ? '+' : ''}${fmt(portfolioTotalReturn, 1)}% total · since ${firstSnapshotDateFmt}`
+            : `Since ${firstSnapshotDateFmt}`}
         />
         {primaryBench && (
           <StatCard
-            label={`${primaryBench.label} return`}
-            value={`${bTotal >= 0 ? '+' : ''}${fmt(bTotal, 1)}%`}
+            label={`${primaryBench.label} CAGR`}
+            value={benchmarkSnapshotCagr != null ? fmtPct(benchmarkSnapshotCagr, true) : '—'}
             color={primaryBench.color}
-            sub="Same period"
+            sub={benchmarkTotalReturn != null
+              ? `${benchmarkTotalReturn > 0 ? '+' : ''}${fmt(benchmarkTotalReturn, 1)}% total · same period`
+              : 'Same period'}
           />
         )}
+        {/* FIX: Alpha shows CAGR difference in percentage points p.a. */}
         <StatCard
-          label="Alpha vs primary"
-          value={alphaReturnPct != null ? `${alphaReturnPct >= 0 ? '+' : ''}${fmt(alphaReturnPct, 1)}%` : '—'}
-          color={alphaReturnPct != null ? colorPnl(alphaReturnPct) : 'var(--text2)'}
-          sub={alphaIndexPts != null
-            ? `${fmt(Math.abs(alphaIndexPts), 1)} index pts`
-            : primaryBench ? `vs ${primaryBench.label}` : '—'}
+          label="Alpha (CAGR)"
+          value={alphaCagr != null ? `${alphaCagr >= 0 ? '+' : ''}${fmt(alphaCagr, 2)}% p.a.` : '—'}
+          color={alphaCagr != null ? colorPnl(alphaCagr) : 'var(--text2)'}
+          sub={primaryBench
+            ? `vs ${primaryBench.label} · annualised`
+            : '—'}
         />
         <StatCard
-          label="Portfolio CAGR"
+          label="Portfolio XIRR"
           value={fmtPct(stats.overallCagr, true)}
           color="var(--green2)"
-          sub="Annualised"
+          sub="Overall CAGR"
         />
         <StatCard
           label="Data points"
@@ -927,7 +1028,8 @@ export default function PortfolioVsNiftyView() {
         />
       </div>
 
-      {alphaReturnPct != null && (
+      {/* FIX: Alpha badge — show CAGR alpha, not total-return alpha */}
+      {alphaCagr != null && (
         <div
           className={styles.alphaBadge}
           style={{ background: alphaBg, border: `1px solid ${alphaBorderColor}` }}
@@ -935,14 +1037,18 @@ export default function PortfolioVsNiftyView() {
           <div>
             <span
               className={styles.alphaBadgeTitle}
-              style={{ color: alphaReturnPct > 0 ? 'var(--green2)' : 'var(--red2)' }}
+              style={{ color: alphaCagr > 0 ? 'var(--green2)' : 'var(--red2)' }}
             >
-              {alphaReturnPct > 0 ? '🏆 Your portfolio is beating' : '📉 Your portfolio is trailing'}{' '}
+              {alphaCagr > 0 ? '🏆 Your portfolio is beating' : '📉 Your portfolio is trailing'}{' '}
               {primaryBench?.label}
             </span>
             <span className={styles.alphaBadgeSub}>
-              by {fmt(Math.abs(alphaReturnPct), 1)}% return
-              {alphaIndexPts != null && ` (${fmt(Math.abs(alphaIndexPts), 1)} index pts)`}
+              by {fmt(Math.abs(alphaCagr), 2)}% p.a. CAGR
+              {alphaTotalReturn != null && (
+                <span style={{ color: 'var(--text3)', marginLeft: 8 }}>
+                  ({alphaTotalReturn > 0 ? '+' : ''}{fmt(alphaTotalReturn, 1)}% total return difference)
+                </span>
+              )}
             </span>
           </div>
           <div className={styles.alphaBadgeDates}>
@@ -974,7 +1080,6 @@ export default function PortfolioVsNiftyView() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* CSV export button (improvement #3) */}
             {(mode === 'indexed') && rebasedPortfolio.length > 0 && (
               <button
                 onClick={handleExportCSV}
@@ -1052,10 +1157,10 @@ export default function PortfolioVsNiftyView() {
         <div className={styles.hypotheticalHeader}>
           <div>
             <span className={styles.hypotheticalTitle}>
-              Hypothetical growth — ₹{fmt(stats.totalInvested / 100000, 1)}L invested
+              Hypothetical growth — ₹1L invested at start
             </span>
             <span className={styles.hypotheticalSub}>
-              · What would the same capital look like in each benchmark?
+              · What would ₹1,00,000 look like in your portfolio vs each benchmark?
             </span>
           </div>
           {benchLoading && (
@@ -1065,7 +1170,6 @@ export default function PortfolioVsNiftyView() {
         <HypotheticalTable
           portfolioSeries={portfolioSeries}
           activeBenchSeries={activeBenchSeries}
-          totalInvested={stats.totalInvested}
           benchLoading={benchLoading}
         />
       </div>
@@ -1075,10 +1179,13 @@ export default function PortfolioVsNiftyView() {
         Portfolio values are from saved snapshots. Benchmark data fetched live from Upstox V3 API
         (Nifty 50, Sensex, Nifty Midcap 100, Nifty Smallcap 100).
         FD/Risk-free line is synthetic at 7.1% p.a. compounded monthly.
-        All series rebased to 100 at first snapshot for fair comparison.
-        Alpha = portfolio return % − primary benchmark return % over the same period.
+        <strong> CAGR</strong> is computed between first and last snapshot dates (annualised).
+        <strong> Alpha</strong> = portfolio CAGR − benchmark CAGR (percentage points p.a.).
+        Indexed chart: all series rebased to 100 at first snapshot for relative comparison.
         Drawdown = % decline from rolling peak; computed on the rebased indexed series.
-        Calendar year returns use Jan–Dec point-to-point on raw snapshot values; partial years marked YTD.
+        Calendar year returns use Jan–Dec point-to-point on raw snapshot values;
+        the first year always shows "—" as no Jan 1 baseline exists (portfolio started mid-year).
+        Hypothetical table shows growth of ₹1L invested at the first snapshot date.
         Rolling returns use point-to-point % change on raw values.
         Save snapshots regularly for better chart granularity.
       </div>
