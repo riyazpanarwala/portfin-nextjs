@@ -126,39 +126,211 @@ function exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSe
   a.click();
 }
 
+function subtractMonths(monthStr, n) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const date = new Date(y, m - 1 - n, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // RollingReturns — uses raw portfolio values and raw benchmark values
 // ─────────────────────────────────────────────────────────────────────────────
-
-function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
+function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading, trades }) {
   const periods = [
-    { label: '6M',  months: 6  },
-    { label: '1Y',  months: 12 },
-    { label: '2Y',  months: 24 },
-    { label: '3Y',  months: 36 },
+    { label: '6M',  months: 6,    periodKey: '6m'  },
+    { label: '1Y',  months: 12,   periodKey: '1y'  },
+    { label: '2Y',  months: 24,   periodKey: '2y'  },
+    { label: '3Y',  months: 36,   periodKey: '3y'  },
+    { label: 'Max', months: null, periodKey: 'max' },
   ];
 
-  const pMap      = useMemo(() => Object.fromEntries(portfolioSeries.map(d => [d.month, d.value])), [portfolioSeries]);
-  const allMonths = useMemo(() => portfolioSeries.map(d => d.month).sort(), [portfolioSeries]);
+  const pMap = useMemo(() => {
+    const map = {};
+    for (const d of portfolioSeries) {
+      map[d.month] = d.value;
+    }
+    return map;
+  }, [portfolioSeries]);
+
+  const allMonths = useMemo(() =>
+    [...new Set(portfolioSeries.map(d => d.month))].sort(),
+    [portfolioSeries]
+  );
+
   const lastMonth = allMonths[allMonths.length - 1];
+
+  function closestMonthBefore(targetMonth) {
+    const candidates = allMonths.filter(m => m <= targetMonth);
+    return candidates.length ? candidates[candidates.length - 1] : null;
+  }
+
+  // SIP simulation for all periods at once
+  const sipBenchReturns = useMemo(() => {
+    if (!trades?.length || !lastMonth || !allMonths.length) return {};
+
+    // Build month → total buy amount from actual trades
+    const monthlyBuys = {};
+    for (const t of trades) {
+      if (t.tradeType !== 'BUY') continue;
+      const month  = t.tradeDate.slice(0, 7);
+      const amount = parseFloat(t.quantity) * parseFloat(t.price);
+      monthlyBuys[month] = (monthlyBuys[month] || 0) + amount;
+    }
+
+    // Period start months
+    const periodStarts = {
+      max: allMonths[0],
+      '6m':  subtractMonths(lastMonth, 6),
+      '1y':  subtractMonths(lastMonth, 12),
+      '2y':  subtractMonths(lastMonth, 24),
+      '3y':  subtractMonths(lastMonth, 36),
+    };
+
+    // Compute SIP return for one benchmark from startMonth to lastMonth
+    function computeSIPReturn(b, startMonth) {
+      if (b.key === 'fd') {
+        let totalValue    = 0;
+        let totalInvested = 0;
+        for (const [month, amount] of Object.entries(monthlyBuys)) {
+          if (month < startMonth) continue;
+          const [y,  mo] = month.split('-').map(Number);
+          const [ly, lm] = lastMonth.split('-').map(Number);
+          const monthsHeld = (ly - y) * 12 + (lm - mo);
+          totalValue    += amount * Math.pow(1 + 0.071 / 12, monthsHeld);
+          totalInvested += amount;
+        }
+        return totalInvested > 0
+          ? ((totalValue - totalInvested) / totalInvested) * 100
+          : null;
+      }
+
+      const bMap    = Object.fromEntries(b.data.map(d => [d.month, d.value]));
+      const bMonths = b.data.map(d => d.month).sort();
+
+      function closestBenchLevel(targetMonth) {
+        const candidates = bMonths.filter(m => m <= targetMonth);
+        const key = candidates.length ? candidates[candidates.length - 1] : bMonths[0];
+        return bMap[key] ?? null;
+      }
+
+      const currentLevel = bMap[lastMonth] ?? bMap[bMonths[bMonths.length - 1]];
+      if (!currentLevel) return null;
+
+      let totalUnits    = 0;
+      let totalInvested = 0;
+
+      for (const [month, amount] of Object.entries(monthlyBuys)) {
+        if (month < startMonth) continue;
+        const levelAtBuy = closestBenchLevel(month);
+        if (!levelAtBuy || levelAtBuy <= 0) continue;
+        totalUnits    += amount / levelAtBuy;
+        totalInvested += amount;
+      }
+
+      if (!totalInvested) return null;
+      return ((totalUnits * currentLevel - totalInvested) / totalInvested) * 100;
+    }
+
+    // Compute for all periods × all benchmarks
+    const results = {};
+    for (const [pKey, startMonth] of Object.entries(periodStarts)) {
+      results[pKey] = {};
+      for (const b of activeBenchSeries) {
+        results[pKey][b.key] = computeSIPReturn(b, startMonth);
+      }
+    }
+    return results;
+  }, [trades, activeBenchSeries, lastMonth, allMonths]);
+
+  // Shared benchmark row renderer
+  function BenchRow({ b, bRet, alpha, showSIPLabel }) {
+    return (
+      <div>
+        <div className={styles.rollingRow}>
+          <span className={styles.rollingBenchLabel} style={{ color: b.color }}>
+            ● {b.label}{showSIPLabel ? ' (SIP)' : ''}
+          </span>
+          <span className={styles.rollingValue} style={{ color: colorPnl(bRet) }}>
+            {bRet != null ? `${bRet > 0 ? '+' : ''}${fmt(bRet, 1)}%` : '—'}
+          </span>
+        </div>
+        {alpha != null && (
+          <div className={`${styles.alphaChip} ${alpha > 0 ? styles.alphaChipWin : styles.alphaChipLoss}`}>
+            <span
+              className={styles.alphaChipText}
+              style={{ color: alpha > 0 ? 'var(--green2)' : 'var(--red2)' }}
+            >
+			  {alpha > 0 ? '▲' : '▼'} vs {b.shortLabel ?? b.label}{showSIPLabel ? ' SIP' : ''}: {alpha > 0 ? '+' : ''}{fmt(alpha, 1)}%
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={styles.rollingGrid}>
-      {periods.map(({ label, months }) => {
-        const fromIdx = allMonths.length - 1 - months;
+      {periods.map(({ label, months, periodKey }) => {
 
-        if (fromIdx < 0) return (
+        // ── Max (since inception) ────────────────────────────────────
+        if (months === null) {
+          const fromMonth   = allMonths[0];
+          const lastSnap    = portfolioSeries[portfolioSeries.length - 1];
+          const pRet        = lastSnap?.returnPct ?? null;
+          const [startYear] = fromMonth.split('-');
+          const [endYear]   = lastMonth.split('-');
+          const rangeLabel  = startYear === endYear ? startYear : `${startYear}–${endYear}`;
+
+          return (
+            <div
+              key={label}
+              className={styles.rollingCard}
+              style={{
+                border:     '1px solid rgba(139,92,246,0.35)',
+                background: 'rgba(139,92,246,0.06)',
+              }}
+            >
+              <div className={styles.rollingCardHeader} style={{ color: 'var(--purple)' }}>
+                MAX RETURN · {rangeLabel}
+              </div>
+              <div className={styles.rollingRow}>
+                <span className={styles.rollingPortfolioLabel}>● Portfolio</span>
+                <span className={styles.rollingValue} style={{ color: colorPnl(pRet) }}>
+                  {pRet != null ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%` : '—'}
+                </span>
+              </div>
+              {benchLoading ? (
+                <div className={styles.rollingLoadingHint}>Loading benchmark data…</div>
+              ) : (
+                <>
+                  {activeBenchSeries.map(b => {
+                    const bRet  = sipBenchReturns.max?.[b.key] ?? null;
+                    const alpha = pRet != null && bRet != null ? pRet - bRet : null;
+                    return <BenchRow key={b.key} b={b} bRet={bRet} alpha={alpha} showSIPLabel />;
+                  })}
+                  <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 6, lineHeight: 1.6 }}>
+                    Both use same SIP amounts on same dates. True apples-to-apples comparison.
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        }
+
+        // ── Fixed periods (6M / 1Y / 2Y / 3Y) ───────────────────────
+        const targetFromMonth  = subtractMonths(lastMonth, months);
+        const fromMonth        = closestMonthBefore(targetFromMonth);
+        const minRequiredMonth = subtractMonths(lastMonth, Math.floor(months * 1.25));
+
+        if (!fromMonth || fromMonth < minRequiredMonth || fromMonth >= lastMonth) return (
           <div key={label} className={styles.rollingCardInsufficient}>
             <div className={styles.rollingCardPeriodLabel}>{label}</div>
             <div className={styles.rollingCardInsufficientSub}>Insufficient data</div>
           </div>
         );
 
-        const fromMonth = allMonths[fromIdx];
-        const pStart    = pMap[fromMonth];
-        const pEnd      = pMap[lastMonth];
-        // Straightforward % change: (end/start - 1) * 100
-        const pRet = (pStart != null && pEnd != null && pStart > 0)
+        const pStart = pMap[fromMonth];
+        const pEnd   = pMap[lastMonth];
+        const pRet   = (pStart != null && pEnd != null && pStart > 0)
           ? ((pEnd / pStart) - 1) * 100 : null;
 
         return (
@@ -168,47 +340,26 @@ function RollingReturns({ portfolioSeries, activeBenchSeries, benchLoading }) {
             style={{ border: `1px solid ${benchLoading ? 'var(--border)' : 'rgba(59,130,246,0.15)'}` }}
           >
             <div className={styles.rollingCardHeader}>{label} RETURN</div>
-
             <div className={styles.rollingRow}>
               <span className={styles.rollingPortfolioLabel}>● Portfolio</span>
               <span className={styles.rollingValue} style={{ color: colorPnl(pRet) }}>
                 {pRet != null ? `${pRet > 0 ? '+' : ''}${fmt(pRet, 1)}%` : '—'}
               </span>
             </div>
-
             {benchLoading ? (
               <div className={styles.rollingLoadingHint}>Loading benchmark data…</div>
             ) : (
               activeBenchSeries.map(b => {
-                const bMap   = Object.fromEntries(b.data.map(d => [d.month, d.value]));
-                const bStart = bMap[fromMonth];
-                const bEnd   = bMap[lastMonth];
-                const bRet   = (bStart != null && bEnd != null && bStart > 0)
-                  ? ((bEnd / bStart) - 1) * 100 : null;
-                const alpha  = pRet != null && bRet != null ? pRet - bRet : null;
-
-                return (
-                  <div key={b.key}>
-                    <div className={styles.rollingRow}>
-                      <span className={styles.rollingBenchLabel} style={{ color: b.color }}>
-                        ● {b.label}
-                      </span>
-                      <span className={styles.rollingValue} style={{ color: colorPnl(bRet) }}>
-                        {bRet != null ? `${bRet > 0 ? '+' : ''}${fmt(bRet, 1)}%` : '—'}
-                      </span>
-                    </div>
-                    {alpha != null && (
-                      <div className={`${styles.alphaChip} ${alpha > 0 ? styles.alphaChipWin : styles.alphaChipLoss}`}>
-                        <span
-                          className={styles.alphaChipText}
-                          style={{ color: alpha > 0 ? 'var(--green2)' : 'var(--red2)' }}
-                        >
-                          {alpha > 0 ? '▲' : '▼'} vs {b.shortLabel ?? b.label}: {alpha > 0 ? '+' : ''}{fmt(alpha, 1)}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
+                const bMap            = Object.fromEntries(b.data.map(d => [d.month, d.value]));
+				const bMonths         = b.data.map(d => d.month).sort();
+				const bFromCandidates = bMonths.filter(m => m <= targetFromMonth);
+				const bFromMonth      = bFromCandidates.length ? bFromCandidates[bFromCandidates.length - 1] : null;
+				const bStart          = bFromMonth ? bMap[bFromMonth] : null;
+				const bEnd            = bMap[lastMonth] ?? bMap[bMonths[bMonths.length - 1]];
+				const bRet            = (bStart != null && bEnd != null && bStart > 0)
+				  ? ((bEnd / bStart) - 1) * 100 : null;
+                const alpha = pRet != null && bRet != null ? pRet - bRet : null;
+                return <BenchRow key={b.key} b={b} bRet={bRet} alpha={alpha} showSIPLabel={false} />;
               })
             )}
           </div>
@@ -537,7 +688,7 @@ function ModeButton({ label, value, active, onClick }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function PortfolioVsNiftyView() {
-  const { portfolioId, stats, setActiveView } = usePortfolio();
+  const { portfolioId, stats, setActiveView, trades } = usePortfolio();
   const { snapshots, loading: snapshotsLoading } = useSnapshots(portfolioId);
 
   const [mode, setMode]                       = useState('indexed');
@@ -903,6 +1054,7 @@ export default function PortfolioVsNiftyView() {
           portfolioSeries={portfolioSeries}
           activeBenchSeries={activeBenchSeries}
           benchLoading={benchLoading}
+		  trades={trades}
         />
       </div>
 
