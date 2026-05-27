@@ -5,6 +5,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmtPct, fmt, colorPnl, sectorColor } from '@/lib/store';
 import { BarChart, HBar } from '@/components/charts/Charts';
 import { StatCard } from '@/components/ui/SharedUI';
+import { BenchmarkComparisonPanel } from '@/components/views/BenchmarkComparisonPanel';
 import { useAnalyticsView } from '@/hooks/useAnalyticsView';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import { YearByYearView } from './YearByYearView';
@@ -1207,28 +1208,7 @@ export default function AnalyticsView() {
             </div>
           </div>
           <div className={styles.twoCol}>
-            <div className="glass" style={{ padding: 18 }}>
-              <div className={styles.panelTitle}>Benchmark Comparison</div>
-              <div className={`${styles.panelSub} ${styles.benchmarkNote}`}>⚠ Benchmark figures as of Jan 2025</div>
-              <table>
-                <thead><tr><th>Benchmark</th><th>5Y CAGR</th><th>3Y CAGR</th><th>1Y Return</th></tr></thead>
-                <tbody>
-                  {BENCHMARKS.map((b, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 600 }}>{b.name}</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{b.cagr5y}%</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{b.cagr3y}%</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{b.cagr1y}%</td>
-                    </tr>
-                  ))}
-                  <tr style={{ background: 'rgba(59,130,246,0.08)' }}>
-                    <td style={{ fontWeight: 700, color: 'var(--accent2)' }}>Your Portfolio</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green2)', fontWeight: 700 }}>{fmt(stats.overallCagr, 1)}%</td>
-                    <td colSpan={2} style={{ color: 'var(--text3)', fontSize: 12 }}>Estimated</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <BenchmarkComparisonPanel snapshots={snapshots} stats={stats} />
             <div className="glass" style={{ padding: 18 }}>
               <div className={styles.panelTitle}>Unrealized Tax Exposure</div>
               <div className={styles.panelSub}>Tax if sold today · LTCG 12.5% · STCG 20%</div>
