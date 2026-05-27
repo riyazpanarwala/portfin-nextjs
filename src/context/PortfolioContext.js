@@ -22,6 +22,19 @@ const PortfolioCtx = createContext(null);
 const DEFAULT_USER_ID = 'user-default-001';
 const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v1';
 
+// All valid view IDs — used to validate the URL hash on load
+const VALID_VIEWS = new Set([
+  'overview', 'mf', 'stocks', 'analytics', 'timeline', 'goal',
+  'waterfall', 'action', 'snapshots', 'rebalancer', 'vs-nifty',
+  'ai-advisor', 'instruments', 'backfill', 'trade',
+]);
+
+function getViewFromHash() {
+  if (typeof window === 'undefined') return 'overview';
+  const hash = window.location.hash.replace('#', '').trim();
+  return VALID_VIEWS.has(hash) ? hash : 'overview';
+}
+
 function portfolioBetaCacheSignature(holdings) {
   return holdings
     .map(h => `${h.symbol}:${h.assetType}:${Number(h.qty || 0).toFixed(6)}`)
@@ -53,7 +66,6 @@ export function PortfolioProvider({ children }) {
   const [priceMeta, setPriceMeta]         = useState({});
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState(null);
-  const [activeView, setActiveView]       = useState('overview');
   const [toasts, setToasts]               = useState([]);
 
   const [portfolioXIRR, setPortfolioXIRR] = useState(null);
@@ -62,6 +74,37 @@ export function PortfolioProvider({ children }) {
 
   // ── Price-refresh overlay state ───────────────────────────────────────────
   const [priceRefreshState, setPriceRefreshState] = useState(REFRESH_IDLE);
+
+  // ── URL hash-based view persistence ──────────────────────────────────────
+  // IMPORTANT: always initialise with 'overview' so the server and client
+  // render the same HTML on first paint — avoids Next.js hydration mismatch.
+  // A useEffect then reads the real hash immediately after mount and jumps
+  // to the correct view before the user notices the change.
+  const [activeView, setActiveViewState] = useState('overview');
+
+  const setActiveView = useCallback((view) => {
+    setActiveViewState(view);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `#${view}`);
+    }
+  }, []);
+
+  // After hydration: apply whatever hash is currently in the URL
+  useEffect(() => {
+    const view = getViewFromHash();
+    if (view !== 'overview') {
+      setActiveViewState(view);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep state in sync when the user navigates with back/forward buttons
+  useEffect(() => {
+    function onHashChange() {
+      setActiveViewState(getViewFromHash());
+    }
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
