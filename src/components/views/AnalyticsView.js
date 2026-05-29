@@ -688,18 +688,6 @@ function TradeBehavior({ trades, realizedSummary }) {
       buysBySymbol[t.symbol].push(t.tradeDate);
     });
 
-    const avgAddGaps = Object.entries(buysBySymbol)
-      .filter(([, dates]) => dates.length > 1)
-      .map(([symbol, dates]) => {
-        const sorted = [...dates].sort();
-        let total = 0;
-        for (let i = 1; i < sorted.length; i++)
-          total += (new Date(sorted[i]) - new Date(sorted[i - 1])) / 864e5;
-        return { symbol, avgDays: Math.round(total / (sorted.length - 1)), count: sorted.length };
-      })
-      .sort((a, b) => a.avgDays - b.avgDays)
-      .slice(0, 8);
-
     // Buy-high / sell-low detection
     let buyHighSellLow = 0, buyHighSellLowValue = 0;
     realizedSummary.sells.forEach(s => {
@@ -731,7 +719,7 @@ function TradeBehavior({ trades, realizedSummary }) {
 
     return {
       totalTrades: trades.length, totalBuys: buys.length, totalSells: sells.length,
-      avgHoldDays, avgAddGaps, buyHighSellLow, buyHighSellLowValue, dayOfWeek,
+      avgHoldDays, buyHighSellLow, buyHighSellLowValue, dayOfWeek,
       avgTradeSize, maxTradeSize: Math.max(...tradeSizes), minTradeSize: Math.min(...tradeSizes),
       convictionAdds, uniqueSymbols: Object.keys(buysBySymbol).length,
       avgBuysPerSymbol: buys.length / Math.max(1, Object.keys(buysBySymbol).length),
@@ -798,37 +786,6 @@ function TradeBehavior({ trades, realizedSummary }) {
           </div>
         </div>
       </div>
-
-      {analysis.avgAddGaps.length > 0 && (
-        <TableBox title="Avg Days Between Buys per Symbol">
-          <table>
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th style={{ textAlign: 'right' }}>Buy Count</th>
-                <th style={{ textAlign: 'right' }}>Avg Days Between Buys</th>
-                <th style={{ textAlign: 'right' }}>Pattern</th>
-              </tr>
-            </thead>
-            <tbody>
-              {analysis.avgAddGaps.map((g, i) => {
-                const pattern = g.avgDays <= 35 ? 'Monthly SIP' : g.avgDays <= 100 ? 'Quarterly' : g.avgDays <= 180 ? 'Semi-annual' : 'Opportunistic';
-                const pColor  = g.avgDays <= 35 ? 'var(--green2)' : g.avgDays <= 100 ? 'var(--teal)' : g.avgDays <= 180 ? 'var(--yellow)' : 'var(--accent2)';
-                return (
-                  <tr key={i}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent2)' }}>{g.symbol}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{g.count}×</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{g.avgDays}d</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <Badge color={pColor} bg={`${pColor}20`} border={`${pColor}40`}>{pattern}</Badge>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </TableBox>
-      )}
 
       {analysis.buyHighSellLow > 0 && (
         <InfoBox borderColor="rgba(239,68,68,0.3)" bg="rgba(239,68,68,0.06)">
