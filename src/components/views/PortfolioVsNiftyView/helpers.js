@@ -1,5 +1,16 @@
 import { BENCHMARKS } from '@/lib/niftyData';
 import { fmt, colorPnl } from '@/lib/store';
+import {
+  calculatePointReturn,
+  getShortBenchmarkLabel,
+  subtractMonths,
+} from '@/hooks/useBenchmarkSeries';
+
+export {
+  calculatePointReturn,
+  getShortBenchmarkLabel,
+  subtractMonths,
+};
 
 export const BENCH_KEYS = Object.keys(BENCHMARKS);
 
@@ -39,44 +50,6 @@ export function closestMonthAtOrBefore(months, targetMonth, fallback = null) {
   return candidates.length ? candidates[candidates.length - 1] : fallback;
 }
 
-export function calculatePointReturn(start, end) {
-  return start != null && end != null && start > 0
-    ? ((end / start) - 1) * 100
-    : null;
-}
-
 export function getReturnColor(value, fallback = 'var(--text3)') {
   return value == null ? fallback : colorPnl(value);
-}
-
-export function getShortBenchmarkLabel(bench) {
-  return bench.label.split(' ').slice(0, 2).join(' ');
-}
-
-export function subtractMonths(monthStr, n) {
-  const [year, month] = monthStr.split('-').map(Number);
-  const date = new Date(year, month - 1 - n, 1);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-export function exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSeries) {
-  const benchMaps = rebasedBenchSeries.map(b => mapByMonth(b.data, 'indexed'));
-  const headers = [
-    'Month',
-    'Portfolio (indexed)',
-    ...activeBenchSeries.map(b => `${b.label} (indexed)`),
-  ];
-  const rows = rebasedPortfolio.map(d => [
-    d.month,
-    d.indexed?.toFixed(2) ?? '',
-    ...rebasedBenchSeries.map((b, i) => {
-      const value = benchMaps[i][d.month];
-      return value != null ? value.toFixed(2) : '';
-    }),
-  ]);
-  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-  const link = document.createElement('a');
-  link.href = 'data:text/csv,' + encodeURIComponent(csv);
-  link.download = 'portfolio_vs_benchmarks.csv';
-  link.click();
 }

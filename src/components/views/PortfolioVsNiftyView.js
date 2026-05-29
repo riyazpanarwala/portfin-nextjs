@@ -1,16 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
-import {
-  BENCHMARKS,
-  fetchBenchmarkHistory,
-  getBenchmarkForMonth,
-  rebaseToIndex,
-  getFDSeries,
-  resolveBenchmarkColor,
-} from '@/lib/niftyData';
+import { useBenchmarkSeries } from '@/hooks/useBenchmarkSeries';
 import { fmt, fmtPct, colorPnl } from '@/lib/store';
 import { StatCard, EmptyState } from '@/components/ui/SharedUI';
 import BenchmarkSelector from './PortfolioVsNiftyView/BenchmarkSelector';
@@ -18,12 +11,7 @@ import BenchmarkStatusBanner from './PortfolioVsNiftyView/BenchmarkStatusBanner'
 import CalendarYearReturns from './PortfolioVsNiftyView/CalendarYearReturns';
 import ChartPanel from './PortfolioVsNiftyView/ChartPanel';
 import RollingReturns from './PortfolioVsNiftyView/RollingReturns';
-import {
-  calculatePointReturn,
-  exportComparisonCSV,
-  formatPositiveReturn,
-  getShortBenchmarkLabel,
-} from './PortfolioVsNiftyView/helpers';
+import { formatPositiveReturn } from './PortfolioVsNiftyView/helpers';
 import styles from './PortfolioVsNiftyView.module.css';
 
 function LoadingState() {
@@ -151,83 +139,30 @@ export default function PortfolioVsNiftyView() {
   const hasHadDataRef                         = useRef(false);
   const [activeBenchKeys, setActiveBenchKeys] = useState(['nifty50']);
 
-  const [benchHistories, setBenchHistories] = useState({});
-  const [pendingKeys, setPendingKeys]       = useState(new Set());
-  const [benchError,  setBenchError]        = useState(false);
-
-  const firstSnapshotDate = [...snapshots].sort((a, b) =>
-    a.snapshotAt.localeCompare(b.snapshotAt))[0]?.snapshotAt?.slice(0, 10);
-  const prevFirstDateRef = useRef(null);
-
   function toggleBenchmark(key) {
     setActiveBenchKeys(prev =>
       prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
     );
   }
 
-  useEffect(() => {
-    if (!firstSnapshotDate) return;
-
-    const needFetch   = activeBenchKeys.filter(key => key !== 'fd' && !benchHistories[key]);
-    const dateChanged = firstSnapshotDate !== prevFirstDateRef.current;
-    prevFirstDateRef.current = firstSnapshotDate;
-
-    const toFetch = dateChanged
-      ? activeBenchKeys.filter(key => key !== 'fd')
-      : needFetch;
-
-    if (!toFetch.length) return;
-
-    let cancelled = false;
-    setBenchError(false);
-    if (dateChanged) setBenchHistories({});
-
-    setPendingKeys(prev => {
-      const next = new Set(prev);
-      toFetch.forEach(key => next.add(key));
-      return next;
-    });
-
-    Promise.all(
-      toFetch.map(key =>
-        fetchBenchmarkHistory(firstSnapshotDate, key).then(result => ({ key, result }))
-      )
-    ).then(results => {
-      if (cancelled) return;
-      let anyError = false;
-      const updates = {};
-      results.forEach(({ key, result }) => {
-        if (result) { updates[key] = result; }
-        else        { anyError = true; }
-      });
-      setBenchHistories(prev => ({ ...prev, ...updates }));
-      setPendingKeys(prev => {
-        const next = new Set(prev);
-        toFetch.forEach(key => next.delete(key));
-        return next;
-      });
-      if (anyError) setBenchError(true);
-    });
-
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstSnapshotDate, activeBenchKeys.join(',')]);
-
-  const benchLoading = pendingKeys.size > 0;
-
-  const portfolioSeries = useMemo(() => {
-    if (!snapshots.length) return [];
-    return snapshots.map(snapshot => ({
-      month:     snapshot.snapshotAt.slice(0, 7),
-      value:     parseFloat(snapshot.totalValue),
-      invested:  parseFloat(snapshot.totalInvested),
-      gain:      parseFloat(snapshot.totalGain),
-      returnPct: parseFloat(snapshot.totalReturnPct),
-      mfCagr:    snapshot.mfCagr != null ? parseFloat(snapshot.mfCagr) : null,
-      stCagr:    snapshot.stCagr != null ? parseFloat(snapshot.stCagr) : null,
-      date:      snapshot.snapshotAt,
-    }));
-  }, [snapshots]);
+  const {
+    activeBenchSeries,
+    alphaIndexPts,
+    alphaReturnPct,
+    benchError,
+    benchHistories,
+    benchLoading,
+    bTotal,
+    exportComparisonCSV: handleExportCSV,
+    firstSnapshotDate,
+    latestSnapshotDate,
+    pendingKeys,
+    portfolioSeries,
+    primaryBench,
+    pTotal,
+    rebasedBenchSeries,
+    rebasedPortfolio,
+  } = useBenchmarkSeries({ snapshots, activeBenchKeys });
 
   useEffect(() => {
     if (portfolioSeries.length > 0 && !hasHadDataRef.current) {
@@ -235,71 +170,6 @@ export default function PortfolioVsNiftyView() {
       setMode('indexed');
     }
   }, [portfolioSeries.length]);
-
-  const activeBenchSeries = useMemo(() => {
-    return activeBenchKeys.map(key => {
-      const bench = BENCHMARKS[key];
-      let data;
-      if (key === 'fd') {
-        data = getFDSeries(portfolioSeries).map(d => ({ month: d.month, value: d.value }));
-      } else {
-        const history = benchHistories[key]?.history ?? null;
-        data = portfolioSeries
-          .map(d => ({ month: d.month, value: getBenchmarkForMonth(d.month, history, key) ?? null }))
-          .filter(d => d.value !== null);
-      }
-      return {
-        key,
-        label:      bench.label,
-        shortLabel: getShortBenchmarkLabel(bench),
-        color:      bench.color,
-        hexColor:   resolveBenchmarkColor(bench.color),
-        data,
-        pending:    pendingKeys.has(key),
-      };
-    });
-  }, [activeBenchKeys, benchHistories, portfolioSeries, pendingKeys]);
-
-  const rebasedPortfolio = useMemo(() => {
-    if (!portfolioSeries.length) return [];
-    return rebaseToIndex(portfolioSeries, portfolioSeries[0].value);
-  }, [portfolioSeries]);
-
-  const rebasedBenchSeries = useMemo(() => {
-    return activeBenchSeries
-      .filter(benchmark => benchmark.data.length > 0)
-      .map(benchmark => ({
-        ...benchmark,
-        data: benchmark.key === 'fd'
-          ? benchmark.data.map(d => ({ ...d, indexed: d.value }))
-          : rebaseToIndex(benchmark.data, benchmark.data[0].value),
-      }));
-  }, [activeBenchSeries]);
-
-  const pTotal = portfolioSeries.length >= 2
-    ? (portfolioSeries[portfolioSeries.length - 1]?.returnPct ?? 0)
-    : 0;
-
-  const primaryBench = activeBenchSeries[0];
-  const bTotal = primaryBench && primaryBench.data.length
-    ? calculatePointReturn(primaryBench.data[0]?.value || 1, primaryBench.data[primaryBench.data.length - 1]?.value || 1)
-    : 0;
-
-  const alphaReturnPct = primaryBench ? pTotal - bTotal : null;
-  const lastP = rebasedPortfolio[rebasedPortfolio.length - 1];
-  const lastPrimBench = primaryBench
-    ? rebasedBenchSeries.find(benchmark => benchmark.key === primaryBench.key)?.data?.slice(-1)[0]
-    : null;
-  const alphaIndexPts = lastP && lastPrimBench
-    ? lastP.indexed - lastPrimBench.indexed
-    : null;
-
-  const firstSnapshotDateFmt = portfolioSeries[0]?.date?.slice(0, 10);
-  const latestSnapshotDate   = portfolioSeries[portfolioSeries.length - 1]?.date?.slice(0, 10);
-
-  const handleExportCSV = useCallback(() => {
-    exportComparisonCSV(rebasedPortfolio, rebasedBenchSeries, activeBenchSeries);
-  }, [rebasedPortfolio, rebasedBenchSeries, activeBenchSeries]);
 
   if (snapshotsLoading) return <LoadingState />;
 
@@ -338,7 +208,7 @@ export default function PortfolioVsNiftyView() {
         primaryBench={primaryBench}
         stats={stats}
         snapshotCount={snapshots.length}
-        firstSnapshotDate={firstSnapshotDateFmt}
+        firstSnapshotDate={firstSnapshotDate}
         latestSnapshotDate={latestSnapshotDate}
       />
 
@@ -346,7 +216,7 @@ export default function PortfolioVsNiftyView() {
         alphaReturnPct={alphaReturnPct}
         alphaIndexPts={alphaIndexPts}
         primaryBench={primaryBench}
-        firstSnapshotDate={firstSnapshotDateFmt}
+        firstSnapshotDate={firstSnapshotDate}
         latestSnapshotDate={latestSnapshotDate}
       />
 

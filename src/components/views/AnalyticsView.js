@@ -113,20 +113,36 @@ function DrawdownAnalysis({ snapshots }) {
       .sort((a, b) => a.snapshotAt.localeCompare(b.snapshotAt))
       .map(s => ({ date: s.snapshotAt.slice(0, 10), value: parseFloat(s.totalValue) }));
 
-    let peak = series[0].value;
-    let peakDate = series[0].date;
-    let maxDrawdown = 0;
-    let maxDrawdownDate = series[0].date;
-    let allTimePeak = series[0].value;
-    let allTimePeakDate = series[0].date;
-
-    const drawdownSeries = series.map(pt => {
-      if (pt.value > peak) { peak = pt.value; peakDate = pt.date; }
+    const drawdownState = series.reduce((acc, pt) => {
+      const peak = pt.value > acc.peak ? pt.value : acc.peak;
       const dd = peak > 0 ? ((pt.value - peak) / peak) * 100 : 0;
-      if (dd < maxDrawdown) { maxDrawdown = dd; maxDrawdownDate = pt.date; }
-      if (pt.value > allTimePeak) { allTimePeak = pt.value; allTimePeakDate = pt.date; }
-      return { ...pt, drawdown: dd, peak };
+      const isMaxDrawdown = dd < acc.maxDrawdown;
+      const isAllTimePeak = pt.value > acc.allTimePeak;
+
+      return {
+        peak,
+        maxDrawdown: isMaxDrawdown ? dd : acc.maxDrawdown,
+        maxDrawdownDate: isMaxDrawdown ? pt.date : acc.maxDrawdownDate,
+        allTimePeak: isAllTimePeak ? pt.value : acc.allTimePeak,
+        allTimePeakDate: isAllTimePeak ? pt.date : acc.allTimePeakDate,
+        drawdownSeries: [...acc.drawdownSeries, { ...pt, drawdown: dd, peak }],
+      };
+    }, {
+      peak: series[0].value,
+      maxDrawdown: 0,
+      maxDrawdownDate: series[0].date,
+      allTimePeak: series[0].value,
+      allTimePeakDate: series[0].date,
+      drawdownSeries: [],
     });
+
+    const {
+      drawdownSeries,
+      maxDrawdown,
+      maxDrawdownDate,
+      allTimePeak,
+      allTimePeakDate,
+    } = drawdownState;
 
     const currentDrawdown = drawdownSeries[drawdownSeries.length - 1].drawdown;
     const currentVal = series[series.length - 1].value;
@@ -951,13 +967,16 @@ function SectorDonut({ sectors }) {
   const [hovered, setHovered] = useState(null);
   const size = 230, cx = 115, cy = 115, r = 95, ir = 60;
   const slices = useMemo(() => {
-    let angle = -Math.PI / 2;
-    return sectors.map(s => {
-      const start = angle;
+    const result = sectors.reduce((acc, s) => {
+      const start = acc.angle;
       const sweep = (s.pct / 100) * 2 * Math.PI;
-      angle += sweep;
-      return { ...s, start, end: start + sweep };
-    });
+      const end = start + sweep;
+      return {
+        angle: end,
+        slices: [...acc.slices, { ...s, start, end }],
+      };
+    }, { angle: -Math.PI / 2, slices: [] });
+    return result.slices;
   }, [sectors]);
   function arcPath(s, e, or, ir2) {
     const x1o = cx + or * Math.cos(s), y1o = cy + or * Math.sin(s);
@@ -1157,7 +1176,7 @@ export default function AnalyticsView() {
   const {
     analyticsTab, setAnalyticsTab,
     ltcg, stcg, ltcgInvested, stcgInvested,
-    flowBars, sharpe, unrealizedTax, BENCHMARKS,
+    flowBars, sharpe, unrealizedTax,
   } = useAnalyticsView({ stats, holdings, stHoldings: [], mfHoldings: [], taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta });
 
   const returnMetrics = [

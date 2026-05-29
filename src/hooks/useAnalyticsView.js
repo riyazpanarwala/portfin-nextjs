@@ -2,13 +2,6 @@
 
 import { useState, useMemo } from 'react';
 
-const BENCHMARKS = [
-  { name: 'Nifty 50',       cagr5y: 14.2, cagr3y: 12.8, cagr1y: 8.5 },
-  { name: 'Sensex',         cagr5y: 13.9, cagr3y: 12.4, cagr1y: 8.1 },
-  { name: 'Nifty Midcap',   cagr5y: 18.4, cagr3y: 17.2, cagr1y: 14.1 },
-  { name: 'Nifty Smallcap', cagr5y: 22.1, cagr3y: 19.8, cagr1y: 16.5 },
-];
-
 export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta }) {
   const [analyticsTab, setAnalyticsTab] = useState('overview');
 
@@ -81,6 +74,5 @@ export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realiz
     ltcg, stcg, ltcgInvested, stcgInvested,
     flowBars, sharpe, unrealizedTax,
     returnMetrics, sectorData, realizedSells,
-    BENCHMARKS,
   };
 }
