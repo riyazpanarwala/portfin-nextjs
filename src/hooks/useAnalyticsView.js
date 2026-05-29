@@ -10,15 +10,6 @@ export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realiz
   const ltcgInvested = useMemo(() => ltcg.reduce((s, h) => s + h.invested, 0), [ltcg]);
   const stcgInvested = useMemo(() => stcg.reduce((s, h) => s + h.invested, 0), [stcg]);
 
-  const flowBars = useMemo(() =>
-    monthlyFlow.slice(-12).map(d => ({
-      label: d.month.slice(5),
-      value: d.amount,
-      color: '#3b82f6',
-    })),
-    [monthlyFlow]
-  );
-
   const sharpe = useMemo(() =>
     ((stats.overallCagr - 6.5) / 14).toFixed(2),
     [stats.overallCagr]
@@ -72,7 +63,7 @@ export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realiz
   return {
     analyticsTab, setAnalyticsTab,
     ltcg, stcg, ltcgInvested, stcgInvested,
-    flowBars, sharpe, unrealizedTax,
+    sharpe, unrealizedTax,
     returnMetrics, sectorData, realizedSells,
   };
 }

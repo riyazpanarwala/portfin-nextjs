@@ -35,10 +35,10 @@ import {
 
 // ─── Smart Y-axis formatter ───────────────────────────────────────────────────
 function yFmt(v, maxVal) {
-  if (maxVal >= 1e7)  return `₹${(v / 1e7).toFixed(1)}Cr`;
-  if (maxVal >= 1e5)  return `₹${(v / 1e5).toFixed(1)}L`;
-  if (maxVal >= 1000) return `₹${(v / 1000).toFixed(0)}K`;
-  return `₹${Number(v).toFixed(0)}`;
+  const abs = Math.abs(Number(v) || 0);
+  if (abs >= 1e7) return `₹${(v / 1e7).toFixed(1)}Cr`;
+  if (abs >= 1e5) return `₹${(v / 1e5).toFixed(1)}L`;
+  return `₹${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 }
 
 const CHART_STYLE = {
@@ -75,7 +75,7 @@ const TOOLTIP_STYLE = {
 //   series; the built-in renderer simply filters by proximity. We bypass that
 //   by reading payload into a Map and rendering from our own `series` list.
 
-function SharedTooltip({ active, payload, label, formatter, series }) {
+function SharedTooltip({ active, payload, label, formatter, series, labelFormatter }) {
   if (!active) return null;
 
   // Build a keyed map from whatever Recharts provides at this x-position
@@ -111,7 +111,7 @@ function SharedTooltip({ active, payload, label, formatter, series }) {
         fontSize: 10, color: TICK_COLOR, fontWeight: 700,
         letterSpacing: '0.06em', marginBottom: 8,
       }}>
-        {label}
+        {labelFormatter ? labelFormatter(label) : label}
       </div>
       {rows.map(({ key, name, color, value, fmt }) => {
         const display = value == null ? '—' : fmt ? fmt(value) : String(value);
@@ -232,6 +232,7 @@ export function BarChart({
   height = 120,
   color = '#3b82f6',
   valueFormatter,
+  xTickFormatter,
 }) {
   if (!data || !data.length) return null;
   const resolvedColor = resolveColor(color, '#3b82f6');
@@ -242,7 +243,7 @@ export function BarChart({
     <ResponsiveContainer width="100%" height={height}>
       <ReBarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
-        <XAxis dataKey="label" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} />
+        <XAxis dataKey="label" tickFormatter={xTickFormatter} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} />
         <YAxis tickFormatter={formatValue} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={52} />
         <Tooltip
           formatter={v => formatValue(v)}
@@ -556,15 +557,29 @@ export function CagrTrendChart({ series }) {
     hasMF && { key: 'mfCagr', name: 'MF CAGR',    color: '#a78bfa', formatter: v => `${v.toFixed(2)}%` },
     hasST && { key: 'stCagr', name: 'Stock CAGR',  color: '#2dd4bf', formatter: v => `${v.toFixed(2)}%` },
   ].filter(Boolean);
+  const chartSeries = series.map((d, i) => ({
+    ...d,
+    cagrX: d.date || `${d.month}-${String(i).padStart(3, '0')}`,
+  }));
 
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <ReLineChart data={series} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
+      <ReLineChart data={chartSeries} margin={{ top: 4, right: 4, left: 0, bottom: 4 }} style={CHART_STYLE}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
-        <XAxis dataKey="month" tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+        <XAxis
+          dataKey="cagrX"
+          tickFormatter={v => String(v).slice(0, 7)}
+          tick={{ fill: TICK_COLOR, fontSize: 9 }}
+          axisLine={false}
+          tickLine={false}
+          interval="preserveStartEnd"
+        />
         <YAxis tickFormatter={v => `${v.toFixed(0)}%`} tick={{ fill: TICK_COLOR, fontSize: 9 }} axisLine={false} tickLine={false} width={42} />
         <Tooltip
-          content={<SharedTooltip series={tooltipSeries} />}
+          content={<SharedTooltip
+            series={tooltipSeries}
+            labelFormatter={label => String(label).slice(0, 16).replace('T', ' ')}
+          />}
           cursor={{ stroke: 'rgba(148,169,196,0.25)', strokeWidth: 1, strokeDasharray: '4 4' }}
         />
         <Legend wrapperStyle={{ fontSize: 10, color: '#94a9c4' }} />

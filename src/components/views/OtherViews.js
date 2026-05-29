@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
-import { CumChart, WaterfallChart } from '@/components/charts/Charts';
+import { BarChart, CumChart, WaterfallChart } from '@/components/charts/Charts';
 import { EmptyState, Alert } from '@/components/ui/SharedUI';
 import styles from './OtherViews.module.css';
 
@@ -19,6 +19,11 @@ export function TimelineView() {
   let cum = 0;
   // `amount` = buy-only invested capital (correct for the cumulative chart)
   monthlyFlow.forEach(m => { cum += m.amount; cumFlow.push({ ...m, cum }); });
+  const monthlyInvestmentBars = monthlyFlow.map(d => ({
+    label: d.month,
+    value: d.amount,
+    color: '#3b82f6',
+  }));
 
   const now = new Date();
   const cutoff = new Date(now.getFullYear(), now.getMonth() - 2, 1);
@@ -52,6 +57,19 @@ export function TimelineView() {
       <div className={`glass ${styles.chartPanel}`}>
         <div className={styles.panelTitle}>Cumulative Invested Over Time</div>
         <CumChart data={cumFlow} />
+      </div>
+
+      <div className={`glass ${styles.chartPanel}`}>
+        <div className={styles.panelTitle}>Monthly Investment Flow</div>
+        {monthlyInvestmentBars.length > 0 ? (
+          <BarChart
+            data={monthlyInvestmentBars}
+            height={140}
+            xTickFormatter={label => label.slice(5)}
+          />
+        ) : (
+          <div className={styles.chartEmpty}>No monthly investment data yet.</div>
+        )}
       </div>
 
       <div className={`glass ${styles.chartPanel}`}>

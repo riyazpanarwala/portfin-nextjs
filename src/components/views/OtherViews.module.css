@@ -15,6 +15,11 @@
   margin-bottom: 14px;
 }
 
+.chartEmpty {
+  color: var(--text3);
+  font-size: 12px;
+}
+
 .heatmapScroll { overflow-x: auto; }
 
 .heatmapGrid {

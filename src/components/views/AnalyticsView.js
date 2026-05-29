@@ -1133,7 +1133,7 @@ export default function AnalyticsView() {
   const {
     analyticsTab, setAnalyticsTab,
     ltcg, stcg, ltcgInvested, stcgInvested,
-    flowBars, sharpe, unrealizedTax,
+    sharpe, unrealizedTax,
   } = useAnalyticsView({ stats, holdings, stHoldings: [], mfHoldings: [], taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta });
 
   const returnMetrics = [
@@ -1213,10 +1213,6 @@ export default function AnalyticsView() {
             </div>
           </div>
           <div className={styles.flowDistRow}>
-            <div className="glass" style={{ padding: 18 }}>
-              <div className={styles.panelTitle}>Monthly Investment Flow</div>
-              {flowBars.length > 0 ? <BarChart data={flowBars} height={120} /> : <div style={{ color: 'var(--text3)', fontSize: 12 }}>No data</div>}
-            </div>
             <div className="glass" style={{ padding: 18 }}>
               <div className={styles.panelTitle}>Holding Period Distribution</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
