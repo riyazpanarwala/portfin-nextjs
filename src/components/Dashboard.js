@@ -32,7 +32,7 @@ const VIEW_TITLES = {
   action:       'Action Signal',
   snapshots:    'Snapshot History',
   rebalancer:   'Portfolio Rebalancer',
-  'vs-nifty':   'Portfolio vs Nifty 50',
+  'vs-nifty':   'Portfolio vs Benchmarks',
   'ai-advisor': 'AI Portfolio Advisor',
   instruments:  'Instrument Manager',
   backfill:     'Backfill Historical Snapshots',

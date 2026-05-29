@@ -36,7 +36,7 @@ const NAV = [
       { id: 'waterfall',    icon: Waves,           label: 'Wealth Waterfall' },
       { id: 'action',       icon: Sparkles,        label: 'Action Signal' },
       { id: 'snapshots',    icon: Camera,          label: 'Snapshot History' },
-      { id: 'vs-nifty',     icon: LineChart,       label: 'vs Nifty 50', badge: 'NEW' },
+      { id: 'vs-nifty',     icon: LineChart,       label: 'vs Benchmarks' },
     ]
   },
   {
