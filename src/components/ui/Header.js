@@ -1,32 +1,43 @@
 'use client';
 
-import { RefreshCw, UserRound } from 'lucide-react';
+import { RefreshCw, LogOut } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { useAuth } from '@/context/AuthContext';
 import { fmtCr, fmtPct, colorPnl } from '@/lib/store';
 import styles from './UI.module.css';
 
 export default function Header({ onRefreshPrices }) {
   const { stats, priceRefreshState } = usePortfolio();
+  const { user, logout }             = useAuth();
   const isRefreshing = priceRefreshState?.active;
 
   const dateStr = new Date().toLocaleDateString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric',
   });
 
+  // Derive initials from displayName or email
+  const displayName = user?.displayName || user?.email || '';
+  const initials = displayName
+    .split(/[@.\s]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(s => s[0]?.toUpperCase())
+    .join('') || 'U';
+
   return (
     <header className={styles.header}>
       <div className={styles.headerMetrics}>
-        <MetricPill label="Total Value"  value={fmtCr(stats.totalValue)} />
-        <Sep />
+        <MetricPill label="Total Value" value={fmtCr(stats.totalValue)} />
+        <div className={styles.headerSep} />
         <MetricPill
           label="Overall P&L"
           value={fmtCr(stats.totalGain)}
           sub={fmtPct(stats.totalReturnPct, true)}
           color={colorPnl(stats.totalGain)}
         />
-        <Sep />
+        <div className={styles.headerSep} />
         <MetricPill label="MF CAGR" value={fmtPct(stats.mfCagr)} color="var(--accent2)" />
-        <Sep />
+        <div className={styles.headerSep} />
         <MetricPill label="As of" value={dateStr} />
       </div>
 
@@ -50,20 +61,33 @@ export default function Header({ onRefreshPrices }) {
             {isRefreshing ? 'Refreshing…' : 'Prices'}
           </button>
         )}
+
         <div className={styles.liveIndicator}>
           <span className="live-dot" />
           <span className={styles.liveLabel}>LIVE</span>
         </div>
-        <div className={styles.headerAvatar}>
-          <UserRound size={15} />
+
+        {/* User avatar — shows initials, tooltip shows full email */}
+        <div
+          title={user?.email || ''}
+          className={styles.headerAvatar}
+          style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.03em' }}
+        >
+          {initials}
         </div>
+
+        {/* Sign out */}
+        <button
+          onClick={logout}
+          className="btn btn-ghost"
+          title={`Sign out (${user?.email || ''})`}
+          style={{ padding: '5px 10px', fontSize: 11, gap: 5 }}
+        >
+          <LogOut size={13} />
+        </button>
       </div>
     </header>
   );
-}
-
-function Sep() {
-  return <div className={styles.headerSep} />;
 }
 
 function MetricPill({ label, value, sub, color }) {

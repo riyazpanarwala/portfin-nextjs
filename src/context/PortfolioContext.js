@@ -17,9 +17,9 @@ import {
   computeRealizedSummary,
   computePortfolioXIRR,
 } from '@/lib/store';
+import { useAuth } from '@/context/AuthContext';
 
 const PortfolioCtx = createContext(null);
-const DEFAULT_USER_ID = 'user-default-001';
 const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v1';
 
 // All valid view IDs — used to validate the URL hash on load
@@ -49,22 +49,26 @@ function todayKey() {
 // ── Initial price-refresh state ───────────────────────────────────────────────
 const REFRESH_IDLE = {
   active:    false,
-  progress:  0,        // 0–100
-  current:   '',       // symbol currently being fetched
+  progress:  0,
+  current:   '',
   updated:   0,
   failed:    0,
   total:     0,
-  assetType: null,     // 'MF' | 'STOCK' | null (all)
+  assetType: null,
   done:      false,
   error:     null,
 };
 
 export function PortfolioProvider({ children }) {
+  // Get authenticated user from AuthContext
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+
   const [trades, setTrades]               = useState([]);
   const [portfolioId, setPortfolioId]     = useState(null);
   const [currentPrices, setCurrentPrices] = useState({});
   const [priceMeta, setPriceMeta]         = useState({});
-  const [loading, setLoading]             = useState(true);
+  const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState(null);
   const [toasts, setToasts]               = useState([]);
 
@@ -76,10 +80,6 @@ export function PortfolioProvider({ children }) {
   const [priceRefreshState, setPriceRefreshState] = useState(REFRESH_IDLE);
 
   // ── URL hash-based view persistence ──────────────────────────────────────
-  // IMPORTANT: always initialise with 'overview' so the server and client
-  // render the same HTML on first paint — avoids Next.js hydration mismatch.
-  // A useEffect then reads the real hash immediately after mount and jumps
-  // to the correct view before the user notices the change.
   const [activeView, setActiveViewState] = useState('overview');
 
   const setActiveView = useCallback((view) => {
@@ -89,7 +89,6 @@ export function PortfolioProvider({ children }) {
     }
   }, []);
 
-  // After hydration: apply whatever hash is currently in the URL
   useEffect(() => {
     const view = getViewFromHash();
     if (view !== 'overview') {
@@ -97,7 +96,6 @@ export function PortfolioProvider({ children }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep state in sync when the user navigates with back/forward buttons
   useEffect(() => {
     function onHashChange() {
       setActiveViewState(getViewFromHash());
@@ -106,13 +104,29 @@ export function PortfolioProvider({ children }) {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
+  // ── Reset state when user logs out ────────────────────────────────────────
+  useEffect(() => {
+    if (!userId) {
+      setTrades([]);
+      setPortfolioId(null);
+      setCurrentPrices({});
+      setPriceMeta({});
+      setPortfolioXIRR(null);
+      setPortfolioBeta(null);
+      setLoading(false);
+      setError(null);
+    }
+  }, [userId]);
+
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
+    if (!userId) return;
+
     try {
       setLoading(true);
       setError(null);
 
-      let pfRes = await fetch(`/api/portfolio?userId=${DEFAULT_USER_ID}`);
+      let pfRes = await fetch(`/api/portfolio?userId=${userId}`);
       if (!pfRes.ok) throw new Error(await pfRes.text());
       let pfData = await pfRes.json();
 
@@ -121,7 +135,7 @@ export function PortfolioProvider({ children }) {
         const cr = await fetch('/api/portfolio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: DEFAULT_USER_ID }),
+          body: JSON.stringify({ userId }),
         });
         if (!cr.ok) throw new Error(await cr.text());
         pid = (await cr.json()).portfolio.id;
@@ -173,9 +187,11 @@ export function PortfolioProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => {
+    if (userId) loadData();
+  }, [loadData, userId]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const holdings = useMemo(
@@ -377,10 +393,8 @@ export function PortfolioProvider({ children }) {
     }
   }
 
-  // ── Refresh prices — with overlay state + optional assetType filter ────────
-  // assetTypeFilter: 'MF' | 'STOCK' | null (null = all)
+  // ── Refresh prices ────────────────────────────────────────────────────────
   async function refreshPrices(assetTypeFilter = null) {
-    // Collect symbols, optionally filtered by asset type
     const tradeSymbols = [...new Set(
       trades
         .filter(t => !assetTypeFilter || t.assetType === assetTypeFilter)
@@ -421,7 +435,6 @@ export function PortfolioProvider({ children }) {
     for (let i = 0; i < tradeSymbols.length; i += CHUNK) {
       const chunk = tradeSymbols.slice(i, i + CHUNK);
 
-      // Show first symbol of chunk as "current"
       setPriceRefreshState(prev => ({
         ...prev,
         current:  chunk[0],
@@ -459,7 +472,6 @@ export function PortfolioProvider({ children }) {
       }
     }
 
-    // Apply prices
     if (Object.keys(allPrices).length > 0) {
       setCurrentPrices(prev => {
         const changed = Object.keys(allPrices).some(k => prev[k] !== allPrices[k]);
@@ -468,7 +480,6 @@ export function PortfolioProvider({ children }) {
       setPriceMeta(prev => ({ ...prev, ...allMeta }));
     }
 
-    // Final state — show result for 2.5s then dismiss
     setPriceRefreshState(prev => ({
       ...prev,
       active:   true,
@@ -483,7 +494,6 @@ export function PortfolioProvider({ children }) {
       setPriceRefreshState(REFRESH_IDLE);
     }, 2500);
 
-    // Toast summary
     if (updatedCount > 0 && failedCount === 0) {
       toast(`${label} refreshed ✓ — ${updatedCount} updated`, 'green');
     } else if (updatedCount > 0) {

@@ -1,5 +1,6 @@
 import './globals.css';
 import { PortfolioProvider } from '@/context/PortfolioContext';
+import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata = {
   title: 'PortFin - Personal Portfolio Dashboard',
@@ -14,9 +15,11 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body>
-        <PortfolioProvider>
-          {children}
-        </PortfolioProvider>
+        <AuthProvider>
+          <PortfolioProvider>
+            {children}
+          </PortfolioProvider>
+        </AuthProvider>
       </body>
     </html>
   );
