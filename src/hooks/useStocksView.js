@@ -1,49 +1,25 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { HOLDING_EPSILON, downloadCsv, useHoldingsViewState } from '@/hooks/useHoldingsViewState';
 
-const EPSILON = 1e-6;
+const stockSearchFields = [
+  h => h.symbol,
+  h => h.sector,
+];
 
 export function useStocksView({ stHoldings, stats }) {
-  const [sort, setSort]         = useState({ key: 'returnPct', dir: -1 });
-  const [sector, setSector]     = useState('All');
-  const [filter, setFilter]     = useState('');
-  const [expanded, setExpanded] = useState({});
-  const [mode, setMode]         = useState('active'); // 'active' | 'exited'
-
-  // Split holdings: active = still holding qty; exited = fully sold
-  const activeHoldings = useMemo(() => stHoldings.filter(h => h.qty > EPSILON),  [stHoldings]);
-  const exitedHoldings = useMemo(() => stHoldings.filter(h => h.qty <= EPSILON), [stHoldings]);
-  const sourceHoldings = mode === 'active' ? activeHoldings : exitedHoldings;
-
-  const sectors = useMemo(() =>
-    ['All', ...[...new Set(sourceHoldings.map(h => h.sector || 'Other'))].sort()],
-    [sourceHoldings]
-  );
-
-  // Reset sector pill when mode changes — old sector may not exist in new list
-  const effectiveSector = sectors.includes(sector) ? sector : 'All';
-
-  const rows = useMemo(() => {
-    let list = effectiveSector === 'All'
-      ? [...sourceHoldings]
-      : sourceHoldings.filter(h => (h.sector || 'Other') === effectiveSector);
-    if (filter)
-      list = list.filter(h =>
-        h.symbol.toLowerCase().includes(filter.toLowerCase()) ||
-        (h.sector || '').toLowerCase().includes(filter.toLowerCase())
-      );
-    const k = sort.key;
-    list.sort((a, b) =>
-      sort.dir * (k === 'lots' ? a.lots.length - b.lots.length : (a[k] ?? 0) - (b[k] ?? 0))
-    );
-    return list;
-  }, [sourceHoldings, effectiveSector, filter, sort]);
-
-  const maxRet = useMemo(() =>
-    Math.max(...sourceHoldings.map(h => Math.abs(h.returnPct)), 1),
-    [sourceHoldings]
-  );
+  const [filter, setFilter] = useState('');
+  const {
+    sort, group: sector, setGroup: setSector, expanded,
+    mode, setMode, activeHoldings, exitedHoldings,
+    activeCount, exitedCount, dataErrorCount,
+    groups: sectors, rows, maxRet, toggleSort, toggleExpanded,
+  } = useHoldingsViewState({
+    holdings: stHoldings,
+    search: filter,
+    searchFields: stockSearchFields,
+  });
 
   const stGain = useMemo(() => stats.stValue - stats.stInvested, [stats.stValue, stats.stInvested]);
 
@@ -58,12 +34,6 @@ export function useStocksView({ stHoldings, stats }) {
   // Total ever invested across all stocks (including exited positions)
   const stTotalEverInvested = useMemo(() =>
     stHoldings.reduce((s, h) => s + (h.totalEverInvested ?? h.invested), 0),
-    [stHoldings]
-  );
-
-  // Data error count
-  const dataErrorCount = useMemo(() =>
-    stHoldings.filter(h => h.hasDataError).length,
     [stHoldings]
   );
 
@@ -101,14 +71,6 @@ export function useStocksView({ stHoldings, stats }) {
     { l: 'Exited',         v: exitedHoldings.length,     c: 'var(--text3)'   },
   ], [stats, stGain, stRealized, stTotalEverInvested, stWins, stLoss, activeHoldings.length, exitedHoldings.length]);
 
-  function toggleSort(k) {
-    setSort(s => s.key === k ? { key: k, dir: -s.dir } : { key: k, dir: -1 });
-  }
-
-  function toggleExpanded(sym) {
-    setExpanded(e => ({ ...e, [sym]: !e[sym] }));
-  }
-
   function exportCSV(formatNum, formatHold) {
     const rows2 = [['Stock', 'Sector', 'Lots', 'Qty', 'CMP', 'Avg Buy', 'Invested', 'Total Deployed',
       'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Holding', 'Portfolio%',
@@ -120,21 +82,18 @@ export function useStocksView({ stHoldings, stats }) {
       formatNum(h.totalGain, 0), formatNum(h.returnPct, 2) + '%', formatNum(h.cagr, 2) + '%',
       formatHold(h.holdingDays),
       formatNum(concentrationMap[h.symbol] ?? 0, 1) + '%',
-      h.qty <= EPSILON ? 'Exited' : 'Active',
+      h.qty <= HOLDING_EPSILON ? 'Exited' : 'Active',
       h.hasDataError ? 'YES' : '',
       daysSinceLastBuyMap[h.symbol] ?? '',
     ]));
-    const a = document.createElement('a');
-    a.href = 'data:text/csv,' + encodeURIComponent(rows2.map(r => r.join(',')).join('\n'));
-    a.download = `stocks_${mode}.csv`;
-    a.click();
+    downloadCsv(`stocks_${mode}.csv`, rows2);
   }
 
   return {
-    sort, sector: effectiveSector, setSector, filter, setFilter, expanded,
+    sort, sector, setSector, filter, setFilter, expanded,
     mode, setMode,
-    activeCount: activeHoldings.length,
-    exitedCount: exitedHoldings.length,
+    activeCount,
+    exitedCount,
     dataErrorCount,
     concentrationMap,
     daysSinceLastBuyMap,

@@ -1,46 +1,21 @@
 'use client';
 
-import { RefreshCw } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
-import { fmtCr, fmt, colorPnl, sectorColor } from '@/lib/store';
+import { fmtCr, fmt } from '@/lib/store';
 import {
-  pct, pcol, holdStr,
-  ReturnBar, PriceCell, HoldingDetailPanel,
+  holdStr,
+  PriceCell, HoldingDetailPanel,
   HoldingsEmpty, HoldingsControls,
   RefreshPriceButton,
   ModeToggle, ExitedBanner,
   DataErrorBadge, ConcentrationBadge,
+  HoldingsHeaderRow, HoldingsSummaryRefreshBar,
+  HoldingCategoryBadge, HoldingMetricCells,
 } from '@/components/views/HoldingsShared';
 import { useStocksView } from '@/hooks/useStocksView';
 import styles from './HoldingsTable.module.css';
 
-// Extra column for concentration badge
 const COL = '20px 1fr 120px 32px 72px 110px 80px 90px 80px 80px 88px 64px 130px 50px 28px';
-
-function HeaderRow({ isExited }) {
-  const cols = [
-    '', 'STOCK', 'SECTOR', '#', 'QTY',
-    isExited ? 'LAST PRICE' : 'CMP ✎',
-    'INVESTED', 'INV. PRICE', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', '',
-  ];
-  return (
-    <div className={styles.headerRow} style={{ display: 'grid', gridTemplateColumns: COL }}>
-      {cols.map((c, i) => (
-        <div
-          key={i}
-          className={[
-            styles.headerCell,
-            i === 5 && !isExited ? styles.headerCellHighlight : '',
-            i === 9 ? styles.headerCellYellow : '',
-          ].filter(Boolean).join(' ')}
-          style={{ textAlign: i > 2 && i < cols.length - 1 ? 'right' : 'left' }}
-        >
-          {c}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function StocksView() {
   const { stHoldings, stats, setActiveView, priceMeta, refreshPrices, priceRefreshState } = usePortfolio();
@@ -65,56 +40,28 @@ export default function StocksView() {
   );
 
   const isExited = mode === 'exited';
+  const headerColumns = [
+    '', 'STOCK', 'SECTOR', '#', 'QTY',
+    isExited ? 'LAST PRICE' : 'CMP ✎',
+    'INVESTED', 'INV. PRICE', 'VALUE', 'REALIZED', 'GAIN', 'CAGR', 'RETURN %', 'HOLD', '',
+  ];
 
   return (
     <div className={`fade-up ${styles.wrapper}`}>
 
-      {/* Summary strip + refresh button */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
-        <div className={styles.summaryStrip} style={{ flex: 1 }}>
-          {summaryItems.map((m, i) => (
-            <div key={i} className={styles.summaryCell}>
-              <div className={styles.summaryCellLabel}>{m.l}</div>
-              <div className={styles.summaryCellValue} style={{ color: m.c, fontSize: 17 }}>
-                {typeof m.v === 'string' ? m.v : fmtCr(m.v)}
-              </div>
-              {m.sub && <div className={styles.summaryCellSub}>{m.sub}</div>}
-            </div>
-          ))}
-        </div>
-
-        {/* Stocks-only refresh button */}
-        <button
-          onClick={isRefreshing ? undefined : () => refreshPrices('STOCK')}
-          disabled={isRefreshing}
-          title={isRefreshing ? 'Refresh in progress…' : 'Refresh stock prices from Yahoo Finance'}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-            padding: '12px 18px',
-            background: isRefreshing ? 'var(--bg3)' : 'rgba(139,92,246,0.06)',
-            border: `1px solid ${isRefreshing ? 'var(--border)' : 'rgba(139,92,246,0.3)'}`,
-            borderRadius: 10,
-            cursor: isRefreshing ? 'not-allowed' : 'pointer',
-            opacity: isRefreshing ? 0.55 : 1,
-            color: 'var(--purple)',
-            minWidth: 88,
-            flexShrink: 0,
-            transition: 'all 0.2s',
-          }}
-        >
-          <RefreshCw
-            size={16}
-            style={isRefreshing ? { animation: 'spin 1s linear infinite' } : undefined}
-          />
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            {isRefreshing ? 'Updating…' : 'Refresh Prices'}
-          </span>
-        </button>
-      </div>
+      <HoldingsSummaryRefreshBar
+        items={summaryItems}
+        onRefresh={() => refreshPrices('STOCK')}
+        refreshing={isRefreshing}
+        title={isRefreshing ? 'Refresh in progress…' : 'Refresh stock prices from Yahoo Finance'}
+        label="Refresh Prices"
+        accentColor="rgba(139,92,246,0.06)"
+        accentBorder="rgba(139,92,246,0.3)"
+        textColor="var(--purple)"
+        minWidth={88}
+        tableStyles={styles}
+        formatValue={value => typeof value === 'string' ? value : fmtCr(value)}
+      />
 
       {/* Data error banner if any */}
       {dataErrorCount > 0 && (
@@ -175,7 +122,13 @@ export default function StocksView() {
 
       {/* Table */}
       <div className={styles.tableContainer}>
-        <HeaderRow isExited={isExited} />
+        <HoldingsHeaderRow
+          columns={headerColumns}
+          gridTemplateColumns={COL}
+          isExited={isExited}
+          tableStyles={styles}
+          highlightEditable
+        />
 
         {rows.length === 0 ? (
           <div className={styles.tableEmpty}>
@@ -183,7 +136,6 @@ export default function StocksView() {
           </div>
         ) : rows.map(h => {
           const open = !!expanded[h.symbol];
-          const hasRealized = (h.realizedGain || 0) !== 0;
           const concentration = concentrationMap[h.symbol] ?? 0;
           const daysSinceBuy = daysSinceLastBuyMap[h.symbol];
 
@@ -231,19 +183,7 @@ export default function StocksView() {
 
                 {/* Sector */}
                 <div className={styles.sectorCell}>
-                  <span
-                    className={[
-                      styles.sectorBadge,
-                      isExited ? styles.sectorBadgeExited : '',
-                    ].filter(Boolean).join(' ')}
-                    style={{
-                      background: `${sectorColor(h.sector || 'Other')}20`,
-                      color: sectorColor(h.sector || 'Other'),
-                      border: `1px solid ${sectorColor(h.sector || 'Other')}40`,
-                    }}
-                  >
-                    {h.sector || 'Other'}
-                  </span>
+                  <HoldingCategoryBadge label={h.sector || 'Other'} isExited={isExited} tableStyles={styles} />
                 </div>
 
                 {/* # lots */}
@@ -268,53 +208,7 @@ export default function StocksView() {
                   </div>
                 )}
 
-                {/* Invested */}
-                <div className={styles.monoCell}>{fmtCr(h.invested)}</div>
-
-                {/* Invested Price (avg cost per share) */}
-                <div className={styles.monoCell}>
-                  {h.qty > 0 ? `₹${fmt(h.invested / h.qty, 2)}` : '—'}
-                </div>
-
-                {/* Value */}
-                <div className={[
-                  styles.monoCellBold,
-                  isExited ? styles.monoCellMuted : '',
-                ].filter(Boolean).join(' ')}>
-                  {isExited ? '—' : fmtCr(h.marketValue)}
-                </div>
-
-                {/* Realized */}
-                <div
-                  className={`${styles.monoCell} ${styles.monoCellRealized}`}
-                  style={{ color: hasRealized ? colorPnl(h.realizedGain) : 'var(--text3)' }}
-                >
-                  {hasRealized ? fmtCr(h.realizedGain) : '—'}
-                </div>
-
-                {/* Gain — realized for exited rows; unrealized for active */}
-                <div
-                  className={`${styles.monoCell} ${styles.monoCellGain}`}
-                  style={{ color: colorPnl(isExited ? h.realizedGain : h.unrealizedGain) }}
-                >
-                  {fmtCr(isExited ? h.realizedGain : h.unrealizedGain)}
-                </div>
-
-                {/* CAGR */}
-                <div
-                  className={`${styles.monoCell} ${styles.monoCellCagr}`}
-                  style={{ color: pcol(h.cagr) }}
-                >
-                  {pct(h.cagr)}
-                </div>
-
-                {/* Return bar */}
-                <div className={styles.returnBarCell}>
-                  <ReturnBar val={h.returnPct} max={maxRet} />
-                </div>
-
-                {/* Holding period */}
-                <div className={styles.holdCell}>{holdStr(h.holdingDays)}</div>
+                <HoldingMetricCells h={h} isExited={isExited} maxRet={maxRet} tableStyles={styles} />
 
                 {/* Refresh btn — hidden for exited rows */}
                 <div className={styles.refreshCell} onClick={e => e.stopPropagation()}>

@@ -1,44 +1,16 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { fmtCr, fmt } from '@/lib/store';
-
-const EPSILON = 1e-6;
+import { HOLDING_EPSILON, downloadCsv, useHoldingsViewState } from '@/hooks/useHoldingsViewState';
 
 export function useMFView({ mfHoldings, stats }) {
-  const [sort, setSort]         = useState({ key: 'returnPct', dir: -1 });
-  const [category, setCategory] = useState('All');
-  const [expanded, setExpanded] = useState({});
-  const [mode, setMode]         = useState('active'); // 'active' | 'exited'
-
-  // Split holdings: active = still holding units; exited = fully redeemed
-  const activeHoldings = useMemo(() => mfHoldings.filter(h => h.qty > EPSILON),  [mfHoldings]);
-  const exitedHoldings = useMemo(() => mfHoldings.filter(h => h.qty <= EPSILON), [mfHoldings]);
-  const sourceHoldings = mode === 'active' ? activeHoldings : exitedHoldings;
-
-  const categories = useMemo(() =>
-    ['All', ...[...new Set(sourceHoldings.map(h => h.sector || 'Other'))].sort()],
-    [sourceHoldings]
-  );
-
-  // Reset category pill when mode changes
-  const effectiveCategory = categories.includes(category) ? category : 'All';
-
-  const rows = useMemo(() => {
-    let list = effectiveCategory === 'All'
-      ? [...sourceHoldings]
-      : sourceHoldings.filter(h => (h.sector || 'Other') === effectiveCategory);
-    const k = sort.key;
-    list.sort((a, b) =>
-      sort.dir * (k === 'lots' ? a.lots.length - b.lots.length : (a[k] ?? 0) - (b[k] ?? 0))
-    );
-    return list;
-  }, [sourceHoldings, effectiveCategory, sort]);
-
-  const maxRet = useMemo(() =>
-    Math.max(...sourceHoldings.map(h => Math.abs(h.returnPct)), 1),
-    [sourceHoldings]
-  );
+  const {
+    sort, group: category, setGroup: setCategory, expanded,
+    mode, setMode, activeHoldings, exitedHoldings,
+    activeCount, exitedCount, dataErrorCount,
+    groups: categories, rows, maxRet, toggleSort, toggleExpanded,
+  } = useHoldingsViewState({ holdings: mfHoldings });
 
   const mfGain = stats.mfValue - stats.mfInvested;
 
@@ -50,12 +22,6 @@ export function useMFView({ mfHoldings, stats }) {
   // Total ever invested across all MF (including exited positions)
   const mfTotalEverInvested = useMemo(() =>
     mfHoldings.reduce((s, h) => s + (h.totalEverInvested ?? h.invested), 0),
-    [mfHoldings]
-  );
-
-  // Data error count
-  const dataErrorCount = useMemo(() =>
-    mfHoldings.filter(h => h.hasDataError).length,
     [mfHoldings]
   );
 
@@ -118,14 +84,6 @@ export function useMFView({ mfHoldings, stats }) {
     },
   ], [stats, mfGain, mfRealized, mfTotalEverInvested, activeHoldings.length, exitedHoldings.length]);
 
-  function toggleSort(k) {
-    setSort(s => s.key === k ? { key: k, dir: -s.dir } : { key: k, dir: -1 });
-  }
-
-  function toggleExpanded(sym) {
-    setExpanded(e => ({ ...e, [sym]: !e[sym] }));
-  }
-
   function exportCSV(formatNum) {
     const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Total Deployed',
       'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status', 'Data Error']];
@@ -134,20 +92,17 @@ export function useMFView({ mfHoldings, stats }) {
       formatNum(h.invested, 0), formatNum(h.totalEverInvested ?? h.invested, 0),
       formatNum(h.marketValue, 0), formatNum(h.unrealizedGain, 0), formatNum(h.realizedGain, 0),
       formatNum(h.totalGain, 0), formatNum(h.returnPct, 2) + '%', formatNum(h.cagr, 2) + '%',
-      h.qty <= EPSILON ? 'Exited' : 'Active',
+      h.qty <= HOLDING_EPSILON ? 'Exited' : 'Active',
       h.hasDataError ? 'YES' : '',
     ]));
-    const a = document.createElement('a');
-    a.href = 'data:text/csv,' + encodeURIComponent(rows2.map(r => r.join(',')).join('\n'));
-    a.download = `mf_${mode}.csv`;
-    a.click();
+    downloadCsv(`mf_${mode}.csv`, rows2);
   }
 
   return {
-    sort, category: effectiveCategory, setCategory, expanded,
+    sort, category, setCategory, expanded,
     mode, setMode,
-    activeCount: activeHoldings.length,
-    exitedCount: exitedHoldings.length,
+    activeCount,
+    exitedCount,
     dataErrorCount,
     categories, rows, maxRet, mfGain, mfRealized, mfTotalEverInvested,
     summaryItems, toggleSort, toggleExpanded, exportCSV,

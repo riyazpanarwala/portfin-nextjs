@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { colorPnl, fmtCr, fmt, sectorColor } from '@/lib/store';
 import { xirr, holdingXIRR, lotXIRR } from '@/lib/xirr';
 import { HoldingPerformanceChart } from '@/components/charts/Charts';
@@ -35,6 +36,147 @@ export const SORTS = [
   { key: 'invested',       label: 'Invested'   },
   { key: 'lots',           label: 'Lots'       },
 ];
+
+export function HoldingsHeaderRow({ columns, gridTemplateColumns, isExited, tableStyles, highlightEditable = false }) {
+  return (
+    <div className={tableStyles.headerRow} style={{ display: 'grid', gridTemplateColumns }}>
+      {columns.map((column, index) => (
+        <div
+          key={index}
+          className={[
+            tableStyles.headerCell,
+            highlightEditable && index === 5 && !isExited ? tableStyles.headerCellHighlight : '',
+            index === 9 ? tableStyles.headerCellYellow : '',
+          ].filter(Boolean).join(' ')}
+          style={{ textAlign: index > 2 && index < columns.length - 1 ? 'right' : 'left' }}
+        >
+          {column}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function HoldingsSummaryRefreshBar({
+  items,
+  onRefresh,
+  refreshing,
+  title,
+  label,
+  refreshingLabel = 'Updatingâ€¦',
+  accentColor,
+  accentBorder,
+  textColor,
+  minWidth,
+  tableStyles,
+  valueSize = 17,
+  formatValue = value => value,
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+      <div className={tableStyles.summaryStrip} style={{ flex: 1 }}>
+        {items.map((item, index) => (
+          <div key={index} className={tableStyles.summaryCell}>
+            <div className={tableStyles.summaryCellLabel}>{item.l}</div>
+            <div className={tableStyles.summaryCellValue} style={{ color: item.c, fontSize: valueSize }}>
+              {item.format ? item.format(item.v) : formatValue(item.v)}
+            </div>
+            {item.sub && <div className={tableStyles.summaryCellSub}>{item.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={refreshing ? undefined : onRefresh}
+        disabled={refreshing}
+        title={title}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          padding: '12px 18px',
+          background: refreshing ? 'var(--bg3)' : accentColor,
+          border: `1px solid ${refreshing ? 'var(--border)' : accentBorder}`,
+          borderRadius: 10,
+          cursor: refreshing ? 'not-allowed' : 'pointer',
+          opacity: refreshing ? 0.55 : 1,
+          color: textColor,
+          minWidth,
+          flexShrink: 0,
+          transition: 'all 0.2s',
+        }}
+      >
+        <RefreshCw
+          size={16}
+          style={refreshing ? { animation: 'spin 1s linear infinite' } : undefined}
+        />
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          {refreshing ? refreshingLabel : label}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+export function HoldingCategoryBadge({ label, isExited, tableStyles }) {
+  return (
+    <span
+      className={[
+        tableStyles.sectorBadge,
+        isExited ? tableStyles.sectorBadgeExited : '',
+      ].filter(Boolean).join(' ')}
+      style={{
+        background: `${sectorColor(label || 'Other')}20`,
+        color: sectorColor(label || 'Other'),
+        border: `1px solid ${sectorColor(label || 'Other')}40`,
+      }}
+    >
+      {label || 'Other'}
+    </span>
+  );
+}
+
+export function HoldingMetricCells({ h, isExited, maxRet, tableStyles }) {
+  const hasRealized = (h.realizedGain || 0) !== 0;
+  return (
+    <>
+      <div className={tableStyles.monoCell}>{fmtCr(h.invested)}</div>
+      <div className={tableStyles.monoCell}>
+        {h.qty > 0 ? `â‚¹${fmt(h.invested / h.qty, 2)}` : 'â€”'}
+      </div>
+      <div className={[
+        tableStyles.monoCellBold,
+        isExited ? tableStyles.monoCellMuted : '',
+      ].filter(Boolean).join(' ')}>
+        {isExited ? 'â€”' : fmtCr(h.marketValue)}
+      </div>
+      <div
+        className={`${tableStyles.monoCell} ${tableStyles.monoCellRealized}`}
+        style={{ color: hasRealized ? colorPnl(h.realizedGain) : 'var(--text3)' }}
+      >
+        {hasRealized ? fmtCr(h.realizedGain) : 'â€”'}
+      </div>
+      <div
+        className={`${tableStyles.monoCell} ${tableStyles.monoCellGain}`}
+        style={{ color: colorPnl(isExited ? h.realizedGain : h.unrealizedGain) }}
+      >
+        {fmtCr(isExited ? h.realizedGain : h.unrealizedGain)}
+      </div>
+      <div
+        className={`${tableStyles.monoCell} ${tableStyles.monoCellCagr}`}
+        style={{ color: pcol(h.cagr) }}
+      >
+        {pct(h.cagr)}
+      </div>
+      <div className={tableStyles.returnBarCell}>
+        <ReturnBar val={h.returnPct} max={maxRet} />
+      </div>
+      <div className={tableStyles.holdCell}>{holdStr(h.holdingDays)}</div>
+    </>
+  );
+}
 
 // ── ModeToggle — Active / Exited segment control ──────────────────────────────
 export function ModeToggle({ mode, setMode, activeCount, exitedCount }) {
