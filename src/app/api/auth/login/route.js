@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withErrorHandler, badRequest } from "@/lib/apiHelpers";
+import { verifyPassword } from "@/lib/passwordHash";
 
 export const dynamic = "force-dynamic";
 
@@ -8,8 +9,8 @@ export const dynamic = "force-dynamic";
  * POST /api/auth/login
  * Body: { email: string, password: string }
  *
- * Simple credential check against the User table.
- * Passwords are stored as plain-text in this app (no external auth server).
+ * Credential check against the User table.
+ * Passwords are stored as salted hashes.
  * Returns { user: { id, email, displayName } } on success.
  *
  */
@@ -28,15 +29,14 @@ export const POST = withErrorHandler(
 
     if (!user) {
       return NextResponse.json(
-        { error: "Invalid email or password1" },
+        { error: "Invalid email or password" },
         { status: 401 },
       );
     }
 
-    // Plain-text comparison (no hashing — internal personal finance tool)
-    if (user.password !== password) {
+    if (!verifyPassword(password, user.passwordHash)) {
       return NextResponse.json(
-        { error: "Invalid email or password2" },
+        { error: "Invalid email or password" },
         { status: 401 },
       );
     }

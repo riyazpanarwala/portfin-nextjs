@@ -25,11 +25,11 @@ export const POST = withErrorHandler('POST /api/portfolio', async (request) => {
   const { userId, name } = await request.json();
   if (!userId) return badRequest('userId required');
 
-  // Upsert user — intentionally never overwrite password or displayName
+  // Upsert user — intentionally never overwrite passwordHash or displayName
   // if the user already exists (those are managed via auth flow).
   await prisma.user.upsert({
     where:  { id: userId },
-    update: {},   // no-op update keeps existing email/password/displayName intact
+    update: {},   // no-op update keeps existing email/passwordHash/displayName intact
     create: {
       id:          userId,
       email:       `${userId}@portfin.app`,
