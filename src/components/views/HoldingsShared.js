@@ -488,6 +488,11 @@ export function HoldingsControls({ groupLabel, groups, activeGroup, onGroupChang
 
 // ── Lot table ─────────────────────────────────────────────────────────────────
 export function LotTable({ lots, cmp, qtyDecimals = 0 }) {
+  const rows = useMemo(
+    () => [...lots].sort((a, b) => b.date.localeCompare(a.date)),
+    [lots],
+  );
+
   return (
     <>
       <div className={styles.tableScrollWrapper}>
@@ -506,7 +511,7 @@ export function LotTable({ lots, cmp, qtyDecimals = 0 }) {
             </tr>
           </thead>
           <tbody>
-            {lots.map((l, i) => {
+            {rows.map((l, i) => {
               const inv  = l.qty * l.price;
               const gain = l.qty * cmp - inv;
               const ret  = inv > 0 ? gain / inv * 100 : 0;
@@ -571,7 +576,7 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
       map[k].inv += l.qty * l.price;
     });
     return Object.values(map)
-      .sort((a, b) => a.month.localeCompare(b.month))
+      .sort((a, b) => b.month.localeCompare(a.month))
       .map(m => ({
         ...m,
         avgPrice: m.qty > 0 ? m.inv / m.qty : 0,
@@ -621,6 +626,8 @@ export function SellHistoryTable({ h, qtyDecimals = 0 }) {
   const { sells, stats } = h;
   if (!sells || !sells.length) return null;
 
+  const rows = [...sells].sort((a, b) => b.date.localeCompare(a.date));
+
   function TaxChip({ type }) {
     return (
       <span
@@ -655,7 +662,7 @@ export function SellHistoryTable({ h, qtyDecimals = 0 }) {
             </tr>
           </thead>
           <tbody>
-            {sells.map((s, i) => (
+            {rows.map((s, i) => (
               <tr key={i}>
                 <TD ch={s.date} mono color="var(--text2)" />
                 <TD ch={`₹${fmt(s.sellPrice, 2)}`} right mono />

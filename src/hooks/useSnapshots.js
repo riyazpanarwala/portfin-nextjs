@@ -40,7 +40,7 @@ export function useSnapshots(portfolioId, limit = 200) {
       if (!controller.signal.aborted) {
         setSnapshots(
           [...(data.snapshots || [])].sort((a, b) =>
-            a.snapshotAt.localeCompare(b.snapshotAt)
+            b.snapshotAt.localeCompare(a.snapshotAt)
           )
         );
       }
