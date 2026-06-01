@@ -337,6 +337,102 @@
   overflow-x: auto;
 }
 
+.monthlyYearTitle {
+  margin: 2px 0 10px;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.monthlyYearGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.monthlyYearCard {
+  min-height: 78px;
+  padding: 12px 14px;
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.monthlyYearLabel {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+
+.monthlyYearValue {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--yellow);
+  line-height: 1.1;
+}
+
+.monthlyYearMeta {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.monthlyBreakupTable {
+  width: 100%;
+  min-width: 880px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.monthlyBreakupTable th:nth-child(1) { width: 140px; }
+.monthlyBreakupTable th:nth-child(2) { width: 420px; }
+.monthlyBreakupTable th:nth-child(3) { width: 110px; }
+.monthlyBreakupTable th:nth-child(4) { width: 160px; }
+.monthlyBreakupTable th:nth-child(5) { width: 140px; }
+.monthlyBreakupTable th:nth-child(6) { width: 90px; }
+
+.monthlyBreakupRow .td {
+  border-bottom-color: rgba(45, 64, 96, 0.12);
+}
+
+.monthlyInvestedCell {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 96px;
+  align-items: center;
+  gap: 14px;
+}
+
+.monthlyInvestedTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.65);
+  overflow: hidden;
+}
+
+.monthlyInvestedBar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+}
+
+.monthlyInvestedValue {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  text-align: right;
+  white-space: nowrap;
+}
+
 .tableNote {
   font-size: 10px;
   color: var(--text3);

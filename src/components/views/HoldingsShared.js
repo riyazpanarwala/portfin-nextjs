@@ -571,12 +571,13 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
     const map = {};
     lots.forEach(l => {
       const k = l.date.slice(0, 7);
-      if (!map[k]) map[k] = { month: k, qty: 0, inv: 0 };
+      if (!map[k]) map[k] = { month: k, qty: 0, inv: 0, lots: 0 };
       map[k].qty += l.qty;
       map[k].inv += l.qty * l.price;
+      map[k].lots += 1;
     });
     return Object.values(map)
-      .sort((a, b) => b.month.localeCompare(a.month))
+      .sort((a, b) => a.month.localeCompare(b.month))
       .map(m => ({
         ...m,
         avgPrice: m.qty > 0 ? m.inv / m.qty : 0,
@@ -586,38 +587,80 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
       }));
   }, [lots, cmp]);
 
-  const priceLabel = qtyDecimals > 0 ? 'AVG NAV'   : 'AVG PRICE';
   const qtyLabel   = qtyDecimals > 0 ? 'UNITS'     : 'QTY';
+  const maxInvested = Math.max(...monthly.map(m => m.inv), 1);
+  const yearSummary = useMemo(() => {
+    const map = {};
+    monthly.forEach(m => {
+      const year = m.month.slice(0, 4);
+      if (!map[year]) map[year] = { year, inv: 0, qty: 0, lots: 0 };
+      map[year].inv += m.inv;
+      map[year].qty += m.qty;
+      map[year].lots += m.lots;
+    });
+    return Object.values(map).map(y => {
+      const gain = y.qty * cmp - y.inv;
+      return {
+        ...y,
+        gain,
+        ret: y.inv > 0 ? gain / y.inv * 100 : 0,
+      };
+    });
+  }, [monthly, cmp]);
+
+  const monthFormatter = new Intl.DateTimeFormat('en-IN', { month: 'short', year: 'numeric' });
 
   return (
-    <div className={styles.tableScrollWrapper}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
-        <thead>
-          <tr>
-            <TH ch="MONTH" />
-            <TH ch={qtyLabel} right />
-            <TH ch={priceLabel} right />
-            <TH ch="INVESTED" right />
-            <TH ch="VALUE" right />
-            <TH ch="GAIN" right />
-            <TH ch="RETURN" right />
-          </tr>
-        </thead>
-        <tbody>
-          {monthly.map((m, i) => (
-            <tr key={i}>
-              <TD ch={m.month} mono color="var(--text2)" />
-              <TD ch={fmt(m.qty, qtyDecimals)} right mono />
-              <TD ch={`₹${fmt(m.avgPrice, 2)}`} right mono />
-              <TD ch={`₹${fmt(m.inv, 0)}`} right mono />
-              <TD ch={`₹${fmt(m.val, 0)}`} right mono bold />
-              <TD ch={`₹${fmt(m.gain, 0)}`} right mono color={colorPnl(m.gain)} bold />
-              <TD ch={pct(m.ret)} right mono color={pcol(m.ret)} />
+    <>
+      <div className={styles.monthlyYearTitle}>Year-wise summary</div>
+      <div className={styles.monthlyYearGrid}>
+        {yearSummary.map(y => (
+          <div key={y.year} className={styles.monthlyYearCard}>
+            <div className={styles.monthlyYearLabel}>{y.year}</div>
+            <div className={styles.monthlyYearValue}>{fmtCr(y.inv)}</div>
+            <div className={styles.monthlyYearMeta} style={{ color: pcol(y.ret) }}>
+              {pct(y.ret, 1)} · {fmt(y.lots, 0)} lots
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.tableScrollWrapper}>
+        <table className={styles.monthlyBreakupTable}>
+          <thead>
+            <tr>
+              <TH ch="MONTH" />
+              <TH ch="INVESTED (WITH BAR)" />
+              <TH ch={qtyLabel} right />
+              <TH ch="GAIN / LOSS" right />
+              <TH ch="RETURN %" right />
+              <TH ch="LOTS" right />
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {monthly.map(m => {
+              const barWidth = `${Math.max(1, (m.inv / maxInvested) * 100)}%`;
+              const monthDate = new Date(`${m.month}-01T00:00:00`);
+              return (
+                <tr key={m.month} className={styles.monthlyBreakupRow}>
+                  <TD ch={monthFormatter.format(monthDate)} mono bold />
+                  <td className={`${styles.td} ${styles.monthlyInvestedCell}`}>
+                    <div className={styles.monthlyInvestedTrack}>
+                      <div className={styles.monthlyInvestedBar} style={{ width: barWidth }} />
+                    </div>
+                    <span className={styles.monthlyInvestedValue}>₹{fmt(m.inv, 2)}</span>
+                  </td>
+                  <TD ch={fmt(m.qty, qtyDecimals)} right mono color="var(--text2)" />
+                  <TD ch={`₹${fmt(m.gain, 2)}`} right mono color={colorPnl(m.gain)} />
+                  <TD ch={pct(m.ret)} right mono color={pcol(m.ret)} />
+                  <TD ch={fmt(m.lots, 0)} right mono color="var(--text2)" />
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
