@@ -88,7 +88,7 @@ export function useMFView({ mfHoldings, stats }) {
     const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Total Deployed',
       'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status', 'Data Error']];
     rows.forEach(h => rows2.push([
-      h.symbol, h.sector || '', h.lots.length, formatNum(h.qty, 3), formatNum(h.cmp, 2), formatNum(h.avgBuy, 2),
+      h.name || h.symbol, h.sector || '', h.lots.length, formatNum(h.qty, 3), formatNum(h.cmp, 2), formatNum(h.avgBuy, 2),
       formatNum(h.invested, 0), formatNum(h.totalEverInvested ?? h.invested, 0),
       formatNum(h.marketValue, 0), formatNum(h.unrealizedGain, 0), formatNum(h.realizedGain, 0),
       formatNum(h.totalGain, 0), formatNum(h.returnPct, 2) + '%', formatNum(h.cagr, 2) + '%',

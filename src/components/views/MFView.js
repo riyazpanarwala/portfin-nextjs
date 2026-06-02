@@ -122,6 +122,7 @@ export default function MFView() {
           </div>
         ) : rows.map(h => {
           const open        = !!expanded[h.symbol];
+          const displayName = h.name || h.symbol;
 
           return (
             <div key={h.symbol} className={styles.rowOuter}>
@@ -139,15 +140,12 @@ export default function MFView() {
                 {/* Fund name */}
                 <div className={styles.symbolCell}>
                   <div className={styles.symbolNameRow}>
-                    <span className={styles.symbolText} title={h.name || h.symbol}>
-                      {h.symbol}
+                    <span className={styles.symbolText} title={displayName}>
+                      {displayName}
                     </span>
                     {isExited && <span className={styles.exitedBadge}>EXITED</span>}
                     {h.hasDataError && <DataErrorBadge qty={h.unmatchedSellQty} />}
                   </div>
-                  {h.name && h.name !== h.symbol && (
-                    <div className={styles.fundName}>{h.name}</div>
-                  )}
                   {h.sells?.length > 0 && (
                     <div className={styles.sellBadge}>
                       {h.sells.length} redemption{h.sells.length > 1 ? 's' : ''}

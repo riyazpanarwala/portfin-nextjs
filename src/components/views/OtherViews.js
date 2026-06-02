@@ -686,10 +686,11 @@ export function ActionView() {
 
   const topGainer = [...holdings].sort((a, b) => b.returnPct - a.returnPct)[0];
   const topLoser = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
+  const holdingLabel = h => h?.assetType === 'MF' ? (h.name || h.symbol) : h?.symbol;
 
   const pulseCards = [
-    { icon: 'UP', title: 'Top Gainer', body: topGainer ? topGainer.symbol + ' ' + fmtPct(topGainer.returnPct, true) : '-', color: 'var(--green2)' },
-    { icon: 'DN', title: 'Underperformer', body: topLoser ? topLoser.symbol + ' ' + fmtPct(topLoser.returnPct, true) : '-', color: 'var(--red2)' },
+    { icon: 'UP', title: 'Top Gainer', body: topGainer ? holdingLabel(topGainer) + ' ' + fmtPct(topGainer.returnPct, true) : '-', color: 'var(--green2)' },
+    { icon: 'DN', title: 'Underperformer', body: topLoser ? holdingLabel(topLoser) + ' ' + fmtPct(topLoser.returnPct, true) : '-', color: 'var(--red2)' },
     { icon: 'PV', title: 'Portfolio Value', body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
     { icon: 'OR', title: 'Overall Return', body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
   ];
@@ -729,7 +730,7 @@ export function ActionView() {
             <div key={i} className={styles.pulseCard}>
               <div className={styles.pulseCardIcon}>{c.icon}</div>
               <div className={styles.pulseCardLabel}>{c.title}</div>
-              <div className={styles.pulseCardValue} style={{ color: c.color }}>{c.body}</div>
+              <div className={styles.pulseCardValue} title={c.body} style={{ color: c.color }}>{c.body}</div>
             </div>
           ))}
         </div>

@@ -140,23 +140,25 @@ export function HoldingCategoryBadge({ label, isExited, tableStyles }) {
 
 export function HoldingMetricCells({ h, isExited, maxRet, tableStyles }) {
   const hasRealized = (h.realizedGain || 0) !== 0;
+  const rupee = '\u20b9';
+  const dash = '\u2014';
   return (
     <>
       <div className={tableStyles.monoCell}>{fmtCr(h.invested)}</div>
       <div className={tableStyles.monoCell}>
-        {h.qty > 0 ? `â‚¹${fmt(h.invested / h.qty, 2)}` : 'â€”'}
+        {h.qty > 0 ? `${rupee}${fmt(h.invested / h.qty, 2)}` : dash}
       </div>
       <div className={[
         tableStyles.monoCellBold,
         isExited ? tableStyles.monoCellMuted : '',
       ].filter(Boolean).join(' ')}>
-        {isExited ? 'â€”' : fmtCr(h.marketValue)}
+        {isExited ? dash : fmtCr(h.marketValue)}
       </div>
       <div
         className={`${tableStyles.monoCell} ${tableStyles.monoCellRealized}`}
         style={{ color: hasRealized ? colorPnl(h.realizedGain) : 'var(--text3)' }}
       >
-        {hasRealized ? fmtCr(h.realizedGain) : 'â€”'}
+        {hasRealized ? fmtCr(h.realizedGain) : dash}
       </div>
       <div
         className={`${tableStyles.monoCell} ${tableStyles.monoCellGain}`}
