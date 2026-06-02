@@ -676,7 +676,7 @@ export function ActionView() {
 
   if (!holdings.length) return (
     <EmptyState
-      icon="âš¡"
+      icon="AS"
       label="No holdings yet"
       sub="Add trades to see your action signals."
       cta="+ Add Trade"
@@ -688,10 +688,10 @@ export function ActionView() {
   const topLoser = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
 
   const pulseCards = [
-    { icon: 'ðŸ“ˆ', title: 'Top Gainer', body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : 'â€”', color: 'var(--green2)' },
-    { icon: 'ðŸ“‰', title: 'Underperformer', body: topLoser ? `${topLoser.symbol} ${fmtPct(topLoser.returnPct, true)}` : 'â€”', color: 'var(--red2)' },
-    { icon: 'ðŸ’°', title: 'Portfolio Value', body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
-    { icon: 'ðŸ“Š', title: 'Overall Return', body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
+    { icon: 'UP', title: 'Top Gainer', body: topGainer ? topGainer.symbol + ' ' + fmtPct(topGainer.returnPct, true) : '-', color: 'var(--green2)' },
+    { icon: 'DN', title: 'Underperformer', body: topLoser ? topLoser.symbol + ' ' + fmtPct(topLoser.returnPct, true) : '-', color: 'var(--red2)' },
+    { icon: 'PV', title: 'Portfolio Value', body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
+    { icon: 'OR', title: 'Overall Return', body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
   ];
 
   const checklist = [
@@ -714,11 +714,11 @@ export function ActionView() {
         <div className={styles.signalBannerLabel}>Action Signal</div>
         <div className={styles.signalBannerTitle}>
           {stats.totalReturnPct >= 0
-            ? 'Portfolio is in profit â€” stay the course'
-            : 'Portfolio is in loss â€” review allocation'}
+            ? 'Portfolio is in profit - stay the course'
+            : 'Portfolio is in loss - review allocation'}
         </div>
         <div className={styles.signalBannerSub}>
-          {stats.fundCount + stats.stockCount} holdings Â· Overall return {fmtPct(stats.totalReturnPct, true)} Â· CAGR {fmtPct(stats.overallCagr, true)}
+          {stats.fundCount + stats.stockCount} holdings - Overall return {fmtPct(stats.totalReturnPct, true)} - CAGR {fmtPct(stats.overallCagr, true)}
         </div>
       </div>
 
@@ -751,7 +751,7 @@ export function ActionView() {
                 background: checked[i] ? 'var(--green2)' : 'transparent',
               }}
             >
-              {checked[i] ? 'âœ“' : ''}
+              {checked[i] ? 'OK' : ''}
             </div>
             <span className={`${styles.checklistText} ${checked[i] ? styles.checklistTextDone : ''}`}>
               {item}
@@ -760,7 +760,7 @@ export function ActionView() {
         ))}
         <div className={styles.checklistSummary}>
           {doneCount} / {checklist.length} done
-          {doneCount === checklist.length && ' ðŸŽ‰ All done!'}
+          {doneCount === checklist.length && ' - All done!'}
         </div>
       </div>
     </div>
@@ -791,7 +791,7 @@ export function SnapshotView() {
             Save a snapshot of today&apos;s portfolio value to track progress over time.
             {/* FIX (Bug 18): inform user that rapid duplicate saves within the same
                 minute will update the existing snapshot rather than adding a new one. */}
-            {' '}Each snapshot is unique per minute â€” saving twice within the same minute
+            {' '}Each snapshot is unique per minute - saving twice within the same minute
             updates the existing entry.
           </div>
         </div>
@@ -801,7 +801,7 @@ export function SnapshotView() {
           disabled={saving}
           style={{ whiteSpace: 'nowrap' }}
         >
-          {saving ? 'Savingâ€¦' : 'ðŸ“¸ Save Snapshot Now'}
+          {saving ? 'Saving...' : 'Save Snapshot Now'}
         </button>
       </div>
 
@@ -812,10 +812,10 @@ export function SnapshotView() {
         </div>
 
         {loading ? (
-          <div className={styles.snapshotLoading}>Loadingâ€¦</div>
+          <div className={styles.snapshotLoading}>Loading...</div>
         ) : snapshots.length === 0 ? (
           <div className={styles.snapshotEmpty}>
-            <div className={styles.snapshotEmptyIcon}>ðŸ“¸</div>
+            <div className={styles.snapshotEmptyIcon}>SS</div>
             <div className={styles.snapshotEmptyText}>
               No snapshots yet. Click Save Snapshot Now to record your first checkpoint.
             </div>
@@ -845,7 +845,7 @@ export function SnapshotView() {
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(parseFloat(s.totalValue))}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(parseFloat(s.totalInvested))}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalRealizedGain)), fontWeight: 600 }}>
-                    {s.totalRealizedGain != null ? fmtCr(parseFloat(s.totalRealizedGain)) : 'â€”'}
+                    {s.totalRealizedGain != null ? fmtCr(parseFloat(s.totalRealizedGain)) : '-'}
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalGain)), fontWeight: 600 }}>
                     {fmtCr(parseFloat(s.totalGain))}
@@ -856,13 +856,13 @@ export function SnapshotView() {
                     </span>
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>
-                    {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : 'â€”'}
+                    {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '-'}
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>
-                    {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : 'â€”'}
+                    {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : '-'}
                   </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? 'â€”'}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? 'â€”'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '-'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '-'}</td>
                 </tr>
               ))}
             </tbody>
