@@ -286,3 +286,459 @@
 .snapshotEmptyIcon { font-size: 32px; margin-bottom: 8px; }
 
 .snapshotEmptyText { font-size: 13px; }
+
+.timelineHero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 0 4px;
+}
+
+.timelineHeroTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.timelineHeroMeta {
+  margin-top: 4px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.timelineReturnPills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.returnPill {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--green2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.returnPillGold {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+}
+
+.timelineMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.timelineMetricCard {
+  position: relative;
+  min-height: 112px;
+  padding: 18px 18px 16px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(30, 45, 69, 0.72), rgba(17, 24, 39, 0.72));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.timelineMetricCard::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: var(--metric-color, var(--accent2));
+}
+
+.timelineMetricCompact {
+  min-height: 102px;
+  padding: 16px;
+}
+
+.timelineMetricLabel {
+  color: var(--text3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.timelineMetricValue {
+  margin-top: 10px;
+  color: var(--metric-color, var(--text));
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.timelineMetricSub {
+  margin-top: 8px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.timelineMetricgold { --metric-color: #d6a72f; }
+.timelineMetricblue { --metric-color: #60a5fa; }
+.timelineMetricgreen { --metric-color: #34d399; }
+.timelineMetricpurple { --metric-color: #a78bfa; }
+.timelineMetricslate { --metric-color: #94a3b8; }
+
+.yearTabs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.yearTabsLabel {
+  margin-right: 2px;
+  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.yearTab {
+  min-width: 48px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: rgba(11, 15, 26, 0.55);
+  color: var(--text2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.yearTab:hover {
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+.yearTabActive {
+  border-color: rgba(245, 158, 11, 0.7);
+  background: linear-gradient(180deg, #d6a72f, #b8861f);
+  color: #111827;
+}
+
+.yearTabsCompact {
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.yearTabsCompact .yearTab {
+  min-width: 38px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 10px;
+}
+
+.timelinePanel {
+  padding: 18px 18px 20px;
+  overflow: hidden;
+}
+
+.heatmapPanel {
+  overflow: visible;
+}
+
+.timelinePanelHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid rgba(45, 64, 96, 0.75);
+}
+
+.timelinePanelTitle {
+  position: relative;
+  padding-left: 14px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.timelinePanelTitle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: #d6a72f;
+}
+
+.heatmapLegend {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text2);
+  font-size: 11px;
+}
+
+.legendSquare {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+.legendSquare0 { background: rgba(26, 34, 54, 0.9); }
+.legendSquare1 { background: #173c2a; }
+.legendSquare2 { background: #1f6f46; }
+.legendSquare3 { background: #bd9128; }
+.legendSquare4 { background: #d6a72f; }
+
+.heatmapGrid {
+  grid-template-columns: 50px repeat(12, 28px) !important;
+  justify-content: start;
+  gap: 4px;
+  position: relative;
+}
+
+.heatmapCell {
+  width: 28px;
+  height: 28px;
+  border-color: rgba(45, 64, 96, 0.55);
+}
+
+.heatmapCell:hover,
+.heatmapCell:focus-visible {
+  border-color: rgba(214, 167, 47, 0.75);
+  box-shadow: 0 0 0 1px rgba(214, 167, 47, 0.2), 0 0 14px rgba(214, 167, 47, 0.18);
+  outline: none;
+}
+
+.heatmapTooltip {
+  position: absolute;
+  z-index: 5;
+  min-width: 190px;
+  padding: 14px 16px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  border: 1px solid rgba(74, 98, 133, 0.9);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(30, 42, 64, 0.98), rgba(20, 29, 47, 0.98));
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.34);
+}
+
+.heatmapTooltipMonth {
+  margin-bottom: 6px;
+  color: #d6a72f;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.heatmapTooltipValue {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.timelineTwoCol {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.2fr);
+  gap: 16px;
+}
+
+.yearlyTotals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.yearlyTotalRow {
+  display: grid;
+  grid-template-columns: 46px minmax(120px, 1fr) 86px;
+  align-items: center;
+  gap: 10px;
+}
+
+.yearlyTotalYear,
+.yearlyTotalValue,
+.moneyCell,
+.percentCell,
+.totalRowLabel,
+.totalRowValue {
+  font-family: var(--font-mono);
+}
+
+.yearlyTotalYear,
+.percentCell {
+  color: var(--text2);
+  font-size: 11px;
+}
+
+.yearlyTotalTrack {
+  height: 16px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(148, 169, 196, 0.08);
+}
+
+.yearlyTotalBar {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+}
+
+.yearlyTotalBarGold {
+  background: linear-gradient(90deg, #b8861f, #d6a72f);
+}
+
+.yearlyTotalValue {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.monthlyBreakdown {
+  overflow-x: auto;
+}
+
+.monthlyBreakdown table {
+  min-width: 520px;
+}
+
+.monthNameCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.monthLine {
+  display: inline-block;
+  max-width: 72px;
+  height: 3px;
+  border-radius: 999px;
+  background: #d6a72f;
+}
+
+.moneyCell {
+  color: var(--text);
+  font-weight: 800;
+  text-align: right;
+}
+
+.percentCell {
+  text-align: right;
+}
+
+.totalRowLabel {
+  color: var(--text2);
+  font-weight: 700;
+}
+
+.totalRowValue {
+  color: #d6a72f;
+  font-weight: 800;
+  text-align: right;
+}
+
+.timelineTooltip {
+  min-width: 170px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #111827;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.timelineTooltipLabel {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.timelineTooltipRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--text2);
+  font-size: 11px;
+}
+
+.timelineTooltipRow + .timelineTooltipRow {
+  margin-top: 5px;
+}
+
+.timelineTooltipRow span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.timelineTooltipRow i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+.timelineTooltipRow strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 1180px) {
+  .timelineMetricGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .timelineTwoCol {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .timelineHero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .timelineReturnPills {
+    justify-content: flex-start;
+  }
+
+  .timelineMetricGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .timelinePanel {
+    padding: 14px;
+  }
+
+  .timelinePanelHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .yearTabsCompact {
+    justify-content: flex-start;
+  }
+}

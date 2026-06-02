@@ -2,48 +2,52 @@
 
 export { TradeForm } from '@/components/views/TradeForm';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
-import { BarChart, CumChart, WaterfallChart } from '@/components/charts/Charts';
+import { WaterfallChart } from '@/components/charts/Charts';
 import { EmptyState, Alert } from '@/components/ui/SharedUI';
+import {
+  Area,
+  CartesianGrid,
+  Line,
+  ComposedChart,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import styles from './OtherViews.module.css';
 
 // ── TimelineView ──────────────────────────────────────────────────────────────
 
 export function TimelineView() {
-  const { trades, monthlyFlow, setActiveView } = usePortfolio();
+  const { trades, monthlyFlow, holdings, stats, setActiveView } = usePortfolio();
+  const [selectedYear, setSelectedYear] = useState('all');
 
-  const cumFlow = [];
-  let cum = 0;
-  // `amount` = buy-only invested capital (correct for the cumulative chart)
-  monthlyFlow.forEach(m => { cum += m.amount; cumFlow.push({ ...m, cum }); });
-  const monthlyInvestmentBars = monthlyFlow.map(d => ({
-    label: d.month,
-    value: d.amount,
-    color: '#3b82f6',
-  }));
-
-  const now = new Date();
-  const cutoff = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  const cutoffKey = cutoff.toISOString().slice(0, 7);
-
-  const byMonth = {};
-  [...trades]
-    .sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
-    .forEach(t => {
-      const key = t.tradeDate.slice(0, 7);
-      if (key < cutoffKey) return;
-      if (!byMonth[key]) byMonth[key] = [];
-      byMonth[key].push(t);
-    });
-
-  const recentCount = Object.values(byMonth).reduce((s, arr) => s + arr.length, 0);
+  const timeline = useMemo(
+    () => buildTimelineModel(holdings, stats, monthlyFlow),
+    [holdings, stats, monthlyFlow],
+  );
+  const activeYear = selectedYear === 'all' ? timeline.latestYear : selectedYear;
+  const heatmapRows = selectedYear === 'all'
+    ? timeline.heatmapRows
+    : timeline.heatmapRows.filter(row => row.year === activeYear);
+  const yearlyRows = selectedYear === 'all'
+    ? timeline.yearlyTotals
+    : timeline.yearlyTotals.filter(row => row.year === activeYear);
+  const cumulativeSeries = selectedYear === 'all'
+    ? timeline.cumulativeSeries
+    : timeline.cumulativeSeries.filter(row => row.month.startsWith(`${activeYear}-`));
+  const maxMonthAmount = Math.max(...heatmapRows.flatMap(row => row.months.map(month => month.amount)), 1);
+  const maxYearAmount = Math.max(...yearlyRows.map(row => row.amount), 1);
+  const monthlyRows = timeline.byYear[activeYear]?.months ?? [];
 
   if (!trades.length) return (
     <EmptyState
-      icon="📅"
+      icon="TL"
       label="No trades recorded yet"
       sub="Add trades to see your investment timeline."
       cta="+ Add Trade"
@@ -53,147 +57,444 @@ export function TimelineView() {
 
   return (
     <div className={`fade-up ${styles.timelineWrapper}`}>
-
-      <div className={`glass ${styles.chartPanel}`}>
-        <div className={styles.panelTitle}>Cumulative Invested Over Time</div>
-        <CumChart data={cumFlow} />
-      </div>
-
-      <div className={`glass ${styles.chartPanel}`}>
-        <div className={styles.panelTitle}>Monthly Investment Flow</div>
-        {monthlyInvestmentBars.length > 0 ? (
-          <BarChart
-            data={monthlyInvestmentBars}
-            height={140}
-            xTickFormatter={label => label.slice(5)}
-          />
-        ) : (
-          <div className={styles.chartEmpty}>No monthly investment data yet.</div>
-        )}
-      </div>
-
-      <div className={`glass ${styles.chartPanel}`}>
-        {/* FIX (Bug 17): title updated to reflect that heatmap now shows
-            buy + sell activity, not just invested capital. */}
-        <div className={styles.panelTitle}>Monthly Activity Heatmap (buys + sells)</div>
-        <MonthlyHeatmap data={monthlyFlow} />
-      </div>
-
-      <div className={`glass ${styles.tradeHistoryPanel}`}>
-        <div className={styles.tradeHistoryHeader}>
-          <span className={styles.tradeHistoryTitle}>Trade History</span>
-          <span className={styles.tradeHistoryCount}>· {trades.length} total trades</span>
-          <span style={{
-            marginLeft: 'auto',
-            fontSize: '10px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px',
-            background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)',
-            color: 'var(--accent2)', letterSpacing: '0.03em',
-          }}>
-            Showing last 3 months · {recentCount} trade{recentCount !== 1 ? 's' : ''}
-          </span>
-        </div>
-
-        {Object.keys(byMonth).length === 0 ? (
-          <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text3)', fontSize: '13px' }}>
-            No trades in the last 3 months.
+      <div className={styles.timelineHero}>
+        <div>
+          <div className={styles.timelineHeroTitle}>Investment Timeline</div>
+          <div className={styles.timelineHeroMeta}>
+            {stats.fundCount} mutual funds · {stats.stockCount} equity stocks · Since {timeline.sinceLabel}
           </div>
-        ) : (
-          Object.entries(byMonth).sort(([a], [b]) => b.localeCompare(a)).map(([month, ts]) => (
-            <div key={month}>
-              <div className={styles.monthGroupLabel}>
-                {new Date(month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}
-                <span className={styles.monthGroupCount}>· {ts.length} trade{ts.length > 1 ? 's' : ''}</span>
-              </div>
-              {ts.map((t, i) => (
-                <div key={i} className={styles.tradeRow}>
-                  <div className={styles.tradeRowLeft}>
-                    <span className={`chip ${t.tradeType === 'BUY' ? 'chip-green' : 'chip-red'}`}>{t.tradeType}</span>
-                    <span className={`chip ${t.assetType === 'MF' ? 'chip-blue' : 'chip-purple'}`}>{t.assetType}</span>
-                    <div>
-                      <div className={styles.tradeSymbol}>{t.symbol}</div>
-                      <div className={styles.tradeMeta}>{t.tradeDate}{t.sector ? ` · ${t.sector}` : ''}</div>
-                    </div>
-                  </div>
-                  <div className={styles.tradeRowRight}>
-                    <div className={styles.tradeQtyPrice}>
-                      {parseFloat(t.quantity)} units @ ₹{fmt(parseFloat(t.price))}
-                    </div>
-                    <div className={styles.tradeTotal}>
-                      = {fmtCr(parseFloat(t.quantity) * parseFloat(t.price))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))
-        )}
+        </div>
+        <div className={styles.timelineReturnPills}>
+          <span className={styles.returnPill}>MF {fmtPct(stats.mfCagr)}</span>
+          <span className={styles.returnPill}>Stocks {fmtPct(stats.stCagr)}</span>
+          <span className={`${styles.returnPill} ${styles.returnPillGold}`}>Combined {fmtPct(stats.overallCagr)}</span>
+        </div>
+      </div>
+
+      <div className={styles.timelineMetricGrid}>
+        {timeline.metricCards.map(card => (
+          <TimelineMetricCard key={card.label} {...card} />
+        ))}
+      </div>
+
+      <YearTabs years={timeline.years} selected={selectedYear} onSelect={setSelectedYear} />
+
+      <section className={`glass ${styles.timelinePanel} ${styles.heatmapPanel}`}>
+        <PanelHeading title="Monthly investment heatmap">
+          <div className={styles.heatmapLegend}>
+            <span>Less</span>
+            {[0, 1, 2, 3, 4].map(i => <span key={i} className={`${styles.legendSquare} ${styles[`legendSquare${i}`]}`} />)}
+            <span>More</span>
+          </div>
+        </PanelHeading>
+        <MonthlyHeatmap data={heatmapRows} max={maxMonthAmount} />
+      </section>
+
+      <div className={styles.timelineTwoCol}>
+        <section className={`glass ${styles.timelinePanel}`}>
+          <PanelHeading title="Yearly investment totals" />
+          <YearlyTotals rows={yearlyRows} max={maxYearAmount} />
+        </section>
+
+        <section className={`glass ${styles.timelinePanel}`}>
+          <PanelHeading title="Monthly breakdown">
+            <YearTabs years={timeline.years} selected={activeYear} onSelect={setSelectedYear} compact />
+          </PanelHeading>
+          <MonthlyBreakdown rows={monthlyRows} total={timeline.byYear[activeYear]?.amount ?? 0} year={activeYear} />
+        </section>
+      </div>
+
+      <section className={`glass ${styles.timelinePanel}`}>
+        <PanelHeading title="Cumulative invested over time (MF + Stocks)" />
+        <TimelineCumulativeChart data={cumulativeSeries} />
+      </section>
+
+      <div className={styles.timelineMetricGrid}>
+        {timeline.footerCards.map(card => (
+          <TimelineMetricCard key={card.label} {...card} compact />
+        ))}
       </div>
     </div>
   );
 }
 
-// FIX (Bug 17): MonthlyHeatmap now uses `d.activity` (buy + sell volume) for
-// cell intensity so that months with large redemptions are not shown as quiet.
-// `d.amount` (buy-only) is still used by the cumulative chart above.
-function MonthlyHeatmap({ data }) {
-  if (!data || !data.length) return <div style={{ color: 'var(--text3)', fontSize: 12 }}>No data</div>;
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const TIMELINE_TICK = { fill: '#5c7a9a', fontSize: 10, fontFamily: 'var(--font-mono)' };
+const TIMELINE_GRID = 'rgba(45,64,96,0.45)';
 
-  // Use total activity (buys + sells) for heatmap intensity.
-  // Fall back to `amount` (old field) when upgrading from a cached context
-  // that hasn't re-computed monthlyFlow with the new shape yet.
-  const max = Math.max(...data.map(d => d.activity ?? d.amount));
-  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function buildTimelineModel(holdings, stats, monthlyFlow) {
+  const activeLots = holdings.flatMap(holding =>
+    (holding.lots ?? []).map(lot => ({
+      date: lot.date,
+      assetType: holding.assetType,
+      amount: parseFloat(lot.qty || 0) * parseFloat(lot.price || 0),
+    }))
+  ).filter(lot => lot.date && lot.amount > 0);
+  const years = [...new Set(activeLots.map(lot => lot.date.slice(0, 4)).filter(Boolean))].sort();
+  const latestYear = years[years.length - 1] ?? String(new Date().getFullYear());
+  const firstTradeDate = activeLots.reduce((min, lot) => {
+    const date = (lot.date || '').slice(0, 10);
+    return date && (!min || date < min) ? date : min;
+  }, '');
 
   const byYear = {};
-  data.forEach(d => {
-    const [y, m] = d.month.split('-');
-    if (!byYear[y]) byYear[y] = {};
-    byYear[y][parseInt(m) - 1] = d.activity ?? d.amount;
+  const assetMonthly = {};
+  activeLots.forEach(lot => {
+    const month = (lot.date || '').slice(0, 7);
+    const year = month.slice(0, 4);
+    const monthIndex = Number(month.slice(5, 7)) - 1;
+    const amount = lot.amount;
+    if (!month || Number.isNaN(monthIndex)) return;
+    if (!byYear[year]) {
+      byYear[year] = {
+        amount: 0,
+        months: MONTHS_SHORT.map((label, i) => ({ label, month: `${year}-${String(i + 1).padStart(2, '0')}`, amount: 0 })),
+      };
+    }
+    byYear[year].amount += amount;
+    byYear[year].months[monthIndex].amount += amount;
+
+    if (!assetMonthly[month]) assetMonthly[month] = { month, mf: 0, stocks: 0 };
+    if (lot.assetType === 'MF') assetMonthly[month].mf += amount;
+    else assetMonthly[month].stocks += amount;
   });
+
+  years.forEach(year => {
+    if (!byYear[year]) {
+      byYear[year] = {
+        amount: 0,
+        months: MONTHS_SHORT.map((label, i) => ({ label, month: `${year}-${String(i + 1).padStart(2, '0')}`, amount: 0 })),
+      };
+    }
+    const yearTotal = byYear[year].amount || 1;
+    byYear[year].months = byYear[year].months.map(m => ({ ...m, pct: m.amount > 0 ? (m.amount / yearTotal) * 100 : 0 }));
+  });
+
+  const heatmapRows = years.map(year => ({
+    year,
+    months: MONTHS_SHORT.map((label, i) => {
+      const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+      const amount = byYear[year]?.months[i]?.amount ?? 0;
+      return { label, month, amount };
+    }),
+  }));
+
+  const yearlyTotals = years.map(year => ({ year, amount: byYear[year]?.amount ?? 0 }));
+  const cumulativeSeries = Object.values(assetMonthly).sort((a, b) => a.month.localeCompare(b.month));
+  let cumMf = 0, cumStocks = 0;
+  const cumulative = cumulativeSeries.map(row => {
+    cumMf += row.mf;
+    cumStocks += row.stocks;
+    return { month: row.month, mf: cumMf, stocks: cumStocks, total: cumMf + cumStocks };
+  });
+
+  const activeMonthlyRows = Object.values(assetMonthly)
+    .map(row => ({ month: row.month, amount: row.mf + row.stocks }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+  const buyingMonths = monthlyFlow.filter(m => m.amount > 0);
+  const positiveMonths = activeMonthlyRows.filter(m => m.amount > 0);
+  const bestMonth = activeMonthlyRows.reduce((best, row) => row.amount > (best?.amount ?? -1) ? row : best, null);
+  const activeMonths = buyingMonths.length;
+  const maxMonthAmount = Math.max(...activeMonthlyRows.map(m => m.amount), 1);
+  const maxYearAmount = Math.max(...yearlyTotals.map(y => y.amount), 1);
+  const activeMfInvested = stats?.mfInvested ?? 0;
+  const activeStockInvested = stats?.stInvested ?? 0;
+  const activeTotalInvested = stats?.totalInvested ?? activeMfInvested + activeStockInvested;
+  const avgMonthly = activeMonths > 0 ? activeTotalInvested / activeMonths : 0;
+  const lowestMonth = positiveMonths.reduce((low, row) => row.amount < (low?.amount ?? Infinity) ? row : low, null);
+  const highestYear = yearlyTotals.reduce((best, row) => row.amount > (best?.amount ?? -1) ? row : best, null);
+  const inactiveMonths = countInactiveBuyingMonths(monthlyFlow);
+  const totalLots = activeLots.length || holdings.reduce((sum, h) => sum + (h.lots?.length ?? 0), 0);
+
+  return {
+    years,
+    latestYear,
+    sinceLabel: firstTradeDate ? new Date(firstTradeDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : '-',
+    byYear,
+    heatmapRows,
+    yearlyTotals,
+    cumulativeSeries: cumulative,
+    maxMonthAmount,
+    maxYearAmount,
+    metricCards: [
+      { label: 'Total invested', value: fmtCr(activeTotalInvested), sub: 'Current active cost basis', color: 'gold' },
+      { label: 'Avg monthly SIP', value: fmtCr(avgMonthly), sub: 'Across active months', color: 'blue' },
+      { label: 'Active months', value: fmt(activeMonths, 0), sub: formatYears(activeMonths), color: 'green' },
+      { label: 'Total lots', value: fmt(totalLots, 0), sub: 'Individual purchases', color: 'purple' },
+      { label: 'Best month', value: bestMonth ? fmtCr(bestMonth.amount) : '-', sub: bestMonth ? monthLabel(bestMonth.month) : 'No buys', color: 'gold' },
+      { label: 'Lowest month', value: lowestMonth ? fmtCr(lowestMonth.amount) : '-', sub: lowestMonth ? monthLabel(lowestMonth.month) : 'No buys', color: 'slate' },
+    ],
+    footerCards: [
+      { label: 'Longest SIP streak', value: `${longestMonthStreak(monthlyFlow)} months`, sub: 'Consecutive buying months', color: 'green' },
+      { label: 'Highest-invest year', value: highestYear?.year ?? '-', sub: highestYear ? `${fmtCr(highestYear.amount)} deployed` : 'No yearly data', color: 'gold' },
+      { label: 'Avg annual invest', value: fmtCr(years.length ? activeTotalInvested / years.length : 0), sub: `Across ${years.length || 0} active years`, color: 'blue' },
+      { label: 'Inactive months', value: fmt(inactiveMonths, 0), sub: 'Calendar months with no buys', color: 'slate' },
+      { label: 'MF vs stocks split', value: activeTotalInvested ? `${fmt((activeMfInvested / activeTotalInvested) * 100, 0)}% / ${fmt((activeStockInvested / activeTotalInvested) * 100, 0)}%` : '-', sub: 'Of current invested capital', color: 'purple' },
+      { label: 'Biggest single month', value: bestMonth ? fmtCr(bestMonth.amount) : '-', sub: bestMonth ? monthLabel(bestMonth.month) : 'No buys', color: 'gold' },
+    ],
+  };
+}
+
+function monthLabel(month) {
+  return new Date(`${month}-01`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+}
+
+function formatYears(months) {
+  const years = Math.floor(months / 12);
+  return years > 0 ? `Over ${years} yr${years > 1 ? 's' : ''}` : 'Under 1 yr';
+}
+
+function longestMonthStreak(monthlyFlow) {
+  const active = new Set(monthlyFlow.filter(m => m.amount > 0).map(m => m.month));
+  if (!active.size) return 0;
+  const months = [...active].sort();
+  let best = 1, current = 1;
+  for (let i = 1; i < months.length; i++) {
+    current = nextMonthKey(months[i - 1]) === months[i] ? current + 1 : 1;
+    best = Math.max(best, current);
+  }
+  return best;
+}
+
+function countInactiveBuyingMonths(monthlyFlow) {
+  const months = monthlyFlow.map(m => m.month).filter(Boolean).sort();
+  if (!months.length) return 0;
+  const active = new Set(monthlyFlow.filter(m => m.amount > 0).map(m => m.month));
+  let inactive = 0;
+  for (let cursor = months[0]; cursor <= months[months.length - 1]; cursor = nextMonthKey(cursor)) {
+    if (!active.has(cursor)) inactive += 1;
+  }
+  return inactive;
+}
+
+function nextMonthKey(month) {
+  const [year, mon] = month.split('-').map(Number);
+  const next = new Date(year, mon, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function TimelineMetricCard({ label, value, sub, color, compact = false }) {
+  return (
+    <div className={`${styles.timelineMetricCard} ${styles[`timelineMetric${color}`]} ${compact ? styles.timelineMetricCompact : ''}`}>
+      <div className={styles.timelineMetricLabel}>{label}</div>
+      <div className={styles.timelineMetricValue}>{value}</div>
+      <div className={styles.timelineMetricSub}>{sub}</div>
+    </div>
+  );
+}
+
+function PanelHeading({ title, children }) {
+  return (
+    <div className={styles.timelinePanelHeading}>
+      <div className={styles.timelinePanelTitle}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function YearTabs({ years, selected, onSelect, compact = false }) {
+  return (
+    <div className={`${styles.yearTabs} ${compact ? styles.yearTabsCompact : ''}`}>
+      {!compact && <span className={styles.yearTabsLabel}>Year:</span>}
+      {!compact && (
+        <button className={`${styles.yearTab} ${selected === 'all' ? styles.yearTabActive : ''}`} onClick={() => onSelect('all')}>
+          All
+        </button>
+      )}
+      {years.map(year => (
+        <button key={year} className={`${styles.yearTab} ${selected === year ? styles.yearTabActive : ''}`} onClick={() => onSelect(year)}>
+          {year}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MonthlyHeatmap({ data, max }) {
+  const [tooltip, setTooltip] = useState(null);
+
+  if (!data || !data.length) return <div className={styles.chartEmpty}>No data</div>;
+
+  function showTooltip(event, month, value) {
+    const gridRect = event.currentTarget.closest(`.${styles.heatmapGrid}`).getBoundingClientRect();
+    const cellRect = event.currentTarget.getBoundingClientRect();
+    const tooltipWidth = 210;
+    const tooltipHeight = 76;
+    const gap = 12;
+    const preferredLeft = cellRect.right - gridRect.left + gap;
+    const left = preferredLeft + tooltipWidth > gridRect.width
+      ? cellRect.left - gridRect.left - tooltipWidth - gap
+      : preferredLeft;
+    const top = Math.max(
+      8 + tooltipHeight / 2,
+      Math.min(
+        cellRect.top - gridRect.top + cellRect.height / 2,
+        gridRect.height - tooltipHeight / 2 - 8,
+      ),
+    );
+
+    setTooltip({
+      month: monthLabel(month.month),
+      value,
+      left: Math.max(8, left),
+      top,
+    });
+  }
 
   return (
     <div className={styles.heatmapScroll}>
-      <div
-        className={styles.heatmapGrid}
-        style={{ gridTemplateColumns: '50px repeat(12, 1fr)' }}
-      >
+      <div className={styles.heatmapGrid} style={{ gridTemplateColumns: '50px repeat(12, 1fr)' }}>
         <div />
-        {MONTHS.map(m => (
-          <div key={m} className={styles.heatmapMonthLabel}>{m}</div>
-        ))}
-
-        {Object.entries(byYear).sort().map(([year, mdata]) => ([
-          <div key={`${year}_l`} className={styles.heatmapYearLabel}>{year}</div>,
-          ...MONTHS.map((_, mi) => {
-            const val = mdata[mi] || 0;
-            const intensity = max > 0 ? val / max : 0;
+        {MONTHS_SHORT.map(month => <div key={month} className={styles.heatmapMonthLabel}>{month}</div>)}
+        {data.map(row => ([
+          <div key={`${row.year}_l`} className={styles.heatmapYearLabel}>{row.year}</div>,
+          ...row.months.map(month => {
+            const value = month.amount || 0;
+            const intensity = max > 0 ? value / max : 0;
             return (
               <div
-                key={`${year}_${mi}`}
-                title={val ? `₹${fmt(val, 0)}` : 'No activity'}
+                key={month.month}
                 className={styles.heatmapCell}
-                style={{
-                  background: val > 0
-                    ? `rgba(59,130,246,${0.1 + intensity * 0.8})`
-                    : 'var(--bg3)',
-                }}
+                style={{ background: heatmapColor(intensity, value) }}
+                onMouseEnter={event => showTooltip(event, month, value)}
+                onMouseMove={event => showTooltip(event, month, value)}
+                onMouseLeave={() => setTooltip(null)}
+                onFocus={event => showTooltip(event, month, value)}
+                onBlur={() => setTooltip(null)}
+                tabIndex={0}
+                aria-label={`${monthLabel(month.month)} invested ${fmtCr(value)}`}
               />
             );
           }),
         ]))}
+        {tooltip && (
+          <div
+            className={styles.heatmapTooltip}
+            style={{ left: tooltip.left, top: tooltip.top }}
+          >
+            <div className={styles.heatmapTooltipMonth}>{tooltip.month}</div>
+            <div className={styles.heatmapTooltipValue}>Invested: {fmtCr(tooltip.value)}</div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ── WaterfallView ─────────────────────────────────────────────────────────────
+function heatmapColor(intensity, value) {
+  if (!value) return 'rgba(26,34,54,0.85)';
+  if (intensity > 0.72) return '#d6a72f';
+  if (intensity > 0.45) return '#bd9128';
+  if (intensity > 0.22) return '#1f6f46';
+  return '#173c2a';
+}
+
+function YearlyTotals({ rows, max }) {
+  return (
+    <div className={styles.yearlyTotals}>
+      {rows.map(row => (
+        <div key={row.year} className={styles.yearlyTotalRow}>
+          <span className={styles.yearlyTotalYear}>{row.year}</span>
+          <span className={styles.yearlyTotalTrack}>
+            <span
+              className={`${styles.yearlyTotalBar} ${row.amount > max * 0.7 ? styles.yearlyTotalBarGold : ''}`}
+              style={{ width: `${Math.max(4, (row.amount / max) * 100)}%` }}
+            />
+          </span>
+          <span className={styles.yearlyTotalValue}>{fmtCr(row.amount)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MonthlyBreakdown({ rows, total, year }) {
+  const visibleRows = rows.filter(row => row.amount > 0);
+  if (!visibleRows.length) return <div className={styles.chartEmpty}>No investments recorded for {year}.</div>;
+
+  return (
+    <div className={styles.monthlyBreakdown}>
+      <table>
+        <thead>
+          <tr><th>Month</th><th>Invested</th><th>% of Year</th></tr>
+        </thead>
+        <tbody>
+          {visibleRows.map(row => (
+            <tr key={row.month}>
+              <td>
+                <div className={styles.monthNameCell}>
+                  <span className={styles.monthLine} style={{ width: `${Math.max(18, row.pct)}px` }} />
+                  {row.label}
+                </div>
+              </td>
+              <td className={styles.moneyCell}>{fmtCr(row.amount)}</td>
+              <td className={styles.percentCell}>{fmt(row.pct, 0)}%</td>
+            </tr>
+          ))}
+          <tr>
+            <td className={styles.totalRowLabel}>Total {year}</td>
+            <td className={styles.totalRowValue}>{fmtCr(total)}</td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function TimelineCumulativeChart({ data }) {
+  if (!data || data.length < 2) return <div className={styles.chartEmpty}>Not enough data for a cumulative chart.</div>;
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <ComposedChart data={data} margin={{ top: 12, right: 16, left: 0, bottom: 8 }}>
+        <defs>
+          <linearGradient id="timeline-total-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#d6a72f" stopOpacity={0.18} />
+            <stop offset="95%" stopColor="#d6a72f" stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke={TIMELINE_GRID} />
+        <XAxis dataKey="month" tick={TIMELINE_TICK} axisLine={false} tickLine={false} interval="preserveStartEnd" angle={-45} height={54} textAnchor="end" />
+        <YAxis tickFormatter={value => `Rs ${(value / 100000).toFixed(1)} L`} tick={TIMELINE_TICK} axisLine={false} tickLine={false} width={70} />
+        <Tooltip content={<TimelineTooltip />} cursor={{ stroke: 'rgba(148,169,196,0.3)', strokeDasharray: '4 4' }} />
+        <Legend wrapperStyle={{ fontSize: 11, color: '#94a9c4' }} />
+        <Area type="monotone" dataKey="total" stroke="#d6a72f" fill="url(#timeline-total-fill)" strokeWidth={2.5} dot={false} name="Total" />
+        <Line type="monotone" dataKey="mf" stroke="#60a5fa" strokeWidth={2} strokeDasharray="5 4" dot={false} name="MF" />
+        <Line type="monotone" dataKey="stocks" stroke="#f97316" strokeWidth={2} strokeDasharray="2 4" dot={false} name="Stocks" />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+function TimelineTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const rows = [
+    { key: 'total', label: 'Total', color: '#d6a72f' },
+    { key: 'mf', label: 'MF', color: '#60a5fa' },
+    { key: 'stocks', label: 'Stocks', color: '#f97316' },
+  ];
+  const values = Object.fromEntries(payload.map(p => [p.dataKey, p.value]));
+  return (
+    <div className={styles.timelineTooltip}>
+      <div className={styles.timelineTooltipLabel}>{label}</div>
+      {rows.map(row => (
+        <div key={row.key} className={styles.timelineTooltipRow}>
+          <span><i style={{ background: row.color }} />{row.label}</span>
+          <strong>{fmtCr(values[row.key])}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+// â”€â”€ WaterfallView â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function WaterfallView() {
   const { stats, holdings, setActiveView } = usePortfolio();
 
   if (!holdings.length) return (
     <EmptyState
-      icon="💧"
+      icon="ðŸ’§"
       label="No holdings yet"
       sub="Add trades to see your wealth waterfall."
       cta="+ Add Trade"
@@ -239,7 +540,7 @@ export function WaterfallView() {
                 </td>
                 <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: s.color }}>{fmtCr(s.value)}</td>
                 <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
-                  {s.isTotal ? '100%' : (s.pct ? fmt(s.pct, 1) + '%' : '—')}
+                  {s.isTotal ? '100%' : (s.pct ? fmt(s.pct, 1) + '%' : 'â€”')}
                 </td>
               </tr>
             ))}
@@ -250,7 +551,7 @@ export function WaterfallView() {
   );
 }
 
-// ── ActionView ────────────────────────────────────────────────────────────────
+// â”€â”€ ActionView â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function ActionView() {
   const { stats, holdings, setActiveView } = usePortfolio();
@@ -258,7 +559,7 @@ export function ActionView() {
 
   if (!holdings.length) return (
     <EmptyState
-      icon="⚡"
+      icon="âš¡"
       label="No holdings yet"
       sub="Add trades to see your action signals."
       cta="+ Add Trade"
@@ -270,10 +571,10 @@ export function ActionView() {
   const topLoser = [...holdings].sort((a, b) => a.returnPct - b.returnPct)[0];
 
   const pulseCards = [
-    { icon: '📈', title: 'Top Gainer', body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : '—', color: 'var(--green2)' },
-    { icon: '📉', title: 'Underperformer', body: topLoser ? `${topLoser.symbol} ${fmtPct(topLoser.returnPct, true)}` : '—', color: 'var(--red2)' },
-    { icon: '💰', title: 'Portfolio Value', body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
-    { icon: '📊', title: 'Overall Return', body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
+    { icon: 'ðŸ“ˆ', title: 'Top Gainer', body: topGainer ? `${topGainer.symbol} ${fmtPct(topGainer.returnPct, true)}` : 'â€”', color: 'var(--green2)' },
+    { icon: 'ðŸ“‰', title: 'Underperformer', body: topLoser ? `${topLoser.symbol} ${fmtPct(topLoser.returnPct, true)}` : 'â€”', color: 'var(--red2)' },
+    { icon: 'ðŸ’°', title: 'Portfolio Value', body: fmtCr(stats.totalValue), color: 'var(--accent2)' },
+    { icon: 'ðŸ“Š', title: 'Overall Return', body: fmtPct(stats.totalReturnPct, true), color: colorPnl(stats.totalReturnPct) },
   ];
 
   const checklist = [
@@ -293,14 +594,14 @@ export function ActionView() {
     <div className={`fade-up ${styles.actionWrapper}`}>
 
       <div className={`glass ${styles.signalBanner}`}>
-        <div className={styles.signalBannerLabel}>⚡ Today's Signal</div>
+        <div className={styles.signalBannerLabel}>Action Signal</div>
         <div className={styles.signalBannerTitle}>
           {stats.totalReturnPct >= 0
-            ? 'Portfolio is in profit — stay the course'
-            : 'Portfolio is in loss — review allocation'}
+            ? 'Portfolio is in profit â€” stay the course'
+            : 'Portfolio is in loss â€” review allocation'}
         </div>
         <div className={styles.signalBannerSub}>
-          {stats.fundCount + stats.stockCount} holdings · Overall return {fmtPct(stats.totalReturnPct, true)} · CAGR {fmtPct(stats.overallCagr, true)}
+          {stats.fundCount + stats.stockCount} holdings Â· Overall return {fmtPct(stats.totalReturnPct, true)} Â· CAGR {fmtPct(stats.overallCagr, true)}
         </div>
       </div>
 
@@ -333,7 +634,7 @@ export function ActionView() {
                 background: checked[i] ? 'var(--green2)' : 'transparent',
               }}
             >
-              {checked[i] ? '✓' : ''}
+              {checked[i] ? 'âœ“' : ''}
             </div>
             <span className={`${styles.checklistText} ${checked[i] ? styles.checklistTextDone : ''}`}>
               {item}
@@ -342,14 +643,14 @@ export function ActionView() {
         ))}
         <div className={styles.checklistSummary}>
           {doneCount} / {checklist.length} done
-          {doneCount === checklist.length && ' 🎉 All done!'}
+          {doneCount === checklist.length && ' ðŸŽ‰ All done!'}
         </div>
       </div>
     </div>
   );
 }
 
-// ── SnapshotView ──────────────────────────────────────────────────────────────
+// â”€â”€ SnapshotView â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function SnapshotView() {
   const { portfolioId, saveSnapshot } = usePortfolio();
@@ -370,10 +671,10 @@ export function SnapshotView() {
         <div className={styles.snapshotHeaderLeft}>
           <div className={styles.snapshotHeaderTitle}>Portfolio Snapshots</div>
           <div className={styles.snapshotHeaderSub}>
-            Save a snapshot of today's portfolio value to track progress over time.
+            Save a snapshot of today&apos;s portfolio value to track progress over time.
             {/* FIX (Bug 18): inform user that rapid duplicate saves within the same
                 minute will update the existing snapshot rather than adding a new one. */}
-            {' '}Each snapshot is unique per minute — saving twice within the same minute
+            {' '}Each snapshot is unique per minute â€” saving twice within the same minute
             updates the existing entry.
           </div>
         </div>
@@ -383,7 +684,7 @@ export function SnapshotView() {
           disabled={saving}
           style={{ whiteSpace: 'nowrap' }}
         >
-          {saving ? 'Saving…' : '📸 Save Snapshot Now'}
+          {saving ? 'Savingâ€¦' : 'ðŸ“¸ Save Snapshot Now'}
         </button>
       </div>
 
@@ -394,12 +695,12 @@ export function SnapshotView() {
         </div>
 
         {loading ? (
-          <div className={styles.snapshotLoading}>Loading…</div>
+          <div className={styles.snapshotLoading}>Loadingâ€¦</div>
         ) : snapshots.length === 0 ? (
           <div className={styles.snapshotEmpty}>
-            <div className={styles.snapshotEmptyIcon}>📸</div>
+            <div className={styles.snapshotEmptyIcon}>ðŸ“¸</div>
             <div className={styles.snapshotEmptyText}>
-              No snapshots yet. Click "Save Snapshot Now" to record your first checkpoint.
+              No snapshots yet. Click Save Snapshot Now to record your first checkpoint.
             </div>
           </div>
         ) : (
@@ -427,7 +728,7 @@ export function SnapshotView() {
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(parseFloat(s.totalValue))}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(parseFloat(s.totalInvested))}</td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalRealizedGain)), fontWeight: 600 }}>
-                    {s.totalRealizedGain != null ? fmtCr(parseFloat(s.totalRealizedGain)) : '—'}
+                    {s.totalRealizedGain != null ? fmtCr(parseFloat(s.totalRealizedGain)) : 'â€”'}
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalGain)), fontWeight: 600 }}>
                     {fmtCr(parseFloat(s.totalGain))}
@@ -438,13 +739,13 @@ export function SnapshotView() {
                     </span>
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>
-                    {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '—'}
+                    {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : 'â€”'}
                   </td>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>
-                    {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : '—'}
+                    {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : 'â€”'}
                   </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '—'}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '—'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? 'â€”'}</td>
+                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? 'â€”'}</td>
                 </tr>
               ))}
             </tbody>
