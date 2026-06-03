@@ -13,20 +13,12 @@ export default function OverviewView() {
 
   const {
     mfCatMap, topMF, topSt, healthScore,
-    priceSymbols, donutData, healthBars, hasSells,
+    donutData, healthBars, hasSells,
     alerts, suggestedActions, recentSells,
   } = useOverview({ stats, holdings, mfHoldings, stHoldings, currentPrices, realizedSummary, portfolioXIRR });
 
   return (
     <div className="fade-up">
-
-      {/* Live price notice */}
-      {priceSymbols.length > 0 && (
-        <div className={styles.priceNotice}>
-          <span className="live-dot" />
-          Prices fetched for {priceSymbols.length} symbol{priceSymbols.length > 1 ? 's' : ''}: {priceSymbols.join(', ')}
-        </div>
-      )}
 
       {/* Summary stats */}
       <div className={styles.statsGrid}>
