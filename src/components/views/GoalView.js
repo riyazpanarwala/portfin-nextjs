@@ -105,7 +105,7 @@ export default function GoalView() {
           <div className={`glass ${styles.milestonesPanel}`}>
             <div className={styles.milestonesTitle}>Milestone Tracker</div>
             <div className={styles.milestonesTableWrapper}>
-              <table>
+              <table className={styles.milestonesTable}>
                 <thead>
                   <tr>
                     <th>Year</th>

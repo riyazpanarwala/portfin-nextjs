@@ -73,7 +73,7 @@ export function HoldingsSummaryRefreshBar({
   formatValue = value => value,
 }) {
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+    <div className={tableStyles.summaryRefreshBar}>
       <div className={tableStyles.summaryStrip} style={{ flex: 1 }}>
         {items.map((item, index) => (
           <div key={index} className={tableStyles.summaryCell}>

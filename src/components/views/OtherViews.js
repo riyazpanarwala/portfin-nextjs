@@ -822,7 +822,7 @@ export function SnapshotView() {
             </div>
           </div>
         ) : (
-          <table>
+          <table className={styles.snapshotTable}>
             <thead>
               <tr>
                 <th>Date</th>

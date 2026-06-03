@@ -88,7 +88,7 @@ function TableBox({ title, children }) {
   return (
     <div className={styles.tableBox}>
       <div className={styles.tableBoxTitle}>{title}</div>
-      <div style={{ overflowX: 'auto' }}>{children}</div>
+      <div className={styles.tableBoxScroll}>{children}</div>
     </div>
   );
 }
@@ -1163,7 +1163,7 @@ export default function AnalyticsView() {
   const snapsLoaded = !snapsLoading;
 
   return (
-    <div className="fade-up">
+    <div className={`fade-up ${styles.analyticsRoot}`}>
       <div className={styles.tabBar}>
         {TABS.map(({ key, label }) => (
           <button key={key} onClick={() => setAnalyticsTab(key)}

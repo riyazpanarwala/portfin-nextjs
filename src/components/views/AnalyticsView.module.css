@@ -5,6 +5,10 @@
 
 /* ── Tab bar ─────────────────────────────────────────────────────────────────*/
 
+.analyticsRoot {
+  min-width: 0;
+}
+
 .tabBar {
   display: flex;
   gap: 0;
@@ -47,6 +51,7 @@
 .returnMetricsPanel {
   padding: 18px;
   margin-bottom: 16px;
+  min-width: 0;
 }
 
 .panelTitle {
@@ -73,6 +78,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
+  min-width: 0;
 }
 
 .benchmarkNote {
@@ -157,6 +163,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
 }
 
 .divider {
@@ -407,6 +414,8 @@
   align-items: center;
   justify-content: center;
   min-height: 337px;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .radarEmptyState {
@@ -572,6 +581,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .featureHeader {
@@ -664,6 +674,8 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chartBoxTitle {
@@ -681,6 +693,10 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+}
+
+.tableBoxScroll {
+  overflow-x: auto;
 }
 
 .tableBoxTitle {
@@ -779,6 +795,7 @@
   grid-template-columns: 160px 1fr;
   gap: 16px;
   align-items: start;
+  min-width: 0;
 }
 
 .concentrationGaugeBox {
@@ -822,6 +839,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .positionBarRow {
@@ -881,6 +899,7 @@
   flex-direction: column;
   gap: 6px;
   padding: 4px 0;
+  min-width: 0;
 }
 
 .cagrBarRow {
@@ -968,6 +987,7 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px;
+  min-width: 0;
 }
 
 .behaviorCardTitle {
@@ -1052,6 +1072,20 @@
 }
 
 @media (max-width: 600px) {
+  .tabBar {
+    margin: 0 -10px 14px;
+    padding: 0 10px;
+  }
+
+  .tabBtn {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .returnMetricsPanel {
+    padding: 14px;
+  }
+
   .metricsGrid4 { grid-template-columns: 1fr 1fr; }
   .cagrSummaryRow { grid-template-columns: 1fr; }
   .positionBarRow { grid-template-columns: 100px 1fr 44px; }
@@ -1060,6 +1094,119 @@
   .winLossGrid { grid-template-columns: 1fr; }
   .tradeSizeGrid { grid-template-columns: 1fr 1fr; }
   .realizedMetricsGrid { grid-template-columns: repeat(2, 1fr); }
+  .taxGrid { grid-template-columns: 1fr; }
+
+  .chartPanel {
+    min-height: 0;
+  }
+
+  .chartPanel svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .tableBoxScroll,
+  .sipTableWrapper,
+  .sellTableWrapper {
+    overflow-x: visible;
+  }
+
+  .tableBox table,
+  .sipTableWrapper table,
+  .sellTableWrapper table {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .tableBox thead,
+  .sipTableWrapper thead,
+  .sellTableWrapper thead {
+    display: none;
+  }
+
+  .tableBox table,
+  .tableBox tbody,
+  .tableBox tr,
+  .tableBox td,
+  .sipTableWrapper table,
+  .sipTableWrapper tbody,
+  .sipTableWrapper tr,
+  .sipTableWrapper td,
+  .sellTableWrapper table,
+  .sellTableWrapper tbody,
+  .sellTableWrapper tr,
+  .sellTableWrapper td {
+    display: block;
+  }
+
+  .tableBox tr,
+  .sipTableWrapper tr,
+  .sellTableWrapper tr {
+    margin: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(45, 64, 96, 0.7);
+    border-radius: 8px;
+    background: rgba(17, 24, 39, 0.52);
+  }
+
+  .tableBox td,
+  .sipTableWrapper td,
+  .sellTableWrapper td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0 !important;
+    border-bottom: 1px solid rgba(45, 64, 96, 0.35);
+    text-align: right !important;
+    white-space: normal !important;
+  }
+
+  .tableBox td:last-child,
+  .sipTableWrapper td:last-child,
+  .sellTableWrapper td:last-child {
+    border-bottom: none;
+  }
+
+  .tableBox td::before,
+  .sipTableWrapper td::before,
+  .sellTableWrapper td::before {
+    content: 'Metric';
+    color: var(--text3);
+    flex: 0 0 auto;
+    font-family: var(--font-main);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .tableBox td:nth-child(1)::before { content: 'Date'; }
+  .tableBox td:nth-child(2)::before { content: 'Value'; }
+  .tableBox td:nth-child(3)::before { content: 'Return'; }
+  .tableBox td:nth-child(4)::before { content: 'Metric'; }
+  .tableBox td:nth-child(5)::before { content: 'Metric'; }
+  .tableBox td:nth-child(6)::before { content: 'Funds'; }
+  .tableBox td:nth-child(7)::before { content: 'Stocks'; }
+
+  .sipTableWrapper td:nth-child(1)::before { content: 'Instrument'; }
+  .sipTableWrapper td:nth-child(2)::before { content: 'Instalments'; }
+  .sipTableWrapper td:nth-child(3)::before { content: 'Avg Gap'; }
+  .sipTableWrapper td:nth-child(4)::before { content: 'Invested'; }
+  .sipTableWrapper td:nth-child(5)::before { content: 'Current'; }
+  .sipTableWrapper td:nth-child(6)::before { content: 'SIP Return'; }
+  .sipTableWrapper td:nth-child(7)::before { content: 'Lump-Sum'; }
+  .sipTableWrapper td:nth-child(8)::before { content: 'Advantage'; }
+  .sipTableWrapper td:nth-child(9)::before { content: 'Monthly'; }
+
+  .sellTableWrapper td:nth-child(1)::before { content: 'Symbol'; }
+  .sellTableWrapper td:nth-child(2)::before { content: 'Sells'; }
+  .sellTableWrapper td:nth-child(3)::before { content: 'Proceeds'; }
+  .sellTableWrapper td:nth-child(4)::before { content: 'Realized'; }
+  .sellTableWrapper td:nth-child(5)::before { content: 'LTCG'; }
+  .sellTableWrapper td:nth-child(6)::before { content: 'STCG'; }
+  .sellTableWrapper td:nth-child(7)::before { content: 'Tax'; }
 }
 
 @media (max-width: 480px) {
