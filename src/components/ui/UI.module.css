@@ -490,3 +490,89 @@
   line-height: 1.7;
   white-space: pre-wrap;
 }
+
+@media (max-width: 900px) {
+  .header {
+    height: auto;
+    min-height: 56px;
+    padding: 8px 14px;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .headerMetrics {
+    gap: 14px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .headerMetrics::-webkit-scrollbar {
+    display: none;
+  }
+
+  .headerSep {
+    display: none;
+  }
+
+  .metricPill {
+    min-width: 92px;
+  }
+
+  .headerRight {
+    gap: 7px;
+  }
+
+  .liveLabel {
+    display: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .header {
+    flex-direction: column;
+    padding: 8px 10px;
+  }
+
+  .headerMetrics {
+    width: 100%;
+    order: 2;
+  }
+
+  .headerRight {
+    width: 100%;
+    order: 1;
+    justify-content: flex-end;
+  }
+
+  .refreshBtn {
+    padding: 5px 8px;
+  }
+
+  .metricPillValue {
+    font-size: 12px;
+  }
+
+  .advisorHeader,
+  .inputBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .messageBubble {
+    max-width: calc(100% - 42px);
+    padding: 10px 12px;
+  }
+
+  .messagesArea {
+    padding: 12px;
+  }
+
+  .suggestedGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sendBtn {
+    justify-content: center;
+  }
+}

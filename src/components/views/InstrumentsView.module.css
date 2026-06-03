@@ -786,3 +786,57 @@
   flex-shrink: 0;
   margin-top: 2px;
 }
+
+@media (max-width: 900px) {
+  .formLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .addFormPanel,
+  .bulkPanel,
+  .sourcesPanel {
+    padding: 14px;
+  }
+
+  .statsBanner,
+  .detailTwoCol,
+  .importResultGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .typeSelector,
+  .exchangeSelector,
+  .browserControls,
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .browserSearch,
+  .browserFilter {
+    max-width: none;
+    width: 100%;
+  }
+
+  .browserCount {
+    margin-left: 0;
+  }
+
+  .symbolSearchBox,
+  .sourceItem,
+  .selectedCard {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .symbolSearchExchangePill {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .dropdownItem {
+    align-items: flex-start;
+  }
+}

@@ -252,3 +252,44 @@
 .deleteBtn:disabled {
   opacity: 0.4;
 }
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .formPanel,
+  .recentPanelHeader {
+    padding: 14px;
+  }
+
+  .typeRow,
+  .twoCol {
+    grid-template-columns: 1fr;
+  }
+
+  .suggestionItem,
+  .tradeRow,
+  .txPreview {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .suggestionExchange,
+  .suggestionPrice,
+  .tradeRowRight {
+    text-align: left;
+  }
+
+  .tradeRowRight {
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .tradeSymbol {
+    max-width: 100%;
+    white-space: normal;
+  }
+}

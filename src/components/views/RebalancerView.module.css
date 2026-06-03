@@ -256,3 +256,30 @@
   font-size: 12px;
   color: #fcd34d;
 }
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .targetPanel,
+  .comparisonPanel,
+  .actionPanel,
+  .infoBox {
+    padding: 14px;
+  }
+
+  .comparisonRowHeader,
+  .actionCard {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .comparisonRowValues,
+  .actionCardRight {
+    text-align: left;
+  }
+}

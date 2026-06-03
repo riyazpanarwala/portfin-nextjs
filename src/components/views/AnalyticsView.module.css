@@ -1061,3 +1061,44 @@
   .tradeSizeGrid { grid-template-columns: 1fr 1fr; }
   .realizedMetricsGrid { grid-template-columns: repeat(2, 1fr); }
 }
+
+@media (max-width: 480px) {
+  .returnMetricsPanel,
+  .sectorSection,
+  .chartPanel,
+  .metricCard,
+  .chartBox,
+  .behaviorCard {
+    padding: 12px;
+  }
+
+  .metricsGrid,
+  .metricsGrid4,
+  .sectorMetricsGrid,
+  .realizedMetricsGrid,
+  .tradeSizeGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .featureTitleRow,
+  .taxBreakdownHeader,
+  .taxBreakdownValues,
+  .sectorRowHeader,
+  .recoveryBar,
+  .infoBox {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .positionBarRow,
+  .cagrBarRow {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .positionBarRow > :last-child,
+  .cagrBarRow > :nth-child(3) {
+    display: block;
+  }
+}

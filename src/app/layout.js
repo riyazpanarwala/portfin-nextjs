@@ -7,6 +7,11 @@ export const metadata = {
   description: 'Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, and tax insights.',
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en">

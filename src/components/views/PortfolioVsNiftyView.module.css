@@ -557,4 +557,32 @@
   .statsGrid {
     grid-template-columns: 1fr 1fr;
   }
+
+  .selectorPanel,
+  .chartPanel,
+  .rollingPanel,
+  .calPanelHeader,
+  .methodologyNote,
+  .proTipBox {
+    padding: 12px;
+  }
+
+  .selectorRow,
+  .calPanelHeader,
+  .bannerRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .chartModeGroup {
+    width: 100%;
+  }
+
+  .chartModeGroup button {
+    flex: 1 1 auto;
+  }
+
+  .rollingGrid {
+    grid-template-columns: 1fr;
+  }
 }

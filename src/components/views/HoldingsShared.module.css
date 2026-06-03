@@ -794,3 +794,67 @@
   margin-top: 2px;
   font-weight: 600;
 }
+
+@media (max-width: 760px) {
+  .controlsBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .controlsGroupPills,
+  .sortArea,
+  .modeToggleRow {
+    width: 100%;
+  }
+
+  .modeToggleRow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .modeBtn {
+    justify-content: center;
+    padding: 7px 10px;
+  }
+
+  .exitedBanner,
+  .detailXirrBar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .detailPanelInner,
+  .sipPanel,
+  .taxPanel,
+  .caPanel {
+    padding: 12px;
+  }
+
+  .monthlyYearGrid,
+  .sipGrid,
+  .taxGrid,
+  .caGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .monthlyBreakupTable {
+    min-width: 720px;
+  }
+}
+
+@media (max-width: 520px) {
+  .groupPillBtn,
+  .sortPillBtn {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  .monthlyBreakupTable {
+    min-width: 640px;
+  }
+
+  .monthlyBreakupTable th:nth-child(2) {
+    width: 300px;
+  }
+}

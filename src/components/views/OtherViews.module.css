@@ -1137,3 +1137,47 @@
     justify-content: flex-start;
   }
 }
+
+@media (max-width: 560px) {
+  .chartPanel,
+  .timelinePanel,
+  .signalBanner,
+  .pulsePanel,
+  .checklistPanel,
+  .snapshotHeaderPanel {
+    padding: 14px;
+  }
+
+  .tradeRow,
+  .snapshotHeaderPanel,
+  .timelineHero {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tradeRowLeft {
+    align-items: flex-start;
+  }
+
+  .tradeRowRight {
+    text-align: left;
+  }
+
+  .timelineMetricValue,
+  .waterfallMetricValue {
+    font-size: 19px;
+  }
+
+  .yearlyTotalRow {
+    grid-template-columns: 42px minmax(80px, 1fr) 76px;
+  }
+
+  .heatmapGrid {
+    min-width: 450px;
+  }
+
+  .heatmapTooltip {
+    display: none;
+  }
+}
