@@ -21,6 +21,7 @@ import { useAuth } from '@/context/AuthContext';
 
 const PortfolioCtx = createContext(null);
 const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v1';
+const ACTIVE_QTY_EPSILON = 1e-6;
 
 // All valid view IDs — used to validate the URL hash on load
 const VALID_VIEWS = new Set([
@@ -395,24 +396,27 @@ export function PortfolioProvider({ children }) {
 
   // ── Refresh prices ────────────────────────────────────────────────────────
   async function refreshPrices(assetTypeFilter = null) {
-    const tradeSymbols = [...new Set(
-      trades
-        .filter(t => !assetTypeFilter || t.assetType === assetTypeFilter)
-        .map(t => t.symbol)
+    const activeSymbols = [...new Set(
+      holdings
+        .filter(h =>
+          h.qty > ACTIVE_QTY_EPSILON &&
+          (!assetTypeFilter || h.assetType === assetTypeFilter)
+        )
+        .map(h => h.symbol)
     )];
-
-    if (!tradeSymbols.length) {
-      toast('No symbols to refresh', 'blue');
-      return;
-    }
 
     const label = assetTypeFilter === 'MF'    ? 'MF NAVs'
                 : assetTypeFilter === 'STOCK' ? 'stock prices'
                 : 'all prices';
 
+    if (!activeSymbols.length) {
+      toast(`No active ${label} to refresh`, 'blue');
+      return;
+    }
+
     const CHUNK      = 20;
     const STAGGER_MS = 300;
-    const total      = tradeSymbols.length;
+    const total      = activeSymbols.length;
 
     setPriceRefreshState({
       active:    true,
@@ -432,8 +436,8 @@ export function PortfolioProvider({ children }) {
     let failedCount  = 0;
     let processed    = 0;
 
-    for (let i = 0; i < tradeSymbols.length; i += CHUNK) {
-      const chunk = tradeSymbols.slice(i, i + CHUNK);
+    for (let i = 0; i < activeSymbols.length; i += CHUNK) {
+      const chunk = activeSymbols.slice(i, i + CHUNK);
 
       setPriceRefreshState(prev => ({
         ...prev,
@@ -467,7 +471,7 @@ export function PortfolioProvider({ children }) {
         failed:   failedCount,
       }));
 
-      if (i + CHUNK < tradeSymbols.length) {
+      if (i + CHUNK < activeSymbols.length) {
         await new Promise(r => setTimeout(r, STAGGER_MS));
       }
     }
