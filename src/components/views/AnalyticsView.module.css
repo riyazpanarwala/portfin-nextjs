@@ -584,6 +584,173 @@
   min-width: 0;
 }
 
+.drawdownAnalyzer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(75, 95, 125, 0.55);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(20, 28, 40, 0.92), rgba(13, 19, 29, 0.94)),
+    var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.drawdownAnalyzerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(75, 95, 125, 0.45);
+}
+
+.drawdownAnalyzerHeader p {
+  margin: 0;
+  color: #9aadc4;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.drawdownAnalyzerTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.drawdownAnalyzerTitleRow h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.drawdownTitleAccent {
+  width: 4px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #f8c147, #c7912a);
+  box-shadow: 0 0 12px rgba(248, 193, 71, 0.25);
+  flex: 0 0 auto;
+}
+
+.drawdownMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.drawdownMetricGrid .metricCard {
+  position: relative;
+  overflow: hidden;
+  min-height: 104px;
+  background: linear-gradient(180deg, rgba(31, 42, 60, 0.85), rgba(22, 31, 47, 0.9));
+  border-color: rgba(75, 95, 125, 0.58);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+
+.drawdownMetricGrid .metricCard::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--red2);
+}
+
+.drawdownMetricGrid .metricCard:nth-child(2)::before,
+.drawdownMetricGrid .metricCard:nth-child(4)::before {
+  background: var(--yellow);
+}
+
+.drawdownMetricGrid .metricCard:nth-child(3)::before {
+  background: var(--accent2);
+}
+
+.drawdownChart {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.drawdownTooltip {
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid rgba(75, 95, 125, 0.75);
+  border-radius: 8px;
+  background: rgba(13, 19, 29, 0.96);
+  color: var(--text);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+}
+
+.drawdownTooltipDate {
+  margin-bottom: 8px;
+  color: #8fa3bd;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.drawdownTooltipRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 5px;
+  color: var(--text2);
+  font-size: 11px;
+}
+
+.drawdownTooltipRow strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.drawdownWarning {
+  padding: 18px;
+  border: 1px solid rgba(75, 95, 125, 0.55);
+  border-top: 3px solid var(--yellow);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(18, 26, 39, 0.86), rgba(13, 19, 29, 0.9));
+}
+
+.drawdownWarningSevere {
+  border-top-color: var(--red2);
+}
+
+.drawdownWarningLabel {
+  margin-bottom: 12px;
+  color: #9aadc4;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.drawdownWarningValue {
+  color: var(--red2);
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.drawdownWarning p {
+  margin: 10px 0 0;
+  color: #9aadc4;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
 .featureHeader {
   padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
@@ -1060,6 +1227,12 @@
 
 @media (max-width: 900px) {
   .metricsGrid4 { grid-template-columns: repeat(2, 1fr); }
+  .drawdownMetricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .drawdownAnalyzerHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .drawdownAnalyzerHeader p { text-align: left; }
   .concentrationLayout { grid-template-columns: 1fr; }
   .cagrBarRow { grid-template-columns: 80px 1fr 56px; }
   .cagrBarRow > :nth-child(4),
@@ -1087,6 +1260,10 @@
   }
 
   .metricsGrid4 { grid-template-columns: 1fr 1fr; }
+  .drawdownAnalyzer { padding: 14px; }
+  .drawdownMetricGrid { grid-template-columns: 1fr; }
+  .drawdownMetricGrid .metricCard { min-height: 0; }
+  .drawdownWarning { padding: 14px; }
   .cagrSummaryRow { grid-template-columns: 1fr; }
   .positionBarRow { grid-template-columns: 100px 1fr 44px; }
   .positionBarRow > :last-child { display: none; }

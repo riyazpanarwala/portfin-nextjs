@@ -10,6 +10,17 @@ import { useAnalyticsView } from '@/hooks/useAnalyticsView';
 import { useSnapshots } from '@/hooks/useSnapshots';
 import { YearByYearView } from './YearByYearView';
 import styles from './AnalyticsView.module.css';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceDot,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -105,6 +116,103 @@ function Badge({ children, color, bg, border }) {
 // 1. DRAWDOWN ANALYSIS
 // ─────────────────────────────────────────────────────────────────────────────
 
+function fmtMonths(days) {
+  if (days == null) return 'N/A';
+  if (days < 31) return `${Math.max(1, days)} d`;
+  const months = Math.max(1, Math.round(days / 30));
+  return months >= 12 ? `${fmt(months / 12, 1)} yr` : `${months} mo`;
+}
+
+function DrawdownTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0]?.payload;
+  if (!point) return null;
+
+  return (
+    <div className={styles.drawdownTooltip}>
+      <div className={styles.drawdownTooltipDate}>{label}</div>
+      <div className={styles.drawdownTooltipRow}>
+        <span>Drawdown</span>
+        <strong>{fmt(point.drawdown, 1)}%</strong>
+      </div>
+      <div className={styles.drawdownTooltipRow}>
+        <span>Portfolio</span>
+        <strong>{fmtCr(point.value)}</strong>
+      </div>
+      <div className={styles.drawdownTooltipRow}>
+        <span>Peak</span>
+        <strong>{fmtCr(point.peak)}</strong>
+      </div>
+    </div>
+  );
+}
+
+function DrawdownLineChart({ analysis }) {
+  const minDrawdown = Math.min(...analysis.drawdownSeries.map(pt => pt.drawdown));
+  const yFloor = Math.min(-5, Math.floor(minDrawdown / 5) * 5);
+
+  return (
+    <div className={styles.drawdownChart}>
+      <ResponsiveContainer width="100%" height={260}>
+        <AreaChart data={analysis.drawdownSeries} margin={{ top: 8, right: 10, left: 0, bottom: 14 }}>
+          <defs>
+            <linearGradient id="analytics-drawdown-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#ef4444" stopOpacity={0.24} />
+              <stop offset="100%" stopColor="#ef4444" stopOpacity={0.03} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="rgba(45,64,96,0.38)" strokeDasharray="3 3" vertical />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: '#8fa3bd', fontSize: 10, fontFamily: 'var(--font-mono)' }}
+            axisLine={false}
+            tickLine={false}
+            minTickGap={28}
+            tickFormatter={v => v?.slice(2, 7)}
+          />
+          <YAxis
+            width={44}
+            domain={[yFloor, 1]}
+            tick={{ fill: '#8fa3bd', fontSize: 10, fontFamily: 'var(--font-mono)' }}
+            axisLine={false}
+            tickLine={false}
+            tickFormatter={v => `${fmt(v, 0)}%`}
+          />
+          <Tooltip content={<DrawdownTooltip />} cursor={{ stroke: 'rgba(148,169,196,0.32)', strokeDasharray: '4 4' }} />
+          <ReferenceLine y={0} stroke="rgba(148,169,196,0.28)" strokeDasharray="5 5" />
+          <Area
+            type="monotone"
+            dataKey="drawdown"
+            stroke="#ff5148"
+            strokeWidth={2.4}
+            fill="url(#analytics-drawdown-fill)"
+            dot={false}
+            activeDot={{ r: 5, fill: '#ff5148', stroke: '#111827', strokeWidth: 2 }}
+          />
+          {analysis.maxDrawdownPeakDate && (
+            <ReferenceDot
+              x={analysis.maxDrawdownPeakDate}
+              y={0}
+              r={5}
+              fill="#d7a83a"
+              stroke="#111827"
+              strokeWidth={2}
+            />
+          )}
+          <ReferenceDot
+            x={analysis.maxDrawdownDate}
+            y={analysis.maxDrawdown}
+            r={6}
+            fill="#ff5148"
+            stroke="#111827"
+            strokeWidth={2}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function DrawdownAnalysis({ snapshots }) {
   const analysis = useMemo(() => {
     if (!snapshots || snapshots.length < 2) return null;
@@ -115,22 +223,27 @@ function DrawdownAnalysis({ snapshots }) {
 
     const drawdownState = series.reduce((acc, pt) => {
       const peak = pt.value > acc.peak ? pt.value : acc.peak;
+      const peakDate = pt.value > acc.peak ? pt.date : acc.peakDate;
       const dd = peak > 0 ? ((pt.value - peak) / peak) * 100 : 0;
       const isMaxDrawdown = dd < acc.maxDrawdown;
       const isAllTimePeak = pt.value > acc.allTimePeak;
 
       return {
         peak,
+        peakDate,
         maxDrawdown: isMaxDrawdown ? dd : acc.maxDrawdown,
         maxDrawdownDate: isMaxDrawdown ? pt.date : acc.maxDrawdownDate,
+        maxDrawdownPeakDate: isMaxDrawdown ? peakDate : acc.maxDrawdownPeakDate,
         allTimePeak: isAllTimePeak ? pt.value : acc.allTimePeak,
         allTimePeakDate: isAllTimePeak ? pt.date : acc.allTimePeakDate,
-        drawdownSeries: [...acc.drawdownSeries, { ...pt, drawdown: dd, peak }],
+        drawdownSeries: [...acc.drawdownSeries, { ...pt, drawdown: dd, peak, peakDate }],
       };
     }, {
       peak: series[0].value,
+      peakDate: series[0].date,
       maxDrawdown: 0,
       maxDrawdownDate: series[0].date,
+      maxDrawdownPeakDate: series[0].date,
       allTimePeak: series[0].value,
       allTimePeakDate: series[0].date,
       drawdownSeries: [],
@@ -140,6 +253,7 @@ function DrawdownAnalysis({ snapshots }) {
       drawdownSeries,
       maxDrawdown,
       maxDrawdownDate,
+      maxDrawdownPeakDate,
       allTimePeak,
       allTimePeakDate,
     } = drawdownState;
@@ -151,6 +265,7 @@ function DrawdownAnalysis({ snapshots }) {
     // Detect recovery periods
     let inDrawdown = false;
     let drawdownStart = null;
+    let currentDrawdownDays = null;
     const recoveries = [];
     for (let i = 1; i < drawdownSeries.length; i++) {
       const curr = drawdownSeries[i];
@@ -161,50 +276,60 @@ function DrawdownAnalysis({ snapshots }) {
         inDrawdown = false; drawdownStart = null;
       }
     }
+    if (inDrawdown && drawdownStart) {
+      currentDrawdownDays = Math.max(1, Math.round((new Date(series[series.length - 1].date) - new Date(drawdownStart)) / 864e5));
+    }
 
     const avgRecovery = recoveries.length > 0
       ? Math.round(recoveries.reduce((s, r) => s + r.days, 0) / recoveries.length) : null;
-
-    const barData = drawdownSeries.map(pt => ({
-      label: pt.date.slice(5),
-      value: Math.abs(pt.drawdown),
-      color: pt.drawdown < -10 ? 'var(--red2)' : pt.drawdown < -3 ? 'var(--yellow)' : 'var(--green2)',
-    }));
+    const recoveryDays = currentDrawdownDays ?? avgRecovery;
 
     return { drawdownSeries, maxDrawdown, maxDrawdownDate, currentDrawdown,
-      allTimePeak, allTimePeakDate, gapFromATH, recoveries, avgRecovery, currentVal, barData };
+      maxDrawdownPeakDate, allTimePeak, allTimePeakDate, gapFromATH, recoveries,
+      avgRecovery, recoveryDays, currentDrawdownDays, currentVal };
   }, [snapshots]);
 
   if (!analysis) return <EmptyFeature icon="📉" title="Need at least 2 snapshots" sub="Save snapshots over time to track drawdown history" />;
 
   const ddColor = analysis.currentDrawdown < -10 ? 'var(--red2)' : analysis.currentDrawdown < -3 ? 'var(--yellow)' : 'var(--green2)';
+  const maxDdColor = analysis.maxDrawdown < -20 ? 'var(--red2)' : analysis.maxDrawdown < -10 ? 'var(--yellow)' : 'var(--green2)';
+  const warningLevel = Math.abs(analysis.maxDrawdown) >= 30 ? 'severe' : Math.abs(analysis.maxDrawdown) >= 15 ? 'elevated' : 'controlled';
 
   return (
-    <div className={styles.featureSection}>
-      <FeatureHeader icon="📉" title="Drawdown Analysis" sub="Peak-to-trough decline from all-time highs using saved snapshots" />
-
-      <div className={styles.metricsGrid4}>
-        <MetricCard label="Current Drawdown" value={`${fmt(analysis.currentDrawdown, 1)}%`} color={ddColor} sub="From recent peak" />
-        <MetricCard label="Max Drawdown" value={`${fmt(analysis.maxDrawdown, 1)}%`}
-          color={analysis.maxDrawdown < -20 ? 'var(--red2)' : analysis.maxDrawdown < -10 ? 'var(--yellow)' : 'var(--green2)'}
-          sub={analysis.maxDrawdownDate} />
-        <MetricCard label="All-Time High" value={fmtCr(analysis.allTimePeak)} color="var(--accent2)" sub={analysis.allTimePeakDate} />
-        <MetricCard label="Gap from ATH"
-          value={`${analysis.gapFromATH >= 0 ? '+' : ''}${fmt(analysis.gapFromATH, 1)}%`}
-          color={colorPnl(analysis.gapFromATH)} sub={`${fmtCr(analysis.currentVal)} today`} />
+    <div className={styles.drawdownAnalyzer}>
+      <div className={styles.drawdownAnalyzerHeader}>
+        <div className={styles.drawdownAnalyzerTitleRow}>
+          <span className={styles.drawdownTitleAccent} />
+          <h3>Drawdown Analyzer</h3>
+        </div>
+        <p>How far your portfolio fell from its peak and how fast it recovered</p>
       </div>
 
-      {analysis.avgRecovery !== null && (
-        <div className={styles.recoveryBar}>
-          <span className={styles.recoveryLabel}>Avg recovery time: </span>
-          <span className={styles.recoveryValue}>{analysis.avgRecovery} days</span>
-          <span className={styles.recoveryMeta}> · {analysis.recoveries.length} drawdown period{analysis.recoveries.length !== 1 ? 's' : ''} recovered</span>
-        </div>
-      )}
+      <div className={styles.drawdownMetricGrid}>
+        <MetricCard label="Max Drawdown" value={`${fmt(analysis.maxDrawdown, 1)}%`} color={maxDdColor} sub={`Worst fall on ${analysis.maxDrawdownDate}`} />
+        <MetricCard label="Current Drawdown" value={`${fmt(analysis.currentDrawdown, 1)}%`} color={ddColor} sub="Below recent peak" />
+        <MetricCard
+          label="Recovery Time"
+          value={fmtMonths(analysis.recoveryDays)}
+          color={analysis.currentDrawdownDays ? 'var(--yellow)' : 'var(--green2)'}
+          sub={analysis.currentDrawdownDays ? 'Still recovering' : 'Fully recovered'}
+        />
+        <MetricCard label="Peak Portfolio Value" value={fmtCr(analysis.allTimePeak)} color="var(--accent2)" sub={`All-time high on ${analysis.allTimePeakDate}`} />
+      </div>
 
-      <ChartBox title="Drawdown Depth Over Time (%)">
-        <BarChart data={analysis.barData} height={130} />
-      </ChartBox>
+      <div className={styles.recoveryBar}>
+        <span className={styles.recoveryLabel}>Avg recovery time period: </span>
+        <span className={styles.recoveryValue}>
+          {analysis.avgRecovery !== null ? `${analysis.avgRecovery} days (${fmtMonths(analysis.avgRecovery)})` : 'No recovered periods yet'}
+        </span>
+        <span className={styles.recoveryMeta}>
+          {' · '}
+          {analysis.recoveries.length} drawdown period{analysis.recoveries.length !== 1 ? 's' : ''} recovered
+          {analysis.currentDrawdownDays ? ` · current period ${analysis.currentDrawdownDays} days` : ''}
+        </span>
+      </div>
+
+      <DrawdownLineChart analysis={analysis} />
 
       {analysis.recoveries.length > 0 && (
         <TableBox title="Drawdown Periods">
@@ -224,12 +349,16 @@ function DrawdownAnalysis({ snapshots }) {
         </TableBox>
       )}
 
-      {analysis.currentDrawdown < -0.5 && (
-        <InfoBox borderColor="rgba(245,158,11,0.3)" bg="rgba(245,158,11,0.06)">
-          <span style={{ color: 'var(--yellow)' }}>⚠</span>
-          <span> Portfolio is currently <strong style={{ color: 'var(--yellow)' }}>{fmt(Math.abs(analysis.currentDrawdown), 1)}%</strong> below its recent peak of <strong>{fmtCr(analysis.drawdownSeries[analysis.drawdownSeries.length - 1]?.peak)}</strong>. Historical avg recovery: {analysis.avgRecovery ? `${analysis.avgRecovery} days` : 'insufficient data'}.</span>
-        </InfoBox>
-      )}
+      <div className={`${styles.drawdownWarning} ${warningLevel === 'severe' ? styles.drawdownWarningSevere : ''}`}>
+        <div className={styles.drawdownWarningLabel}>High Drawdown Warning</div>
+        <div className={styles.drawdownWarningValue}>{fmt(analysis.maxDrawdown, 1)}%</div>
+        <p>
+          Portfolio experienced a {warningLevel} drawdown of {fmt(analysis.maxDrawdown, 1)}%.
+          {Math.abs(analysis.maxDrawdown) >= 30
+            ? ' Review position sizing and consider enforcing stop-loss discipline on speculative holdings.'
+            : ' Keep monitoring concentration and recovery speed before adding fresh risk.'}
+        </p>
+      </div>
     </div>
   );
 }
