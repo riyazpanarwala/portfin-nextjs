@@ -890,6 +890,47 @@
   white-space: nowrap;
 }
 
+.currentMonthTotal {
+  color: #d6a72f;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.currentMonthInvestments {
+  overflow-x: auto;
+}
+
+.currentMonthInvestments table {
+  min-width: 680px;
+}
+
+.schemeCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schemeCell strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.schemeCell span,
+.assetTypeCell {
+  color: var(--text3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.assetTypeCell {
+  text-align: center;
+}
+
 .timelineTwoCol {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.2fr);

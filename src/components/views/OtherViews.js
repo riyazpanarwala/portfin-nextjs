@@ -89,6 +89,15 @@ export function TimelineView() {
         <MonthlyHeatmap data={heatmapRows} max={maxMonthAmount} />
       </section>
 
+      <section className={`glass ${styles.timelinePanel}`}>
+        <PanelHeading title="Current month investments">
+          <div className={styles.currentMonthTotal}>
+            {timeline.currentMonth.label} · {fmtCr(timeline.currentMonth.amount)}
+          </div>
+        </PanelHeading>
+        <CurrentMonthInvestments month={timeline.currentMonth} />
+      </section>
+
       <div className={styles.timelineTwoCol}>
         <section className={`glass ${styles.timelinePanel}`}>
           <PanelHeading title="Yearly investment totals" />
@@ -126,6 +135,9 @@ function buildTimelineModel(holdings, stats, monthlyFlow) {
     (holding.lots ?? []).map(lot => ({
       date: lot.date,
       assetType: holding.assetType,
+      symbol: holding.symbol,
+      name: holding.name || holding.symbol,
+      qty: parseFloat(lot.qty || 0),
       amount: parseFloat(lot.qty || 0) * parseFloat(lot.price || 0),
     }))
   ).filter(lot => lot.date && lot.amount > 0);
@@ -190,6 +202,7 @@ function buildTimelineModel(holdings, stats, monthlyFlow) {
   const activeMonthlyRows = Object.values(assetMonthly)
     .map(row => ({ month: row.month, amount: row.mf + row.stocks }))
     .sort((a, b) => a.month.localeCompare(b.month));
+  const currentMonth = buildCurrentMonthInvestments(activeLots, currentMonthKey());
   const buyingMonths = monthlyFlow.filter(m => m.amount > 0);
   const positiveMonths = activeMonthlyRows.filter(m => m.amount > 0);
   const bestMonth = activeMonthlyRows.reduce((best, row) => row.amount > (best?.amount ?? -1) ? row : best, null);
@@ -213,6 +226,7 @@ function buildTimelineModel(holdings, stats, monthlyFlow) {
     heatmapRows,
     yearlyTotals,
     cumulativeSeries: cumulative,
+    currentMonth,
     maxMonthAmount,
     maxYearAmount,
     metricCards: [
@@ -232,6 +246,46 @@ function buildTimelineModel(holdings, stats, monthlyFlow) {
       { label: 'Biggest single month', value: bestMonth ? fmtCr(bestMonth.amount) : '-', sub: bestMonth ? monthLabel(bestMonth.month) : 'No buys', color: 'gold' },
     ],
   };
+}
+
+function buildCurrentMonthInvestments(lots, month) {
+  const rowsByScheme = {};
+  if (!month) return { month: '', label: 'Current month', amount: 0, rows: [] };
+
+  lots
+    .filter(lot => (lot.date || '').startsWith(month))
+    .forEach(lot => {
+      const key = `${lot.assetType}:${lot.symbol}`;
+      if (!rowsByScheme[key]) {
+        rowsByScheme[key] = {
+          key,
+          symbol: lot.symbol,
+          name: lot.name,
+          assetType: lot.assetType,
+          amount: 0,
+          qty: 0,
+          buys: 0,
+        };
+      }
+      rowsByScheme[key].amount += lot.amount;
+      rowsByScheme[key].qty += lot.qty;
+      rowsByScheme[key].buys += 1;
+    });
+
+  const rows = Object.values(rowsByScheme)
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    month,
+    label: monthLabel(month),
+    amount: rows.reduce((sum, row) => sum + row.amount, 0),
+    rows,
+  };
+}
+
+function currentMonthKey() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function monthLabel(month) {
@@ -434,6 +488,51 @@ function MonthlyBreakdown({ rows, total, year }) {
             <td className={styles.totalRowLabel}>Total {year}</td>
             <td className={styles.totalRowValue}>{fmtCr(total)}</td>
             <td />
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CurrentMonthInvestments({ month }) {
+  if (!month?.rows?.length) {
+    return <div className={styles.chartEmpty}>No investments recorded for {month?.label ?? 'current month'}.</div>;
+  }
+
+  return (
+    <div className={styles.currentMonthInvestments}>
+      <table>
+        <thead>
+          <tr>
+            <th>Scheme</th>
+            <th>Type</th>
+            <th>Buys</th>
+            <th>Units</th>
+            <th>Invested</th>
+          </tr>
+        </thead>
+        <tbody>
+          {month.rows.map(row => (
+            <tr key={row.key}>
+              <td>
+                <div className={styles.schemeCell}>
+                  <strong>{row.name}</strong>
+                  <span>{row.symbol}</span>
+                </div>
+              </td>
+              <td className={styles.assetTypeCell}>{row.assetType === 'MF' ? 'MF' : 'Stock'}</td>
+              <td className={styles.percentCell}>{fmt(row.buys, 0)}</td>
+              <td className={styles.percentCell}>{fmt(row.qty, 3)}</td>
+              <td className={styles.moneyCell}>{fmtCr(row.amount)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td className={styles.totalRowLabel}>Total {month.label}</td>
+            <td />
+            <td />
+            <td />
+            <td className={styles.totalRowValue}>{fmtCr(month.amount)}</td>
           </tr>
         </tbody>
       </table>
