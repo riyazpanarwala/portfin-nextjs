@@ -24,7 +24,7 @@ function monthlyRate(annualPct) {
 
 function annuityDueFactor(rate, months) {
   if (months <= 0) return 0;
-  if (rate === 0) return months;
+    if (rate === 0) return months;
   return ((Math.pow(1 + rate, months) - 1) / rate) * (1 + rate);
 }
 
@@ -48,7 +48,7 @@ function projectFromCurrent({ current, sipMonthly, years, annualReturnPct, stepU
 
   for (let y = 1; y <= years; y += 1) {
     for (let m = 0; m < MONTHS_IN_YEAR; m += 1) {
-      corpus = corpus * (1 + rate) + sip;
+      corpus = (corpus + sip) * (1 + rate);
       invested += sip;
     }
     data.push({
@@ -92,7 +92,7 @@ function stepUpProjection({ sipMonthly, years, annualReturnPct, stepUpPct }) {
   for (let y = 1; y <= years; y += 1) {
     const annualDeploy = sip * MONTHS_IN_YEAR;
     for (let m = 0; m < MONTHS_IN_YEAR; m += 1) {
-      corpus = corpus * (1 + rate) + sip;
+      corpus = (corpus + sip) * (1 + rate);
       invested += sip;
     }
     data.push({
@@ -110,6 +110,11 @@ function stepUpProjection({ sipMonthly, years, annualReturnPct, stepUpPct }) {
   return data;
 }
 
+function futureValue(principal, years, annualReturnPct) {
+  const months = Math.max(0, years * MONTHS_IN_YEAR);
+  return principal * Math.pow(1 + monthlyRate(annualReturnPct), months);
+}
+
 export function useGoalView() {
   const { stats, monthlyFlow } = usePortfolio();
   const [goal, setGoal] = useState(DEFAULT_GOAL);
@@ -119,7 +124,7 @@ export function useGoalView() {
   const activeTotalInvested = stats?.totalInvested ?? (stats?.mfInvested ?? 0) + (stats?.stInvested ?? 0);
   const avgMonthlySip = activeBuyingMonths > 0 ? activeTotalInvested / activeBuyingMonths : 0;
   const currentMonthlySip = avgMonthlySip || goal.sipMonthly;
-  const stepUpBaseSip = avgMonthlySip || goal.stepUpSip;
+  const stepUpBaseSip = goal.stepUpSip;
   const yearsRemaining = Math.max(1, goal.targetYear - START_YEAR);
   const setField = key => value => setGoal(g => ({ ...g, [key]: Number(value) }));
 
@@ -226,11 +231,12 @@ export function useGoalView() {
   const stepUpInvested = stepUpData.at(-1)?.invested || 0;
   const flatInvested = flatStepData.at(-1)?.invested || 0;
   const finalStepSip = stepUpData.at(-1)?.sip || stepUpBaseSip;
+  const currentPortfolioFutureValue = futureValue(currentPortfolio, goal.stepUpYears, goal.stepUpReturnPct);
 
   const stepUpChartData = stepUpData.map((d, i) => ({
     ...d,
     flatCorpus: flatStepData[i]?.corpus || 0,
-    currentPortfolio: currentPortfolio + d.corpus,
+    currentPortfolio: futureValue(currentPortfolio, d.year, goal.stepUpReturnPct) + d.corpus,
   }));
 
   const stepRateScenarios = [0, 5, 10, 15, 20, 25].map(rate => {
@@ -273,6 +279,7 @@ export function useGoalView() {
     stepUpInvested,
     flatInvested,
     finalStepSip,
+    currentPortfolioFutureValue,
     stepRateScenarios,
   };
 }

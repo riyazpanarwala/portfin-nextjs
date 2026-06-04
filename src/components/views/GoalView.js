@@ -55,6 +55,7 @@ export default function GoalView() {
     stepUpInvested,
     flatInvested,
     finalStepSip,
+    currentPortfolioFutureValue,
     stepRateScenarios,
   } = vm;
 
@@ -165,17 +166,13 @@ export default function GoalView() {
         <Metric label="Step-up corpus" value={fmtCr(finalStepUp)} sub={fmtCr(stepUpInvested) + ' invested'} tone="gold" />
         <Metric label="Extra wealth" value={fmtCr(stepExtra)} sub="By stepping up vs flat" tone="green" />
         <Metric label="Final monthly SIP" value={`₹${fmt(finalStepSip, 0)}/mo`} sub={`After ${goal.stepUpYears}y of step-ups`} tone="blue" />
-        <Metric label="With your portfolio" value={fmtCr(currentPortfolio + finalStepUp)} sub="Step-up SIP + current FV" tone="violet" />
+        <Metric label="With your portfolio" value={fmtCr(currentPortfolioFutureValue + finalStepUp)} sub="Step-up SIP + current FV" tone="violet" />
         <Metric label="Step-up multiplier" value={`${stepMultiplier.toFixed(2)}x`} sub="Vs flat SIP outcome" tone="orange" />
       </div>
 
       <div className={styles.topGrid}>
         <Panel title="Configure step-up">
-          {avgMonthlySip ? (
-            <ReadOnlyField label="Starting monthly SIP from timeline" value={`${fmtCr(stepUpBaseSip)}/mo`} />
-          ) : (
-            <Slider label="Starting monthly SIP fallback" value={goal.stepUpSip} min={1_000} max={100_000} step={500} onChange={setField('stepUpSip')} display={`₹${fmt(goal.stepUpSip, 0)}/mo`} />
-          )}
+          <Slider label="Starting monthly SIP" value={goal.stepUpSip} min={1_000} max={100_000} step={500} onChange={setField('stepUpSip')} display={`₹${fmt(stepUpBaseSip, 0)}/mo`} />
           <Slider label="Annual step-up rate" value={goal.stepUpPct} min={0} max={30} step={1} onChange={setField('stepUpPct')} display={`+${goal.stepUpPct}% / yr`} />
           <Slider label="Expected return p.a." value={goal.stepUpReturnPct} min={6} max={20} step={0.5} onChange={setField('stepUpReturnPct')} display={`${goal.stepUpReturnPct}% p.a.`} />
           <Slider label="Investment horizon" value={goal.stepUpYears} min={5} max={30} step={1} onChange={setField('stepUpYears')} display={`${goal.stepUpYears} yrs`} />
