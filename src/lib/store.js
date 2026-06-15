@@ -112,14 +112,23 @@ export function computeHoldings(trades, currentPrices = {}) {
     const unrealizedReturnPct = invested > EPSILON
       ? (unrealizedGain / invested) * 100
       : 0;
+	
+	const firstDate = earliestBuyDate ? new Date(earliestBuyDate) : new Date();
+	const holdingDays = Math.max(0, Math.round((new Date() - firstDate) / (24 * 3600 * 1000)));
+	const years       = Math.max(0.1, holdingDays / 365.25);
 
-    const firstDate = earliestBuyDate ? new Date(earliestBuyDate) : new Date();
-    const holdingDays = Math.max(0, Math.round((new Date() - firstDate) / (24 * 3600 * 1000)));
-    const years       = Math.max(0.1, holdingDays / 365.25);
+	const rawCagr = invested > EPSILON && marketValue > 0
+	  ? (Math.pow(marketValue / invested, 1 / years) - 1) * 100
+	  : 0;
 
-    const cagr = invested > EPSILON && marketValue > 0
-      ? (Math.pow(marketValue / invested, 1 / years) - 1) * 100
-      : 0;
+    // FIX: annualizing returns for very short holding periods (years floored to
+	// 0.1, i.e. ~36 days) can blow up to billions of percent for large absolute
+	// gains (e.g. a 15x return in 1 month -> 15^10 * 100%). That's mathematically
+	// "correct" CAGR but meaningless, breaks the UI layout, and overflows the
+	// Decimal(8,2) mfCagr/stCagr snapshot columns when aggregated. Clamp to a
+	// display-sane range — CAGR isn't a useful metric beyond this for any holding.
+	const CAGR_CAP = 9999.99;
+	const cagr = Math.max(-99.99, Math.min(rawCagr, CAGR_CAP));
 
     const winCount  = sellRecords.filter(s => s.realized > 0).length;
     const lossCount = sellRecords.filter(s => s.realized < 0).length;
