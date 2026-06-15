@@ -1,0 +1,26 @@
+# PortFin Portfolio Dashboard - Search Engine Directives
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /_next/
+Disallow: /public/
+Allow: /public/instruments_data.json
+
+# Specific rules for Googlebot
+User-agent: Googlebot
+Allow: /
+Disallow: /api/
+Crawl-delay: 0
+
+# Specific rules for Bingbot
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+Crawl-delay: 0
+
+# Sitemap location
+Sitemap: https://portfin.local/sitemap.xml
+
+# Additional directives
+Request-rate: 30/60 (requests per seconds)

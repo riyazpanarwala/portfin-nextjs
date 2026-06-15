@@ -1,0 +1,74 @@
+{
+  "name": "PortFin - Personal Portfolio Dashboard",
+  "short_name": "PortFin",
+  "description": "Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, and tax insights.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#3b82f6",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "screenshots": [
+    {
+      "src": "/screenshot-1.png",
+      "sizes": "540x720",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshot-2.png",
+      "sizes": "1280x720",
+      "form_factor": "wide"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Add Trade",
+      "short_name": "Trade",
+      "description": "Add a new trade to your portfolio",
+      "url": "/?view=trade",
+      "icons": [
+        {
+          "src": "/icon-trade.png",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "View Analytics",
+      "short_name": "Analytics",
+      "description": "View portfolio analytics and performance",
+      "url": "/?view=analytics",
+      "icons": [
+        {
+          "src": "/icon-analytics.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text"
+    }
+  },
+  "prefer_related_applications": false
+}
