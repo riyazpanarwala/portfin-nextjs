@@ -57,9 +57,12 @@ export function useSnapshots(portfolioId, limit = 200) {
   }, [portfolioId, limit]);
 
   useEffect(() => {
-    load();
+    const timer = setTimeout(() => {
+      load();
+    }, 0);
 
     return () => {
+      clearTimeout(timer);
       controllerRef.current?.abort();
     };
   }, [load]);

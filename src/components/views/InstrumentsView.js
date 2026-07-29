@@ -118,7 +118,7 @@ function SymbolSearchDropdown({ exchange, assetType, onSelect, disabled }) {
       {open && suggestions.length > 0 && (
         <div className={styles.symbolDropdown}>
           <div className={styles.dropdownHeader}>
-            <span className={styles.dropdownHeaderText}>{suggestions.length} results for "{query}"</span>
+            <span className={styles.dropdownHeaderText}>{suggestions.length} results for &quot;{query}&quot;</span>
             <div className={styles.dropdownHeaderBadges}>
               {suggestions.some(s => s.inDb)  && <Badge label="● In DB"    color="var(--green2)" bg="rgba(16,185,129,0.1)"  border="rgba(16,185,129,0.25)" />}
               {suggestions.some(s => !s.inDb) && <Badge label="○ From CSV" color="var(--text3)"  bg="var(--bg3)"            border="var(--border)" />}
@@ -162,7 +162,7 @@ function SymbolSearchDropdown({ exchange, assetType, onSelect, disabled }) {
       {open && !loading && suggestions.length === 0 && query.length >= 2 && (
         <div className={styles.dropdownNoResults}>
           <div className={styles.dropdownNoResultsIcon}>🔍</div>
-          <div className={styles.dropdownNoResultsTitle}>No results for "{query}"</div>
+          <div className={styles.dropdownNoResultsTitle}>No results for &quot;{query}&quot;</div>
           <div className={styles.dropdownNoResultsSub}>Try a different symbol or fill in the fields below manually.</div>
         </div>
       )}
@@ -201,6 +201,15 @@ function SymbolSearchDropdown({ exchange, assetType, onSelect, disabled }) {
 
 // ── Add Instrument Form ───────────────────────────────────────────────────────
 
+function FieldLabel({ ch, hint }) {
+  return (
+    <div className={styles.fieldLabel}>
+      <span className={styles.fieldLabelText}>{ch}</span>
+      {hint && <span className={styles.fieldLabelHint}>{hint}</span>}
+    </div>
+  );
+}
+
 function AddInstrumentForm({ onAdded }) {
   const { toast } = usePortfolio();
   const {
@@ -208,13 +217,6 @@ function AddInstrumentForm({ onAdded }) {
     saving, sectorOpen, setSectorOpen,
     handleAssetTypeChange, handleSelect, handleSubmit,
   } = useAddInstrumentForm({ onAdded, toast });
-
-  const Label = ({ ch, hint }) => (
-    <div className={styles.fieldLabel}>
-      <span className={styles.fieldLabelText}>{ch}</span>
-      {hint && <span className={styles.fieldLabelHint}>{hint}</span>}
-    </div>
-  );
 
   return (
     <div className={`glass ${styles.addFormPanel}`}>
@@ -226,7 +228,7 @@ function AddInstrumentForm({ onAdded }) {
 
       {/* Asset type */}
       <div>
-        <Label ch="Asset Type" />
+        <FieldLabel ch="Asset Type" />
         <div className={styles.typeSelector}>
           {[['STOCK', '📈', 'Stock / ETF'], ['MF', '📊', 'Mutual Fund']].map(([val, icon, label]) => (
             <button key={val} onClick={() => handleAssetTypeChange(val)} className={styles.typeSelectorBtn} style={{
@@ -243,7 +245,7 @@ function AddInstrumentForm({ onAdded }) {
       {/* Exchange (stocks only) */}
       {assetType === 'STOCK' && (
         <div>
-          <Label ch="Exchange" />
+          <FieldLabel ch="Exchange" />
           <div className={styles.exchangeSelector}>
             {['NSE', 'BSE'].map(ex => {
               const ec = exchColors[ex];
@@ -261,7 +263,7 @@ function AddInstrumentForm({ onAdded }) {
 
       {/* Symbol search */}
       <div style={{ marginBottom: 16 }}>
-        <Label ch="Search Symbol / Name / ISIN" hint="— auto-fills all fields on selection" />
+        <FieldLabel ch="Search Symbol / Name / ISIN" hint="— auto-fills all fields on selection" />
         <SymbolSearchDropdown exchange={exchange} assetType={assetType} onSelect={handleSelect} disabled={saving} />
       </div>
 
@@ -277,16 +279,16 @@ function AddInstrumentForm({ onAdded }) {
           {form.symbol ? '✏️ Review & Edit — fields auto-filled from search' : '✏️ Or enter details manually'}
         </div>
         <div className={styles.detailRow}>
-          <Label ch="Full Name / Scheme Name" />
+          <FieldLabel ch="Full Name / Scheme Name" />
           <input value={form.name} onChange={e => setF('name', e.target.value)} placeholder="e.g. Infosys Limited" />
         </div>
         <div className={styles.detailTwoCol}>
           <div>
-            <Label ch="ISIN" hint="— optional" />
+            <FieldLabel ch="ISIN" hint="— optional" />
             <input value={form.isin} onChange={e => setF('isin', e.target.value.toUpperCase())} placeholder="INE009A01021" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
           </div>
           <div className={styles.sectorDropdownWrapper}>
-            <Label ch="Sector / Category" hint="— optional" />
+            <FieldLabel ch="Sector / Category" hint="— optional" />
             <input
               value={form.sector}
               onChange={e => { setF('sector', e.target.value); setSectorOpen(true); }}

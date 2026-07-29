@@ -332,16 +332,23 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
   // values when the user changes exchange after picking an instrument — only
   // the dropdown query and suggestions are cleared.
   useEffect(() => {
-    setQuery('');
-    setSugs([]);
-    setOpen(false);
-    setActiveIdx(-1);
-    // Note: intentionally do NOT reset `selected` here — the parent form
-    // keeps its values. Only the search input is cleared.
+    const timer = setTimeout(() => {
+      setQuery('');
+      setSugs([]);
+      setOpen(false);
+      setActiveIdx(-1);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [assetType, exchange]);
 
   useEffect(() => {
-    if (query.length < 1) { setSugs([]); setOpen(false); return; }
+    if (query.length < 1) {
+      const timer = setTimeout(() => {
+        setSugs([]);
+        setOpen(false);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
     clearTimeout(debounce.current);
     debounce.current = setTimeout(async () => {
       setLoading(true);

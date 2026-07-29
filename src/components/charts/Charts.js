@@ -157,14 +157,15 @@ export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = 
     return `M${x1o},${y1o} A${r},${r},0,${lg},1,${x2o},${y2o} L${x1i},${y1i} A${ir},${ir},0,${lg},0,${x2i},${y2i} Z`;
   }
 
-  let angle = -Math.PI / 2;
   const total = data.reduce((s, d) => s + d.value, 0);
-  const slices = data.map(d => {
-    const start = angle;
+  const slices = data.reduce(({ currentAngle, result }, d) => {
     const sweep = total > 0 ? (d.value / total) * 2 * Math.PI : 0;
-    angle += sweep;
-    return { ...d, path: arcPath(start, start + sweep) };
-  });
+    const path = arcPath(currentAngle, currentAngle + sweep);
+    return {
+      currentAngle: currentAngle + sweep,
+      result: [...result, { ...d, path }],
+    };
+  }, { currentAngle: -Math.PI / 2, result: [] }).result;
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
@@ -383,20 +384,26 @@ export function HoldingPerformanceChart({ lots, cmp }) {
 export function WaterfallChart({ steps }) {
   if (!steps || !steps.length) return null;
 
-  let running = 0;
-  const chartData = steps.map(s => {
+  const chartData = steps.reduce(({ running, result }, s) => {
     if (s.isTotal) {
-      return { label: s.label, spacer: 0, bar: s.value, color: resolveColor(s.color, '#60a5fa') };
+      return {
+        running,
+        result: [...result, { label: s.label, spacer: 0, bar: s.value, color: resolveColor(s.color, '#60a5fa') }],
+      };
     }
     const base = running;
-    running += s.value;
-    return {
+    const nextRunning = running + s.value;
+    const item = {
       label: s.label,
       spacer: Math.min(base, base + s.value),
-      bar:    Math.abs(s.value),
-      color:  resolveColor(s.color, '#60a5fa'),
+      bar: Math.abs(s.value),
+      color: resolveColor(s.color, '#60a5fa'),
     };
-  });
+    return {
+      running: nextRunning,
+      result: [...result, item],
+    };
+  }, { running: 0, result: [] }).result;
 
   const maxVal = Math.max(...chartData.map(d => d.spacer + d.bar), 1);
 

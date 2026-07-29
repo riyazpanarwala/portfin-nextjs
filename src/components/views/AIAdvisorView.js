@@ -196,7 +196,7 @@ export default function AIAdvisorView() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  async function sendMessage(text) {
+  async function sendMessage(text, msgId) {
     const userText = (text || input).trim();
     if (!userText || loading) return;
     setInput('');
@@ -206,7 +206,7 @@ export default function AIAdvisorView() {
     setMessages(newMessages);
     setLoading(true);
 
-    const streamingId = Date.now();
+    const streamingId = msgId || `stream_${newMessages.length}`;
     setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true, id: streamingId }]);
 
     try {
@@ -262,14 +262,16 @@ Guidelines:
             const token = parsed.choices?.[0]?.delta?.content;
             if (token) {
               accumulated += token;
-              setMessages(prev => prev.map(m => m.id === streamingId ? { ...m, content: accumulated } : m));
+              const textChunk = accumulated;
+              setMessages(prev => prev.map(m => m.id === streamingId ? { ...m, content: textChunk } : m));
             }
           } catch { /* skip malformed */ }
         }
       }
 
+      const finalText = accumulated;
       setMessages(prev => prev.map(m =>
-        m.id === streamingId ? { role: 'assistant', content: accumulated, streaming: false } : m
+        m.id === streamingId ? { role: 'assistant', content: finalText, streaming: false } : m
       ));
     } catch (err) {
       console.error('AI Advisor error:', err);

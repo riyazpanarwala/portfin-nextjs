@@ -29,7 +29,12 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
 
   // Autocomplete
   useEffect(() => {
-    if (form.symbol.length < 1) { setSuggestions([]); return; }
+    if (form.symbol.length < 1) {
+      const timer = setTimeout(() => {
+        setSuggestions([]);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setSugLoading(true);

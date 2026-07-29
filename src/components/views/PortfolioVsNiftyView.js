@@ -167,7 +167,6 @@ export default function PortfolioVsNiftyView() {
   useEffect(() => {
     if (portfolioSeries.length > 0 && !hasHadDataRef.current) {
       hasHadDataRef.current = true;
-      setMode('indexed');
     }
   }, [portfolioSeries.length]);
 

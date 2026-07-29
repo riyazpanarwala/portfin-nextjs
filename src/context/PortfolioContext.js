@@ -81,7 +81,7 @@ export function PortfolioProvider({ children }) {
   const [priceRefreshState, setPriceRefreshState] = useState(REFRESH_IDLE);
 
   // ── URL hash-based view persistence ──────────────────────────────────────
-  const [activeView, setActiveViewState] = useState('overview');
+  const [activeView, setActiveViewState] = useState(() => getViewFromHash());
 
   const setActiveView = useCallback((view) => {
     setActiveViewState(view);
@@ -89,13 +89,6 @@ export function PortfolioProvider({ children }) {
       window.history.replaceState(null, '', `#${view}`);
     }
   }, []);
-
-  useEffect(() => {
-    const view = getViewFromHash();
-    if (view !== 'overview') {
-      setActiveViewState(view);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function onHashChange() {
@@ -108,14 +101,17 @@ export function PortfolioProvider({ children }) {
   // ── Reset state when user logs out ────────────────────────────────────────
   useEffect(() => {
     if (!userId) {
-      setTrades([]);
-      setPortfolioId(null);
-      setCurrentPrices({});
-      setPriceMeta({});
-      setPortfolioXIRR(null);
-      setPortfolioBeta(null);
-      setLoading(false);
-      setError(null);
+      const timerId = setTimeout(() => {
+        setTrades([]);
+        setPortfolioId(null);
+        setCurrentPrices({});
+        setPriceMeta({});
+        setPortfolioXIRR(null);
+        setPortfolioBeta(null);
+        setLoading(false);
+        setError(null);
+      }, 0);
+      return () => clearTimeout(timerId);
     }
   }, [userId]);
 
@@ -191,7 +187,11 @@ export function PortfolioProvider({ children }) {
   }, [userId]);
 
   useEffect(() => {
-    if (userId) loadData();
+    if (!userId) return;
+    const timeoutId = setTimeout(() => {
+      loadData();
+    }, 0);
+    return () => clearTimeout(timeoutId);
   }, [loadData, userId]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
@@ -217,8 +217,8 @@ export function PortfolioProvider({ children }) {
 
   useEffect(() => {
     if (trades.length < 2) {
-      setPortfolioXIRR(null);
-      return;
+      const timeoutId = setTimeout(() => setPortfolioXIRR(null), 0);
+      return () => clearTimeout(timeoutId);
     }
     const timeoutId = setTimeout(() => {
       const xirr = computePortfolioXIRR(trades, currentPrices, holdings);
