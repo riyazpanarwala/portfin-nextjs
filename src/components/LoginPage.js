@@ -32,7 +32,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{
+    <main style={{
       minHeight:       '100vh',
       background:      'var(--bg)',
       display:         'flex',
@@ -70,14 +70,15 @@ export default function LoginPage() {
             <WalletCards size={22} color="#fff" />
           </div>
           <div>
-            <div style={{
+            <h1 style={{
               fontSize:    22, fontWeight: 800,
               letterSpacing: '0.06em',
               color:       'var(--text)',
               fontFamily:  'var(--font-display)',
+              margin: 0,
             }}>
               PORTFIN
-            </div>
+            </h1>
             <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '0.12em', marginTop: 2 }}>
               PERSONAL PORTFOLIO DASHBOARD
             </div>
@@ -86,9 +87,9 @@ export default function LoginPage() {
 
         {/* Heading */}
         <div style={{ marginBottom: 28 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: '0 0 4px 0' }}>
             Welcome back
-          </div>
+          </h2>
           <div style={{ fontSize: 13, color: 'var(--text3)' }}>
             Sign in to access your portfolio
           </div>
@@ -111,11 +112,11 @@ export default function LoginPage() {
         )}
 
         {/* Form */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Email */}
           <div>
-            <label style={{
+            <label htmlFor="login-email" style={{
               display:       'block',
               fontSize:      11, fontWeight: 700,
               color:         'var(--text3)',
@@ -132,6 +133,7 @@ export default function LoginPage() {
                 color: 'var(--text3)', pointerEvents: 'none',
               }} />
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={e => { setEmail(e.target.value); setError(null); }}
@@ -146,7 +148,7 @@ export default function LoginPage() {
 
           {/* Password */}
           <div>
-            <label style={{
+            <label htmlFor="login-password" style={{
               display:       'block',
               fontSize:      11, fontWeight: 700,
               color:         'var(--text3)',
@@ -163,6 +165,7 @@ export default function LoginPage() {
                 color: 'var(--text3)', pointerEvents: 'none',
               }} />
               <input
+                id="login-password"
                 type={showPwd ? 'text' : 'password'}
                 value={password}
                 onChange={e => { setPassword(e.target.value); setError(null); }}
@@ -173,8 +176,10 @@ export default function LoginPage() {
                 style={{ paddingLeft: 36, paddingRight: 40 }}
               />
               <button
+                type="button"
                 onClick={() => setShowPwd(v => !v)}
                 tabIndex={-1}
+                aria-label={showPwd ? "Hide password" : "Show password"}
                 style={{
                   position:   'absolute', right: 10, top: '50%',
                   transform:  'translateY(-50%)',
@@ -190,7 +195,7 @@ export default function LoginPage() {
 
           {/* Submit */}
           <button
-            onClick={handleSubmit}
+            type="submit"
             disabled={submitting || !email || !password}
             className="btn btn-primary"
             style={{
@@ -216,7 +221,7 @@ export default function LoginPage() {
               'Sign In'
             )}
           </button>
-        </div>
+        </form>
 
         {/* Footer note */}
         <div style={{
@@ -238,6 +243,6 @@ export default function LoginPage() {
       }}>
         PortFin · Personal Dashboard
       </div>
-    </div>
+    </main>
   );
 }

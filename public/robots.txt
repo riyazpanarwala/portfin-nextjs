@@ -20,7 +20,7 @@ Disallow: /api/
 Crawl-delay: 0
 
 # Sitemap location
-Sitemap: https://portfin.local/sitemap.xml
+Sitemap: https://portfin-riyaz.panarwala.in/sitemap.xml
 
 # Additional directives
 Request-rate: 30/60 (requests per seconds)
