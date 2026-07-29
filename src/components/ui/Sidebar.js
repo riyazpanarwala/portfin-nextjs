@@ -86,7 +86,7 @@ export default function Sidebar({ collapsed, onToggle, onImport }) {
           {!collapsed && (
             <div>
               <div style={{ fontSize: '16px', fontWeight: '700', letterSpacing: '0.05em', color: 'var(--text)' }}>PORTFIN</div>
-              <div style={{ fontSize: '10px', color: 'var(--text3)', letterSpacing: '0.1em' }}>PERSONAL DASHBOARD</div>
+              <div style={{ fontSize: '9px', color: 'var(--accent2)', fontWeight: '700', letterSpacing: '0.12em' }}>BY PANARWALA</div>
             </div>
           )}
         </div>

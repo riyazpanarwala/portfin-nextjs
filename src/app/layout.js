@@ -5,12 +5,14 @@ import { AuthProvider } from '@/context/AuthContext';
 export const metadata = {
   metadataBase: new URL('https://portfin-riyaz.panarwala.in'),
   title: {
-    default: 'PortFin - Personal Portfolio Dashboard',
-    template: '%s | PortFin',
+    default: 'PortFin by Panarwala - Personal Portfolio Dashboard',
+    template: '%s | PortFin by Panarwala',
   },
-  description: 'Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, tax insights, and AI recommendations.',
+  description: 'PortFin by Panarwala — Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, tax insights, and AI recommendations.',
   keywords: [
+    'Panarwala',
     'PortFin',
+    'Panarwala PortFin',
     'portfolio tracker',
     'Indian stock market',
     'NSE',
@@ -22,9 +24,9 @@ export const metadata = {
     'financial goals',
     'portfolio analytics',
   ],
-  authors: [{ name: 'PortFin' }],
-  creator: 'PortFin',
-  publisher: 'PortFin',
+  authors: [{ name: 'Panarwala', url: 'https://www.panarwala.in' }],
+  creator: 'Panarwala',
+  publisher: 'Panarwala',
   formatDetection: {
     email: false,
     address: false,
@@ -34,10 +36,10 @@ export const metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'PortFin - Personal Portfolio Dashboard',
-    description: 'Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, and tax insights.',
+    title: 'PortFin by Panarwala - Personal Portfolio Dashboard',
+    description: 'PortFin by Panarwala — Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, and tax insights.',
     url: 'https://portfin-riyaz.panarwala.in',
-    siteName: 'PortFin',
+    siteName: 'PortFin by Panarwala',
     locale: 'en_IN',
     type: 'website',
     images: [
@@ -45,14 +47,14 @@ export const metadata = {
         url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'PortFin Portfolio Dashboard Banner',
+        alt: 'PortFin by Panarwala Portfolio Dashboard Banner',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'PortFin - Personal Portfolio Dashboard',
-    description: 'Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, and tax insights.',
+    title: 'PortFin by Panarwala - Personal Portfolio Dashboard',
+    description: 'PortFin by Panarwala — Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, and tax insights.',
     images: ['/og-image.png'],
   },
   robots: {
@@ -88,9 +90,9 @@ export const viewport = {
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebApplication',
-  name: 'PortFin',
+  name: 'PortFin by Panarwala',
   url: 'https://portfin-riyaz.panarwala.in',
-  description: 'Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, tax insights, and AI recommendations.',
+  description: 'PortFin by Panarwala — Track your Indian equity and mutual fund portfolio with real-time analytics, goal planning, tax insights, and AI recommendations.',
   applicationCategory: 'FinanceApplication',
   operatingSystem: 'All',
   offers: {
@@ -100,7 +102,17 @@ const jsonLd = {
   },
   author: {
     '@type': 'Organization',
-    name: 'PortFin',
+    name: 'Panarwala',
+    url: 'https://panarwala.in',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Panarwala',
+    url: 'https://panarwala.in',
+  },
+  brand: {
+    '@type': 'Brand',
+    name: 'Panarwala',
   },
 };
 

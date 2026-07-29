@@ -79,8 +79,8 @@ export default function LoginPage() {
             }}>
               PORTFIN
             </h1>
-            <div style={{ fontSize: 11, color: 'var(--text3)', letterSpacing: '0.12em', marginTop: 2 }}>
-              PERSONAL PORTFOLIO DASHBOARD
+            <div style={{ fontSize: 10, color: 'var(--accent2)', fontWeight: 700, letterSpacing: '0.14em', marginTop: 2 }}>
+              BY PANARWALA
             </div>
           </div>
         </div>
@@ -230,7 +230,7 @@ export default function LoginPage() {
           fontSize:   11, color: 'var(--text3)',
           textAlign:  'center', lineHeight: 1.8,
         }}>
-          PortFin is a personal portfolio tracking tool.
+          PortFin is a personal portfolio tracking tool by <strong>Panarwala</strong>.
           <br />
           Contact your admin if you need account access.
         </div>
@@ -241,7 +241,7 @@ export default function LoginPage() {
         marginTop: 20, fontSize: 11,
         color: 'var(--text3)', letterSpacing: '0.05em',
       }}>
-        PortFin · Personal Dashboard
+        PortFin by Panarwala · Personal Dashboard
       </div>
     </main>
   );
