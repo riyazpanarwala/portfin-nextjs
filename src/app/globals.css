@@ -411,3 +411,33 @@ select option { background: var(--bg2); }
     padding: 10px;
   }
 }
+
+/* ── Privacy / Discreet Mode ──────────────────────────────────────────────── */
+[data-discreet="true"] .privacy-mask,
+[data-discreet="true"] [data-privacy="true"],
+[data-discreet="true"] .metric-card div[style*="font-mono"],
+[data-discreet="true"] .metric-card span[style*="font-mono"],
+[data-discreet="true"] div[style*="font-mono"],
+[data-discreet="true"] span[style*="font-mono"],
+[data-discreet="true"] td[style*="text-align: right"],
+[data-discreet="true"] td[style*="textAlign: right"],
+[data-discreet="true"] td[style*="textAlign: 'right'"],
+[data-discreet="true"] .mono-privacy {
+  filter: blur(6px) !important;
+  user-select: none !important;
+  transition: filter 0.2s ease;
+}
+
+[data-discreet="true"] .privacy-mask:hover,
+[data-discreet="true"] [data-privacy="true"]:hover,
+[data-discreet="true"] .metric-card div[style*="font-mono"]:hover,
+[data-discreet="true"] .metric-card span[style*="font-mono"]:hover,
+[data-discreet="true"] div[style*="font-mono"]:hover,
+[data-discreet="true"] span[style*="font-mono"]:hover,
+[data-discreet="true"] td[style*="text-align: right"]:hover,
+[data-discreet="true"] td[style*="textAlign: right"]:hover,
+[data-discreet="true"] td[style*="textAlign: 'right'"]:hover,
+[data-discreet="true"] .mono-privacy:hover {
+  filter: blur(2px) !important;
+}
+

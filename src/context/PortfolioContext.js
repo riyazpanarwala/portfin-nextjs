@@ -80,6 +80,26 @@ export function PortfolioProvider({ children }) {
   // ── Price-refresh overlay state ───────────────────────────────────────────
   const [priceRefreshState, setPriceRefreshState] = useState(REFRESH_IDLE);
 
+  // ── Privacy / Discreet Mode State ───────────────────────────────────────────
+  const [isDiscreet, setIsDiscreet] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('portfin:discreet');
+      if (saved === 'true') setIsDiscreet(true);
+    }
+  }, []);
+
+  const toggleDiscreet = useCallback(() => {
+    setIsDiscreet(prev => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('portfin:discreet', String(next));
+      }
+      return next;
+    });
+  }, []);
+
   // ── URL hash-based view persistence ──────────────────────────────────────
   const [activeView, setActiveViewState] = useState(() => getViewFromHash());
 
@@ -521,6 +541,7 @@ export function PortfolioProvider({ children }) {
       realizedSummary, portfolioXIRR, portfolioBeta,
       portfolioId, loading, error,
       activeView, setActiveView,
+      isDiscreet, toggleDiscreet,
       addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,
       priceRefreshState,
       refreshData: loadData, toasts, toast,

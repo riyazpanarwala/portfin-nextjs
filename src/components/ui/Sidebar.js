@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
+  Eye,
+  EyeOff,
   Gauge,
   Goal,
   History,
@@ -47,8 +49,9 @@ const NAV = [
       { id: 'instruments',  icon: Database,     label: 'Instruments', badge: 'NEW' },
       { id: 'backfill',     icon: CalendarRange, label: 'Backfill History', badge: 'NEW' },
       { id: 'trade',        icon: Plus,         label: 'Add Trade' },
-      // Import is handled as a modal — clicking triggers onImport prop, not a view nav
+      // Import & Discreet action items
       { id: '__import',     icon: Upload,       label: 'Import CSV/XLS', badge: 'CSV', _isAction: true },
+      { id: '__discreet',   icon: EyeOff,       label: 'Privacy Mode', badge: 'HIDE', _isAction: true },
     ]
   }
 ];
@@ -61,11 +64,12 @@ const NAV = [
  *   onImport    () => void   — opens the TradeImporter modal
  */
 export default function Sidebar({ collapsed, onToggle, onImport }) {
-  const { activeView, setActiveView, stats } = usePortfolio();
+  const { activeView, setActiveView, stats, isDiscreet, toggleDiscreet } = usePortfolio();
 
   function handleNavClick(item) {
     if (item._isAction) {
       if (item.id === '__import') onImport?.();
+      if (item.id === '__discreet') toggleDiscreet();
     } else {
       setActiveView(item.id);
     }

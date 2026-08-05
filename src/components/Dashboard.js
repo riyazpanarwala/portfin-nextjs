@@ -52,7 +52,7 @@ const VIEWS_BYPASS_EMPTY_GUARD = new Set([
 ]);
 
 export default function Dashboard() {
-  const { activeView, loading, error, trades, refreshData, refreshPrices } = usePortfolio();
+  const { activeView, loading, error, trades, refreshData, refreshPrices, isDiscreet } = usePortfolio();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showImporter, setShowImporter]         = useState(false);
 
@@ -60,7 +60,7 @@ export default function Dashboard() {
   const bypassEmptyGuard = VIEWS_BYPASS_EMPTY_GUARD.has(activeView);
 
   return (
-    <div className="app-shell grid-bg">
+    <div className="app-shell grid-bg" data-discreet={isDiscreet ? 'true' : 'false'}>
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(v => !v)}
