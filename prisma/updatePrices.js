@@ -178,7 +178,39 @@ async function updateMFPrices() {
   }
 
   const text = await res.text();
-  const lines = text.trim().split("\n");
+  const lines = text.trim().split(/\r?\n/);
+
+  // Dynamic Column Index Discovery via Header Row
+  let navCol = 6;
+  let isinGrowthCol = 1;
+  let isinDivCol = 2;
+  let nameCol = 3;
+  let headerFound = false;
+
+  for (const line of lines) {
+    if (line.includes("Net Asset Value") || line.includes("Scheme Code")) {
+      headerFound = true;
+      const headers = line.split(";").map((h) => h.trim().toLowerCase());
+      const foundNav = headers.findIndex((h) => h.includes("net asset value") || h === "nav");
+      if (foundNav !== -1) navCol = foundNav;
+
+      const foundGrowth = headers.findIndex((h) => h.includes("isin growth") || h.includes("isin div payout"));
+      if (foundGrowth !== -1) isinGrowthCol = foundGrowth;
+
+      const foundDiv = headers.findIndex((h) => h.includes("isin div reinvestment"));
+      if (foundDiv !== -1) isinDivCol = foundDiv;
+
+      const foundName = headers.findIndex((h) => h.includes("scheme name"));
+      if (foundName !== -1) nameCol = foundName;
+      break;
+    }
+  }
+
+  if (!headerFound) {
+    console.warn(
+      '  ⚠ AMFI Header Alert: Header row containing "Net Asset Value" or "Scheme Code" was not found in NAVAll.txt.'
+    );
+  }
 
   // Build lookup maps: isin → nav  AND  lowercased name → nav
   const isinNavMap = new Map();
@@ -186,16 +218,28 @@ async function updateMFPrices() {
 
   for (const line of lines) {
     const parts = line.split(";");
-    if (parts.length < 5) continue;
-    const isinGrowth = parts[1].trim();
-    const isinDiv = parts[2].trim();
-    const name = parts[3].trim();
-    const navStr = parts.length >= 7 ? parts[6] : parts[4];
-    const nav = parseFloat(navStr?.replace(/,/g, "").trim());
+    if (parts.length <= Math.max(navCol, nameCol)) continue;
+
+    const isinGrowth = parts[isinGrowthCol]?.trim();
+    const isinDiv = parts[isinDivCol]?.trim();
+    const name = parts[nameCol]?.trim();
+
+    let nav = parseFloat(parts[navCol]?.replace(/,/g, "").trim());
+    if (isNaN(nav) || nav <= 0) {
+      const navStr = parts.length >= 7 ? parts[6] : parts[4];
+      nav = parseFloat(navStr?.replace(/,/g, "").trim());
+    }
+
     if (isNaN(nav) || nav <= 0) continue;
-    if (isinGrowth) isinNavMap.set(isinGrowth, nav);
-    if (isinDiv) isinNavMap.set(isinDiv, nav);
+    if (isinGrowth && isinGrowth !== "-") isinNavMap.set(isinGrowth, nav);
+    if (isinDiv && isinDiv !== "-") isinNavMap.set(isinDiv, nav);
     if (name) nameNavMap.set(name.toLowerCase(), nav);
+  }
+
+  if (isinNavMap.size === 0 && nameNavMap.size === 0) {
+    console.warn(
+      '  ⚠ AMFI Parsing Alert: 0 NAV entries were parsed from NAVAll.txt — check portal.amfiindia.com format!'
+    );
   }
 
   console.log(

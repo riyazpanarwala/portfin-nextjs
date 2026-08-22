@@ -252,25 +252,68 @@ async function loadAMFIFunds() {
     return new Map();
   }
   const text = await res.text();
-  const lines = text.trim().split("\n");
+  const lines = text.trim().split(/\r?\n/);
   const nameMap = new Map(); // lowercased name → { schemeCode, name, isin, nav }
   const isinMap = new Map(); // ISIN          → { schemeCode, name, isin, nav }
+
+  // Dynamic Column Index Discovery via Header Row
+  let navCol = 6;
+  let isinGrowthCol = 1;
+  let isinDivCol = 2;
+  let nameCol = 3;
+  let headerFound = false;
+
+  for (const line of lines) {
+    if (line.includes("Net Asset Value") || line.includes("Scheme Code")) {
+      headerFound = true;
+      const headers = line.split(";").map((h) => h.trim().toLowerCase());
+      const foundNav = headers.findIndex((h) => h.includes("net asset value") || h === "nav");
+      if (foundNav !== -1) navCol = foundNav;
+
+      const foundGrowth = headers.findIndex((h) => h.includes("isin growth") || h.includes("isin div payout"));
+      if (foundGrowth !== -1) isinGrowthCol = foundGrowth;
+
+      const foundDiv = headers.findIndex((h) => h.includes("isin div reinvestment"));
+      if (foundDiv !== -1) isinDivCol = foundDiv;
+
+      const foundName = headers.findIndex((h) => h.includes("scheme name"));
+      if (foundName !== -1) nameCol = foundName;
+      break;
+    }
+  }
+
+  if (!headerFound) {
+    console.warn(
+      '  ⚠ AMFI Header Alert: Header row containing "Net Asset Value" or "Scheme Code" was not found in NAVAll.txt.'
+    );
+  }
+
   for (const line of lines) {
     const parts = line.split(";");
-    if (parts.length < 5) continue;
-    const schemeCode = parts[0].trim();
-    // NAVAll.txt format: SchemeCode;ISINGrowth;ISINDiv;SchemeName;NAV;Date
-    const isinGrowth = parts[1].trim() || null;
-    const isinDiv    = parts[2].trim() || null;
-    const name       = parts[3].trim();
-    const navStr     = parts.length >= 7 ? parts[6] : parts[4];
-    const nav        = parseFloat(navStr?.replace(/,/g, "").trim());
-    if (!name || !schemeCode || isNaN(nav)) continue;
+    if (parts.length <= Math.max(navCol, nameCol)) continue;
+    const schemeCode = parts[0]?.trim();
+    const isinGrowth = (parts[isinGrowthCol]?.trim() && parts[isinGrowthCol]?.trim() !== "-") ? parts[isinGrowthCol].trim() : null;
+    const isinDiv    = (parts[isinDivCol]?.trim() && parts[isinDivCol]?.trim() !== "-") ? parts[isinDivCol].trim() : null;
+    const name       = parts[nameCol]?.trim();
+
+    let nav = parseFloat(parts[navCol]?.replace(/,/g, "").trim());
+    if (isNaN(nav) || nav <= 0) {
+      const navStr = parts.length >= 7 ? parts[6] : parts[4];
+      nav = parseFloat(navStr?.replace(/,/g, "").trim());
+    }
+
+    if (!name || !schemeCode || isNaN(nav) || nav <= 0) continue;
     const isin = isinGrowth || isinDiv || null;
     const entry = { schemeCode, name, isin, nav };
     nameMap.set(name.toLowerCase(), entry);
     if (isinGrowth) isinMap.set(isinGrowth, entry);
     if (isinDiv)    isinMap.set(isinDiv,    entry);
+  }
+
+  if (nameMap.size === 0 && isinMap.size === 0) {
+    console.warn(
+      '  ⚠ AMFI Parsing Alert: 0 NAV entries were parsed from NAVAll.txt — check portal.amfiindia.com format!'
+    );
   }
   console.log(`  ✅ Loaded ${nameMap.size} AMFI fund schemes (${isinMap.size} ISINs indexed)`);
   return { nameMap, isinMap };

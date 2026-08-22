@@ -209,52 +209,65 @@ export const POST = withErrorHandler(
         );
 
         if (res.ok) {
-          const text = await res.text();
+          const lines = text.split(/\r?\n/);
 
-          /**
-           * Maps:
-           * ISIN -> NAV
-           * Scheme Name -> NAV
-           */
-          const navMap = new Map();
+          // Dynamic Column Index Discovery via Header Row
+          let navCol = 6;
+          let isinGrowthCol = 1;
+          let isinReinvCol = 2;
+          let schemeNameCol = 3;
+          let headerFound = false;
 
-          for (const line of text.split(/\r?\n/)) {
+          for (const line of lines) {
+            if (line.includes('Net Asset Value') || line.includes('Scheme Code')) {
+              headerFound = true;
+              const headers = line.split(';').map((h) => h.trim().toLowerCase());
+              const foundNav = headers.findIndex((h) => h.includes('net asset value') || h === 'nav');
+              if (foundNav !== -1) navCol = foundNav;
+
+              const foundGrowth = headers.findIndex((h) => h.includes('isin growth') || h.includes('isin div payout'));
+              if (foundGrowth !== -1) isinGrowthCol = foundGrowth;
+
+              const foundReinv = headers.findIndex((h) => h.includes('isin div reinvestment'));
+              if (foundReinv !== -1) isinReinvCol = foundReinv;
+
+              const foundName = headers.findIndex((h) => h.includes('scheme name'));
+              if (foundName !== -1) schemeNameCol = foundName;
+              break;
+            }
+          }
+
+          if (!headerFound) {
+            console.warn(
+              '⚠ AMFI Header Alert: Header row containing "Net Asset Value" or "Scheme Code" was not found in NAVAll.txt. Falling back to default column indices.'
+            );
+          }
+
+          for (const line of lines) {
             const p = line.split(';');
 
-            if (p.length < 5) continue;
+            if (p.length <= Math.max(navCol, schemeNameCol)) continue;
 
-            /**
-             * NAVAll format:
-             * 0 = Scheme Code
-             * 1 = ISIN Growth
-             * 2 = ISIN Reinvestment
-             * 3 = Scheme Name
-             * 4 = NAV
-             */
+            const isinGrowth = p[isinGrowthCol]?.trim();
+            const isinReinv = p[isinReinvCol]?.trim();
+            const schemeName = p[schemeNameCol]?.trim();
 
-            const isinGrowth = p[1]?.trim();
-            const isinReinv = p[2]?.trim();
+            let nav = parseFloat(p[navCol]?.replace(/,/g, '').trim());
 
-            const schemeName = p[3]?.trim();
-
-            // AMFI NAVAll format (8 columns): SchemeCode; ISINGrowth; ISINReinv; SchemeName; Plan; Option; NAV; Date
-            // Index 6 is Net Asset Value (index 4 is Plan string e.g. "Direct Plan")
-            const navStr = p.length >= 7 ? p[6] : p[4];
-            let nav = parseFloat(
-              navStr?.replace(/,/g, '').trim()
-            );
+            // Fallback for lines missing standard columns
             if (isNaN(nav) || nav <= 0) {
-              nav = parseFloat(p[4]?.replace(/,/g, '').trim());
+              const navStr = p.length >= 7 ? p[6] : p[4];
+              nav = parseFloat(navStr?.replace(/,/g, '').trim());
             }
 
             if (isNaN(nav) || nav <= 0) continue;
 
             // BEST MATCH => ISIN
-            if (isinGrowth) {
+            if (isinGrowth && isinGrowth !== '-') {
               navMap.set(isinGrowth, nav);
             }
 
-            if (isinReinv) {
+            if (isinReinv && isinReinv !== '-') {
               navMap.set(isinReinv, nav);
             }
 
@@ -265,6 +278,12 @@ export const POST = withErrorHandler(
                 nav
               );
             }
+          }
+
+          if (navMap.size === 0) {
+            console.warn(
+              '⚠ AMFI Parsing Alert: 0 NAV entries were parsed from NAVAll.txt — the file structure may have changed. Please inspect portal.amfiindia.com/spages/NAVAll.txt'
+            );
           }
 
           // Match NAVs
