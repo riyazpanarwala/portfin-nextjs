@@ -323,6 +323,12 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
   const [selected, setSelected]   = useState(null);
   const [activeIdx, setActiveIdx] = useState(-1);
   const debounce = useRef(null);
+  const skipSearchRef = useRef(false);
+
+  function handleSetQuery(q) {
+    skipSearchRef.current = false;
+    setQuery(q);
+  }
 
   // FIX (Bug 19): reset query when EITHER assetType OR exchange changes.
   // The previous code only reset on assetType change; switching exchange (e.g.
@@ -342,6 +348,11 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
   }, [assetType, exchange]);
 
   useEffect(() => {
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
+      return;
+    }
+
     if (query.length < 1) {
       const timer = setTimeout(() => {
         setSugs([]);
@@ -349,6 +360,7 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
       }, 0);
       return () => clearTimeout(timer);
     }
+    let active = true;
     clearTimeout(debounce.current);
     debounce.current = setTimeout(async () => {
       setLoading(true);
@@ -364,15 +376,21 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
         if (!res.ok) throw new Error();
         const data = await res.json();
         const list = data.instruments || [];
-        setSugs(list);
-        setOpen(list.length > 0);
-        setActiveIdx(-1);
-      } catch { setSugs([]); }
-      finally { setLoading(false); }
+        if (active && !skipSearchRef.current) {
+          setSugs(list);
+          setOpen(list.length > 0);
+          setActiveIdx(-1);
+        }
+      } catch { if (active) setSugs([]); }
+      finally { if (active) setLoading(false); }
     }, 220);
+
+    return () => { active = false; };
   }, [query, exchange, assetType]);
 
   async function pickSuggestion(inst) {
+    skipSearchRef.current = true;
+    clearTimeout(debounce.current);
     setQuery(inst.symbol);
     setOpen(false);
     setSugs([]);
@@ -405,13 +423,14 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
   }
 
   function clear(inputRef) {
+    skipSearchRef.current = false;
     setQuery(''); setSelected(null); setSugs([]); setOpen(false);
     onSelect(null);
     setTimeout(() => inputRef?.current?.focus(), 50);
   }
 
   return {
-    query, setQuery, suggestions, open, setOpen,
+    query, setQuery: handleSetQuery, suggestions, open, setOpen,
     loading, enriching, selected, activeIdx,
     pickSuggestion, handleKeyDown, clear,
   };

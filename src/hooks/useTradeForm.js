@@ -17,10 +17,17 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
   const [showSug, setShowSug]         = useState(false);
   const [sugLoading, setSugLoading]   = useState(false);
   const debounceRef = useRef(null);
+  const skipSearchRef = useRef(false);
 
-  function setField(k, v) { setForm(f => ({ ...f, [k]: v })); }
+  function setField(k, v) {
+    if (k === 'symbol') {
+      skipSearchRef.current = false;
+    }
+    setForm(f => ({ ...f, [k]: v }));
+  }
 
   function handleAssetTypeChange(at) {
+    skipSearchRef.current = false;
     setField('assetType', at);
     setField('exchange', at === 'MF' ? 'AMFI' : 'NSE');
     setField('symbol', '');
@@ -29,12 +36,19 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
 
   // Autocomplete
   useEffect(() => {
+    if (skipSearchRef.current) {
+      skipSearchRef.current = false;
+      return;
+    }
+
     if (form.symbol.length < 1) {
       const timer = setTimeout(() => {
         setSuggestions([]);
+        setShowSug(false);
       }, 0);
       return () => clearTimeout(timer);
     }
+    let active = true;
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setSugLoading(true);
@@ -42,17 +56,28 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
         const res = await fetch(
           `/api/instruments?q=${encodeURIComponent(form.symbol)}&assetType=${form.assetType}&limit=8`
         );
-        if (res.ok) {
+        if (res.ok && active && !skipSearchRef.current) {
           const { instruments } = await res.json();
           setSuggestions(instruments || []);
           setShowSug(true);
         }
-      } catch { setSuggestions([]); }
-      finally { setSugLoading(false); }
+      } catch {
+        if (active) setSuggestions([]);
+      } finally {
+        if (active) setSugLoading(false);
+      }
     }, 250);
+
+    return () => {
+      active = false;
+    };
   }, [form.symbol, form.assetType]);
 
   function pickSuggestion(inst) {
+    skipSearchRef.current = true;
+    clearTimeout(debounceRef.current);
+    setSuggestions([]);
+    setShowSug(false);
     setForm(f => ({
       ...f,
       symbol:    inst.symbol,
@@ -62,8 +87,6 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
       sector:    inst.sector || f.sector,
       price:     inst.price ? parseFloat(inst.price).toFixed(2) : f.price,
     }));
-    setSuggestions([]);
-    setShowSug(false);
   }
 
   async function handleSubmit() {
