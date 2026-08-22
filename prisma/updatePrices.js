@@ -190,7 +190,8 @@ async function updateMFPrices() {
     const isinGrowth = parts[1].trim();
     const isinDiv = parts[2].trim();
     const name = parts[3].trim();
-    const nav = parseFloat(parts[4]);
+    const navStr = parts.length >= 7 ? parts[6] : parts[4];
+    const nav = parseFloat(navStr?.replace(/,/g, "").trim());
     if (isNaN(nav) || nav <= 0) continue;
     if (isinGrowth) isinNavMap.set(isinGrowth, nav);
     if (isinDiv) isinNavMap.set(isinDiv, nav);

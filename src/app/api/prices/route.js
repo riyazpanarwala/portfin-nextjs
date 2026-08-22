@@ -237,9 +237,15 @@ export const POST = withErrorHandler(
 
             const schemeName = p[3]?.trim();
 
-            const nav = parseFloat(
-              p[4]?.replace(/,/g, '').trim()
+            // AMFI NAVAll format (8 columns): SchemeCode; ISINGrowth; ISINReinv; SchemeName; Plan; Option; NAV; Date
+            // Index 6 is Net Asset Value (index 4 is Plan string e.g. "Direct Plan")
+            const navStr = p.length >= 7 ? p[6] : p[4];
+            let nav = parseFloat(
+              navStr?.replace(/,/g, '').trim()
             );
+            if (isNaN(nav) || nav <= 0) {
+              nav = parseFloat(p[4]?.replace(/,/g, '').trim());
+            }
 
             if (isNaN(nav) || nav <= 0) continue;
 

@@ -263,7 +263,8 @@ async function loadAMFIFunds() {
     const isinGrowth = parts[1].trim() || null;
     const isinDiv    = parts[2].trim() || null;
     const name       = parts[3].trim();
-    const nav        = parseFloat(parts[4]);
+    const navStr     = parts.length >= 7 ? parts[6] : parts[4];
+    const nav        = parseFloat(navStr?.replace(/,/g, "").trim());
     if (!name || !schemeCode || isNaN(nav)) continue;
     const isin = isinGrowth || isinDiv || null;
     const entry = { schemeCode, name, isin, nav };
