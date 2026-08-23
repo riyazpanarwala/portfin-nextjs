@@ -3,7 +3,7 @@
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmt } from '@/lib/store';
 import {
-  HoldingDetailPanel,
+  PriceCell, HoldingDetailPanel,
   HoldingsEmpty, HoldingsControls,
   RefreshPriceButton,
   ModeToggle, ExitedBanner,
@@ -102,7 +102,7 @@ export default function MFView() {
         ) : (
           <>
             <span className={styles.editHintTeal}>↺</span>
-            Click refresh icon on each row to fetch latest NAV from AMFI · Click row for SIP insights and tax exposure
+            Click ✎ on CMP to manually set price · Click refresh icon on each row to fetch latest NAV from AMFI · Click row for SIP insights and tax exposure
           </>
         )}
       </div>
@@ -169,13 +169,16 @@ export default function MFView() {
                   {isExited ? '—' : fmt(h.qty, 2)}
                 </div>
 
-                {/* NAV */}
-                <div className={[
-                  styles.cmpCell,
-                  isExited ? styles.cmpCellExited : '',
-                ].filter(Boolean).join(' ')}>
-                  ₹{fmt(h.cmp, 2)}
-                </div>
+                {/* NAV / CMP — editable only for active rows */}
+                {isExited ? (
+                  <div className={[styles.cmpCell, styles.cmpCellExited].join(' ')}>
+                    ₹{fmt(h.cmp, 2)}
+                  </div>
+                ) : (
+                  <div onClick={e => e.stopPropagation()}>
+                    <PriceCell symbol={h.symbol} cmp={h.cmp} />
+                  </div>
+                )}
 
                 <HoldingMetricCells h={h} isExited={isExited} maxRet={maxRet} tableStyles={styles} />
 
