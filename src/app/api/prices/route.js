@@ -209,7 +209,9 @@ export const POST = withErrorHandler(
         );
 
         if (res.ok) {
+          const text = await res.text();
           const lines = text.split(/\r?\n/);
+          const navMap = new Map();
 
           // Dynamic Column Index Discovery via Header Row
           let navCol = 6;
