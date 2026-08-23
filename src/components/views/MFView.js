@@ -14,7 +14,7 @@ import {
 import { useMFView } from '@/hooks/useMFView';
 import styles from './HoldingsTable.module.css';
 
-const COL = '20px 1fr 80px 32px 72px 72px 80px 90px 80px 80px 88px 64px 130px 50px 28px';
+const COL = '20px 1fr 90px 32px 80px 110px 85px 90px 85px 80px 88px 64px 130px 50px 28px';
 
 export default function MFView() {
   const { mfHoldings, stats, setActiveView, priceMeta, refreshPrices, priceRefreshState } = usePortfolio();
