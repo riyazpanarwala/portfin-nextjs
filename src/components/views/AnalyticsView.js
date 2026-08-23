@@ -865,16 +865,16 @@ function TradeBehavior({ trades, realizedSummary }) {
 
       <div className={styles.metricsGrid4}>
         <MetricCard label="Total Trades" value={analysis.totalTrades} color="var(--accent2)"
-          sub={`${analysis.totalBuys}B · ${analysis.totalSells}S`} />
-        <MetricCard label="Avg Hold Before Sell"
+          sub={`${analysis.totalBuys} Buys · ${analysis.totalSells} Sells`} />
+        <MetricCard label="Avg Hold Time Before Selling"
           value={analysis.avgHoldDays != null ? `${analysis.avgHoldDays}d` : '—'}
           color={analysis.avgHoldDays != null && analysis.avgHoldDays >= 365 ? 'var(--green2)' : 'var(--yellow)'}
-          sub={analysis.avgHoldDays != null && analysis.avgHoldDays >= 365 ? 'LTCG territory ✓' : 'STCG risk'} />
-        <MetricCard label="Buy-High/Sell-Low"
-          value={`${analysis.buyHighSellLow} lots`}
+          sub={analysis.avgHoldDays != null && analysis.avgHoldDays >= 365 ? 'LTCG (>1yr hold) ✓' : 'Held < 1yr (20% tax)'} />
+        <MetricCard label="Sells At A Loss"
+          value={`${analysis.buyHighSellLow} trades`}
           color={analysis.buyHighSellLow > 0 ? 'var(--red2)' : 'var(--green2)'}
-          sub={analysis.buyHighSellLow > 0 ? `${fmtCr(analysis.buyHighSellLowValue)} lost` : 'None detected ✓'} />
-        <MetricCard label="Conviction Adds" value={analysis.convictionAdds} color="var(--teal)" sub="Added within 30d of buy" />
+          sub={analysis.buyHighSellLow > 0 ? `${fmtCr(analysis.buyHighSellLowValue)} loss booked` : 'No loss exits ✓'} />
+        <MetricCard label="Follow-Up Buys" value={analysis.convictionAdds} color="var(--teal)" sub="Re-invested within 30 days" />
       </div>
 
       <div className={styles.behaviorTwoCol}>
@@ -900,11 +900,11 @@ function TradeBehavior({ trades, realizedSummary }) {
           <div className={styles.behaviorCardTitle}>Trade Size Profile</div>
           <div className={styles.tradeSizeGrid}>
             {[
-              { label: 'AVG TRADE',  value: fmtCr(analysis.avgTradeSize), color: 'var(--text)' },
-              { label: 'LARGEST',    value: fmtCr(analysis.maxTradeSize),  color: 'var(--green2)' },
-              { label: 'SMALLEST',   value: fmtCr(analysis.minTradeSize),  color: 'var(--text2)' },
-              { label: 'SYMBOLS',    value: analysis.uniqueSymbols,        color: 'var(--accent2)',
-                sub: `${fmt(analysis.avgBuysPerSymbol, 1)} buys/symbol` },
+              { label: 'AVG TRADE',    value: fmtCr(analysis.avgTradeSize), color: 'var(--text)' },
+              { label: 'LARGEST',      value: fmtCr(analysis.maxTradeSize),  color: 'var(--green2)' },
+              { label: 'SMALLEST',     value: fmtCr(analysis.minTradeSize),  color: 'var(--text2)' },
+              { label: 'INVESTMENTS',  value: analysis.uniqueSymbols,        color: 'var(--accent2)',
+                sub: `~${fmt(analysis.avgBuysPerSymbol, 1)} buys/asset` },
             ].map((m, i) => (
               <div key={i} className={styles.tradeSizeItem}>
                 <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 700, letterSpacing: '0.07em', marginBottom: 4 }}>{m.label}</div>
@@ -919,7 +919,7 @@ function TradeBehavior({ trades, realizedSummary }) {
       {analysis.buyHighSellLow > 0 && (
         <InfoBox borderColor="rgba(239,68,68,0.3)" bg="rgba(239,68,68,0.06)">
           <span style={{ color: 'var(--red2)' }}>⚠</span>
-          <span> <strong>{analysis.buyHighSellLow} sell lots</strong> executed below original buy price, losing {fmtCr(analysis.buyHighSellLowValue)} — a classic buy-high/sell-low pattern. Consider limit orders or stop-losses.</span>
+          <span> <strong>{analysis.buyHighSellLow} sell trades</strong> executed below purchase price, booking {fmtCr(analysis.buyHighSellLowValue)} in realized loss. Review if these were planned tax-loss harvesting exits or panic sales during dips.</span>
         </InfoBox>
       )}
     </div>
