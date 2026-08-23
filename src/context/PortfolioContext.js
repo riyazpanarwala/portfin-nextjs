@@ -81,14 +81,12 @@ export function PortfolioProvider({ children }) {
   const [priceRefreshState, setPriceRefreshState] = useState(REFRESH_IDLE);
 
   // ── Privacy / Discreet Mode State ───────────────────────────────────────────
-  const [isDiscreet, setIsDiscreet] = useState(false);
-
-  useEffect(() => {
+  const [isDiscreet, setIsDiscreet] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('portfin:discreet');
-      if (saved === 'true') setIsDiscreet(true);
+      return localStorage.getItem('portfin:discreet') === 'true';
     }
-  }, []);
+    return false;
+  });
 
   const toggleDiscreet = useCallback(() => {
     setIsDiscreet(prev => {

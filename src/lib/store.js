@@ -311,6 +311,102 @@ export function computeTax(holdings) {
   });
 }
 
+// ─── Tax-Loss Harvesting ───────────────────────────────────────────────────────
+
+export function computeTaxHarvesting(holdings, realizedSummary = {}) {
+  const candidateLots = [];
+  const today = new Date();
+
+  for (const h of holdings) {
+    if (!h.qty || h.qty <= EPSILON || !h.lots || !h.lots.length) continue;
+    const cmp = h.cmp || h.avgBuy;
+
+    for (const lot of h.lots) {
+      if (lot.qty <= EPSILON) continue;
+      const costBasis = lot.qty * lot.price;
+      const currentValue = lot.qty * cmp;
+      const unrealizedGain = currentValue - costBasis;
+
+      // Only candidate if there is an unrealized loss
+      if (unrealizedGain < -EPSILON) {
+        const unrealizedLoss = Math.abs(unrealizedGain);
+        const lotDate = lot.date ? new Date(lot.date) : today;
+        const holdDays = Math.max(0, Math.round((today - lotDate) / (24 * 3600 * 1000)));
+        const isLTCG = holdDays >= 365;
+        const taxType = isLTCG ? 'LTCL' : 'STCL';
+
+        candidateLots.push({
+          symbol: h.symbol,
+          name: h.name || h.symbol,
+          assetType: h.assetType,
+          buyDate: lot.date,
+          qty: lot.qty,
+          buyPrice: lot.price,
+          cmp,
+          costBasis,
+          currentValue,
+          unrealizedLoss,
+          holdDays,
+          taxType,
+          isLTCG,
+          lossPct: costBasis > 0 ? (unrealizedLoss / costBasis) * 100 : 0,
+        });
+      }
+    }
+  }
+
+  // Aggregate STCL & LTCL candidates
+  const stclCandidateLoss = candidateLots.filter(l => l.taxType === 'STCL').reduce((s, l) => s + l.unrealizedLoss, 0);
+  const ltclCandidateLoss = candidateLots.filter(l => l.taxType === 'LTCL').reduce((s, l) => s + l.unrealizedLoss, 0);
+  const totalHarvestableLoss = stclCandidateLoss + ltclCandidateLoss;
+
+  // Realized gains in current FY
+  const realizedSTCG = Math.max(0, realizedSummary?.stcgGain || 0);
+  const realizedLTCG = Math.max(0, realizedSummary?.ltcgGain || 0);
+  const taxableLTCG  = Math.max(0, realizedLTCG - 125000); // Exemption threshold ₹1.25L
+
+  // Tax savings computation:
+  // STCL offsets STCG (saved 20%) and then taxable LTCG (saved 12.5%)
+  let stclRemaining = stclCandidateLoss;
+  const stclStcgOffset = Math.min(stclRemaining, realizedSTCG);
+  stclRemaining -= stclStcgOffset;
+
+  const stclLtcgOffset = Math.min(stclRemaining, taxableLTCG);
+
+  // LTCL can ONLY offset taxable LTCG (saved 12.5%)
+  const ltcgTaxableRemaining = Math.max(0, taxableLTCG - stclLtcgOffset);
+  const ltclLtcgOffset = Math.min(ltclCandidateLoss, ltcgTaxableRemaining);
+
+  const stcgTaxSaved = stclStcgOffset * 0.20;
+  const ltcgTaxSaved = (stclLtcgOffset + ltclLtcgOffset) * 0.125;
+  const potentialTaxSavings = stcgTaxSaved + ltcgTaxSaved;
+
+  // Assign estimated savings to individual candidate lots
+  for (const lot of candidateLots) {
+    if (lot.taxType === 'STCL') {
+      const estRate = (realizedSTCG > 0) ? 0.20 : (taxableLTCG > 0) ? 0.125 : 0.20;
+      lot.estimatedSavings = lot.unrealizedLoss * estRate;
+    } else {
+      lot.estimatedSavings = lot.unrealizedLoss * 0.125;
+    }
+  }
+
+  candidateLots.sort((a, b) => b.unrealizedLoss - a.unrealizedLoss);
+
+  return {
+    totalHarvestableLoss,
+    stclCandidateLoss,
+    ltclCandidateLoss,
+    potentialTaxSavings,
+    realizedSTCG,
+    realizedLTCG,
+    taxableLTCG,
+    stcgTaxSaved,
+    ltcgTaxSaved,
+    candidateLots,
+  };
+}
+
 // ─── Wealth projection ────────────────────────────────────────────────────────
 
 export function projectWealth(sipMonthly, years, annualReturn, stepUpPct = 0) {

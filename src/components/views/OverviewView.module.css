@@ -338,3 +338,192 @@
     text-align: left;
   }
 }
+
+/* ── Tax-Loss Harvesting Panel ────────────────────────────────────────────────── */
+
+.harvestingPanel {
+  padding: 18px;
+  margin-bottom: 20px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.05), rgba(245, 158, 11, 0.04));
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+}
+
+.harvestingHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.harvestingTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.harvestingBadges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.harvestingBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badgeSTCL {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--yellow);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badgeLTCL {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.harvestingMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.harvestingMetricCell {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.harvestingMetricLabel {
+  font-size: 10px;
+  color: var(--text3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 4px;
+}
+
+.harvestingMetricValue {
+  font-size: 17px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+
+.harvestingMetricSub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.harvestingLotsSection {
+  border-top: 1px solid rgba(245, 158, 11, 0.15);
+  padding-top: 12px;
+}
+
+.harvestingLotsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.harvestingLotsLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.harvestingToggleBtn {
+  background: transparent;
+  border: none;
+  color: var(--accent2);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.harvestingToggleBtn:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.harvestingLotsList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.harvestingLotRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.harvestingLotLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.harvestingLotSymbol {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.harvestingLotMeta {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.harvestingLotRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.harvestingLotLoss {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--red2);
+  font-size: 13px;
+}
+
+.harvestingLotSavings {
+  font-size: 10px;
+  color: var(--green2);
+  font-weight: 600;
+}
+
+.harvestingTips {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(59, 130, 246, 0.06);
+  border-left: 3px solid var(--accent2);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text2);
+  line-height: 1.5;
+}
+

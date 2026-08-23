@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { computeTaxHarvesting } from '@/lib/store';
 
 /**
  * useOverview
@@ -59,6 +60,11 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
 
   const hasSells = realizedSummary.sells.length > 0;
 
+  const harvestingData = useMemo(() =>
+    computeTaxHarvesting(holdings, realizedSummary),
+    [holdings, realizedSummary]
+  );
+
   const alerts = useMemo(() => {
     const list = [];
     if (stats.stPct > 45)
@@ -69,16 +75,28 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
       list.push({ type: 'warning', msg: 'Very concentrated portfolio — consider adding more holdings' });
     if (realizedSummary.totalTax > 0)
       list.push({ type: 'warning', msg: `Estimated tax liability of ₹${(realizedSummary.totalTax / 100000).toFixed(2)}L on realized gains` });
+    if (harvestingData.potentialTaxSavings > 0)
+      list.push({ type: 'info', msg: `Tax Harvesting: Potential tax savings of ₹${Math.round(harvestingData.potentialTaxSavings).toLocaleString('en-IN')} available by setting off losses` });
     list.push({ type: 'success', msg: `${stats.fundCount} MF + ${stats.stockCount} stocks across your portfolio` });
     return list;
-  }, [stats, realizedSummary]);
+  }, [stats, realizedSummary, harvestingData]);
 
-  const suggestedActions = useMemo(() => [
-    { icon: '📈', action: 'Continue SIP',      detail: 'Maintain existing SIP amounts and review after 6 months' },
-    { icon: '⚖️', action: 'Review Allocation', detail: `MF at ${stats.mfPct.toFixed(1)}% — ideal range is 60–75%` },
-    { icon: '💰', action: 'LTCG Planning',     detail: 'Book equity gains below ₹1.25L annually to stay tax-free' },
-    { icon: '🔄', action: 'Rebalance Check',   detail: 'Use the Rebalancer tab to check if drift exceeds ±5%' },
-  ], [stats]);
+  const suggestedActions = useMemo(() => {
+    const actions = [
+      { icon: '📈', action: 'Continue SIP',      detail: 'Maintain existing SIP amounts and review after 6 months' },
+      { icon: '⚖️', action: 'Review Allocation', detail: `MF at ${stats.mfPct.toFixed(1)}% — ideal range is 60–75%` },
+      { icon: '💰', action: 'LTCG Planning',     detail: 'Book equity gains below ₹1.25L annually to stay tax-free' },
+      { icon: '🔄', action: 'Rebalance Check',   detail: 'Use the Rebalancer tab to check if drift exceeds ±5%' },
+    ];
+    if (harvestingData.candidateLots.length > 0) {
+      actions.unshift({
+        icon: '📉',
+        action: 'Tax-Loss Harvest',
+        detail: `Review ${harvestingData.candidateLots.length} lot(s) with ₹${Math.round(harvestingData.totalHarvestableLoss).toLocaleString('en-IN')} harvestable loss`,
+      });
+    }
+    return actions.slice(0, 4);
+  }, [stats, harvestingData]);
 
   const recentSells = useMemo(() =>
     realizedSummary.sells.slice(-5).reverse(),
@@ -89,5 +107,6 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
     sectorMap, mfCatMap, topMF, topSt, healthScore,
     priceSymbols, donutData, healthBars, hasSells,
     alerts, suggestedActions, recentSells,
+    harvestingData,
   };
 }
