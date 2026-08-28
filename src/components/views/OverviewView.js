@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmtPct, fmt, colorPnl, sectorColor } from '@/lib/store';
-import { DonutChart, HBar } from '@/components/charts/Charts';
+import { DonutChart, AllocationDonutChart, HBar } from '@/components/charts/Charts';
 import { StatCard, Alert } from '@/components/ui/SharedUI';
 import { useOverview } from '@/hooks/useOverview';
 import styles from './OverviewView.module.css';
@@ -14,12 +14,13 @@ export default function OverviewView() {
 
   const {
     mfCatMap, topMF, topSt, healthScore,
-    donutData, healthBars, hasSells,
+    donutData, combinedAllocationData, healthBars, hasSells,
     alerts, suggestedActions, recentSells,
     harvestingData,
   } = useOverview({ stats, holdings, mfHoldings, stHoldings, currentPrices, realizedSummary, portfolioXIRR });
 
   const [showAllHarvestingLots, setShowAllHarvestingLots] = useState(false);
+  const [allocViewTab, setAllocViewTab]                   = useState('combined');
 
   return (
     <div className="fade-up">
@@ -196,11 +197,50 @@ export default function OverviewView() {
       {/* 3-col row */}
       <div className={`${styles.threeCol} glass`} style={{ gap: '14px', marginBottom: '20px', background: 'transparent', border: 'none', borderRadius: 0, padding: 0 }}>
         <div className="glass" style={{ padding: '18px' }}>
-          <div className={styles.panelTitle}>MF vs Stocks Allocation</div>
-          {stats.totalValue > 0
-            ? <DonutChart data={donutData} size={120} />
-            : <div className={styles.noData}>No holdings</div>
-          }
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div className={styles.panelTitle} style={{ margin: 0 }}>Portfolio Allocation</div>
+            <div style={{ display: 'flex', gap: 3, background: 'rgba(0,0,0,0.25)', padding: 3, borderRadius: 6, border: '1px solid var(--border)' }}>
+              <button
+                onClick={() => setAllocViewTab('combined')}
+                style={{
+                  padding: '3px 7px', fontSize: '10px', fontWeight: 700, borderRadius: 4, border: 'none', cursor: 'pointer',
+                  background: allocViewTab === 'combined' ? 'var(--accent2)' : 'transparent',
+                  color: allocViewTab === 'combined' ? '#0f172a' : 'var(--text2)',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Percentage allocation for each individual equity and MF holding overall"
+              >
+                All Holdings
+              </button>
+              <button
+                onClick={() => setAllocViewTab('asset')}
+                style={{
+                  padding: '3px 7px', fontSize: '10px', fontWeight: 700, borderRadius: 4, border: 'none', cursor: 'pointer',
+                  background: allocViewTab === 'asset' ? 'var(--accent2)' : 'transparent',
+                  color: allocViewTab === 'asset' ? '#0f172a' : 'var(--text2)',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Mutual Funds vs Stocks overall percentage breakdown"
+              >
+                Asset Class
+              </button>
+            </div>
+          </div>
+          {stats.totalValue > 0 ? (
+            allocViewTab === 'combined' && combinedAllocationData.length > 0 ? (
+              <AllocationDonutChart
+                data={combinedAllocationData}
+                size={140}
+                centerLabel={`${combinedAllocationData.length}`}
+                centerSub="HOLDINGS"
+                maxLegendHeight={150}
+              />
+            ) : (
+              <DonutChart data={donutData} size={120} />
+            )
+          ) : (
+            <div className={styles.noData}>No holdings</div>
+          )}
         </div>
 
         <div className="glass" style={{ padding: '18px' }}>

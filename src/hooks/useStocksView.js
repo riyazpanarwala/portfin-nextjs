@@ -89,6 +89,20 @@ export function useStocksView({ stHoldings, stats }) {
     downloadCsv(`stocks_${mode}.csv`, rows2);
   }
 
+  // Allocation data for Donut Chart
+  const stockAllocationData = useMemo(() => {
+    const total = activeHoldings.reduce((s, h) => s + h.marketValue, 0);
+    if (!total) return [];
+    return [...activeHoldings]
+      .sort((a, b) => b.marketValue - a.marketValue)
+      .map(h => ({
+        label: h.symbol,
+        value: h.marketValue,
+        pct: (h.marketValue / total) * 100,
+        assetType: 'STOCK',
+      }));
+  }, [activeHoldings]);
+
   return {
     sort, sector, setSector, filter, setFilter, expanded,
     mode, setMode,
@@ -97,6 +111,7 @@ export function useStocksView({ stHoldings, stats }) {
     dataErrorCount,
     concentrationMap,
     daysSinceLastBuyMap,
+    stockAllocationData,
     sectors, rows, maxRet, stGain, stRealized, stWins, stLoss, stTotalEverInvested,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   };

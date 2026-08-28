@@ -19,6 +19,8 @@ import { resolveColor } from '@/lib/colorResolver';
 import {
   LineChart as ReLineChart,
   BarChart as ReBarChart,
+  PieChart as RePieChart,
+  Pie,
   ComposedChart,
   AreaChart,
   Line,
@@ -140,6 +142,12 @@ function SharedTooltip({ active, payload, label, formatter, series, labelFormatt
   );
 }
 
+export const DEFAULT_DONUT_PALETTE = [
+  '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4',
+  '#f97316', '#6366f1', '#14b8a6', '#eab308', '#a855f7', '#34d399',
+  '#60a5fa', '#f43f5e', '#2dd4bf', '#fbbf24', '#c084fc', '#4ade80'
+];
+
 // ─── DonutChart ───────────────────────────────────────────────────────────────
 export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = true }) {
   if (!data || !data.length) return null;
@@ -187,6 +195,182 @@ export function DonutChart({ data, size = 140, innerRadius = 0.55, showLegend = 
               <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text)', fontWeight: 600 }}>
                 {d.pct ? d.pct.toFixed(1) + '%' : ''}
               </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AllocationDonutChart Custom Tooltip ──────────────────────────────────────
+function AllocationTooltip({ active, payload, valueFormatter }) {
+  if (!active || !payload || !payload.length) return null;
+  const item = payload[0].payload;
+  const valFmt = valueFormatter || (v => {
+    const abs = Math.abs(Number(v) || 0);
+    if (abs >= 1e7) return `₹${(v / 1e7).toFixed(2)}Cr`;
+    if (abs >= 1e5) return `₹${(v / 1e5).toFixed(2)}L`;
+    return `₹${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  });
+
+  return (
+    <div style={{
+      background: '#111827',
+      border: '1px solid #2d4060',
+      borderRadius: 8,
+      padding: '8px 12px',
+      fontSize: 11,
+      fontFamily: "'JetBrains Mono', monospace",
+      color: '#e8eef8',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+      zIndex: 100,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, fontWeight: 700, color: item.color || '#60a5fa' }}>
+        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: item.color || '#60a5fa' }} />
+        <span>{item.label}</span>
+        {item.assetType && (
+          <span style={{
+            fontSize: 9, padding: '1px 5px', borderRadius: 3,
+            background: item.assetType === 'STOCK' ? 'rgba(139,92,246,0.2)' : 'rgba(20,184,166,0.2)',
+            color: item.assetType === 'STOCK' ? '#c084fc' : '#2dd4bf',
+            fontWeight: 700,
+          }}>
+            {item.assetType}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 2 }}>
+        <span style={{ color: '#94a9c4' }}>Allocation:</span>
+        <span style={{ fontWeight: 800, color: '#34d399' }}>{item.pct != null ? `${item.pct.toFixed(1)}%` : '—'}</span>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+        <span style={{ color: '#94a9c4' }}>Market Value:</span>
+        <span style={{ fontWeight: 700, color: '#e8eef8' }}>{valFmt(item.value)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── AllocationDonutChart ────────────────────────────────────────────────────
+export function AllocationDonutChart({
+  data,
+  size = 160,
+  innerRadius = 0.58,
+  showLegend = true,
+  centerLabel,
+  centerSub = 'HOLDINGS',
+  maxLegendHeight = 180,
+  valueFormatter,
+}) {
+  if (!data || !data.length) return null;
+
+  // Enhance data with colors if not provided
+  const chartData = data.map((d, i) => ({
+    ...d,
+    color: resolveColor(d.color, DEFAULT_DONUT_PALETTE[i % DEFAULT_DONUT_PALETTE.length]),
+  }));
+
+  const rInner = (size / 2) * innerRadius;
+  const rOuter = (size / 2) * 0.88;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', width: '100%' }}>
+      <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+        <ResponsiveContainer width={size} height={size}>
+          <RePieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={rInner}
+              outerRadius={rOuter}
+              paddingAngle={chartData.length > 1 ? 2 : 0}
+              dataKey="value"
+              nameKey="label"
+              stroke="#0b0f1a"
+              strokeWidth={1.5}
+              isAnimationActive={true}
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip content={<AllocationTooltip valueFormatter={valueFormatter} />} />
+          </RePieChart>
+        </ResponsiveContainer>
+
+        {/* Center overlay label */}
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, width: '100%', height: '100%',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
+          textAlign: 'center',
+        }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: '#e8eef8', fontFamily: 'var(--font-mono)' }}>
+            {centerLabel ?? data.length}
+          </span>
+          <span style={{ fontSize: 9, color: '#5c7a9a', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {centerSub}
+          </span>
+        </div>
+      </div>
+
+      {showLegend && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          maxHeight: maxLegendHeight,
+          overflowY: data.length > 6 ? 'auto' : 'visible',
+          paddingRight: 6,
+          flex: 1,
+          minWidth: 180,
+        }}>
+          {chartData.map((d, i) => (
+            <div key={i} style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              padding: '4px 8px',
+              borderRadius: 6,
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.05)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: d.color, flexShrink: 0 }} />
+                <span style={{
+                  fontSize: 12,
+                  color: 'var(--text2)',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  fontWeight: 500,
+                }} title={d.label}>
+                  {d.label}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {d.subLabel && (
+                  <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>
+                    {d.subLabel}
+                  </span>
+                )}
+                <span style={{
+                  fontSize: 11,
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--text)',
+                  fontWeight: 700,
+                  padding: '1px 5px',
+                  borderRadius: 4,
+                  background: 'rgba(255,255,255,0.04)',
+                }}>
+                  {d.pct ? d.pct.toFixed(1) + '%' : '0%'}
+                </span>
+              </div>
             </div>
           ))}
         </div>

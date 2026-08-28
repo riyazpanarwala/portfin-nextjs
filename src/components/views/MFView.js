@@ -2,6 +2,7 @@
 
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmt } from '@/lib/store';
+import { AllocationDonutChart } from '@/components/charts/Charts';
 import {
   PriceCell, HoldingDetailPanel,
   HoldingsEmpty, HoldingsControls,
@@ -24,7 +25,7 @@ export default function MFView() {
   const {
     sort, category, setCategory, expanded,
     mode, setMode, activeCount, exitedCount,
-    dataErrorCount,
+    dataErrorCount, mfAllocationData,
     categories, rows, maxRet,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   } = useMFView({ mfHoldings, stats });
@@ -61,6 +62,31 @@ export default function MFView() {
         tableStyles={styles}
         valueSize={18}
       />
+
+      {/* Mutual Fund Allocation Donut Chart */}
+      {!isExited && mfAllocationData && mfAllocationData.length > 0 && (
+        <div className="glass" style={{ padding: '16px 20px', borderRadius: 10 }}>
+          <div style={{
+            fontSize: '12px',
+            fontWeight: '700',
+            color: 'var(--text)',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            letterSpacing: '0.02em',
+          }}>
+            <span>📊</span> Mutual Fund Allocation Breakdown (% of MF Portfolio)
+          </div>
+          <AllocationDonutChart
+            data={mfAllocationData}
+            size={160}
+            centerLabel={`${mfAllocationData.length}`}
+            centerSub="FUNDS"
+            maxLegendHeight={160}
+          />
+        </div>
+      )}
 
       {/* Data error banner if any */}
       {dataErrorCount > 0 && (

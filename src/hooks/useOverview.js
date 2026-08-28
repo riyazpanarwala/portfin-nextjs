@@ -103,9 +103,24 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
     [realizedSummary]
   );
 
+  const combinedAllocationData = useMemo(() => {
+    const active = holdings.filter(h => h.qty > 0 && h.marketValue > 0);
+    const total = stats.totalValue || active.reduce((s, h) => s + h.marketValue, 0);
+    if (!total) return [];
+    return [...active]
+      .sort((a, b) => b.marketValue - a.marketValue)
+      .map(h => ({
+        label: h.name || h.symbol,
+        symbol: h.symbol,
+        value: h.marketValue,
+        pct: (h.marketValue / total) * 100,
+        assetType: h.assetType,
+      }));
+  }, [holdings, stats.totalValue]);
+
   return {
     sectorMap, mfCatMap, topMF, topSt, healthScore,
-    priceSymbols, donutData, healthBars, hasSells,
+    priceSymbols, donutData, combinedAllocationData, healthBars, hasSells,
     alerts, suggestedActions, recentSells,
     harvestingData,
   };

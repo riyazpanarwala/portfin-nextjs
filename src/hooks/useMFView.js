@@ -98,12 +98,27 @@ export function useMFView({ mfHoldings, stats }) {
     downloadCsv(`mf_${mode}.csv`, rows2);
   }
 
+  // Allocation data for Donut Chart
+  const mfAllocationData = useMemo(() => {
+    const total = activeHoldings.reduce((s, h) => s + h.marketValue, 0);
+    if (!total) return [];
+    return [...activeHoldings]
+      .sort((a, b) => b.marketValue - a.marketValue)
+      .map(h => ({
+        label: h.name || h.symbol,
+        value: h.marketValue,
+        pct: (h.marketValue / total) * 100,
+        assetType: 'MF',
+      }));
+  }, [activeHoldings]);
+
   return {
     sort, category, setCategory, expanded,
     mode, setMode,
     activeCount,
     exitedCount,
     dataErrorCount,
+    mfAllocationData,
     categories, rows, maxRet, mfGain, mfRealized, mfTotalEverInvested,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   };

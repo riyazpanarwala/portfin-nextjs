@@ -2,6 +2,7 @@
 
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt } from '@/lib/store';
+import { AllocationDonutChart } from '@/components/charts/Charts';
 import {
   holdStr,
   PriceCell, HoldingDetailPanel,
@@ -26,6 +27,7 @@ export default function StocksView() {
     sort, sector, setSector, filter, setFilter, expanded,
     mode, setMode, activeCount, exitedCount,
     dataErrorCount, concentrationMap, daysSinceLastBuyMap,
+    stockAllocationData,
     sectors, rows, maxRet,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   } = useStocksView({ stHoldings, stats });
@@ -62,6 +64,31 @@ export default function StocksView() {
         tableStyles={styles}
         formatValue={value => typeof value === 'string' ? value : fmtCr(value)}
       />
+
+      {/* Equity Stock Allocation Donut Chart */}
+      {!isExited && stockAllocationData.length > 0 && (
+        <div className="glass" style={{ padding: '16px 20px', borderRadius: 10 }}>
+          <div style={{
+            fontSize: '12px',
+            fontWeight: '700',
+            color: 'var(--text)',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            letterSpacing: '0.02em',
+          }}>
+            <span>📊</span> Stock Allocation Breakdown (% of Equity Portfolio)
+          </div>
+          <AllocationDonutChart
+            data={stockAllocationData}
+            size={160}
+            centerLabel={`${stockAllocationData.length}`}
+            centerSub="STOCKS"
+            maxLegendHeight={160}
+          />
+        </div>
+      )}
 
       {/* Data error banner if any */}
       {dataErrorCount > 0 && (
