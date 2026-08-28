@@ -224,23 +224,28 @@ function AllocationTooltip({ active, payload, valueFormatter }) {
       fontFamily: "'JetBrains Mono', monospace",
       color: '#e8eef8',
       boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
-      zIndex: 100,
+      zIndex: 1000,
+      pointerEvents: 'none',
+      whiteSpace: 'nowrap',
+      maxWidth: 320,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, fontWeight: 700, color: item.color || '#60a5fa' }}>
-        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: item.color || '#60a5fa' }} />
-        <span>{item.label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 700, color: item.color || '#60a5fa' }}>
+        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: item.color || '#60a5fa', flexShrink: 0 }} />
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+          {item.label}
+        </span>
         {item.assetType && (
           <span style={{
             fontSize: 9, padding: '1px 5px', borderRadius: 3,
             background: item.assetType === 'STOCK' ? 'rgba(139,92,246,0.2)' : 'rgba(20,184,166,0.2)',
             color: item.assetType === 'STOCK' ? '#c084fc' : '#2dd4bf',
-            fontWeight: 700,
+            fontWeight: 700, flexShrink: 0,
           }}>
             {item.assetType}
           </span>
         )}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 2 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 3 }}>
         <span style={{ color: '#94a9c4' }}>Allocation:</span>
         <span style={{ fontWeight: 800, color: '#34d399' }}>{item.pct != null ? `${item.pct.toFixed(1)}%` : '—'}</span>
       </div>
@@ -255,15 +260,23 @@ function AllocationTooltip({ active, payload, valueFormatter }) {
 // ─── AllocationDonutChart ────────────────────────────────────────────────────
 export function AllocationDonutChart({
   data,
-  size = 160,
-  innerRadius = 0.58,
+  size = 240,
+  innerRadius = 0.56,
   showLegend = true,
   centerLabel,
   centerSub = 'HOLDINGS',
-  maxLegendHeight = 180,
+  maxLegendHeight = 260,
+  legendGrid = true,
   valueFormatter,
 }) {
   if (!data || !data.length) return null;
+
+  const valFmt = valueFormatter || (v => {
+    const abs = Math.abs(Number(v) || 0);
+    if (abs >= 1e7) return `₹${(v / 1e7).toFixed(2)}Cr`;
+    if (abs >= 1e5) return `₹${(v / 1e5).toFixed(2)}L`;
+    return `₹${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  });
 
   // Enhance data with colors if not provided
   const chartData = data.map((d, i) => ({
@@ -275,7 +288,8 @@ export function AllocationDonutChart({
   const rOuter = (size / 2) * 0.88;
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', width: '100%' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap', width: '100%' }}>
+      {/* Donut chart container */}
       <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
         <ResponsiveContainer width={size} height={size}>
           <RePieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
@@ -296,7 +310,12 @@ export function AllocationDonutChart({
                 <Cell key={`cell-${index}`} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip content={<AllocationTooltip valueFormatter={valueFormatter} />} />
+            <Tooltip
+              content={<AllocationTooltip valueFormatter={valueFormatter} />}
+              wrapperStyle={{ pointerEvents: 'none', zIndex: 1000 }}
+              allowEscapeViewBox={{ x: true, y: true }}
+              offset={15}
+            />
           </RePieChart>
         </ResponsiveContainer>
 
@@ -309,25 +328,28 @@ export function AllocationDonutChart({
           pointerEvents: 'none',
           textAlign: 'center',
         }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: '#e8eef8', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ fontSize: size >= 200 ? 20 : 15, fontWeight: 800, color: '#e8eef8', fontFamily: 'var(--font-mono)' }}>
             {centerLabel ?? data.length}
           </span>
-          <span style={{ fontSize: 9, color: '#5c7a9a', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: size >= 200 ? 10 : 8, color: '#5c7a9a', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', marginTop: 2 }}>
             {centerSub}
           </span>
         </div>
       </div>
 
+      {/* Legend Container */}
       {showLegend && (
         <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
+          display: legendGrid ? 'grid' : 'flex',
+          flexDirection: legendGrid ? undefined : 'column',
+          gridTemplateColumns: legendGrid ? 'repeat(auto-fill, minmax(200px, 1fr))' : undefined,
+          gap: 8,
           maxHeight: maxLegendHeight,
-          overflowY: data.length > 6 ? 'auto' : 'visible',
+          overflowY: data.length > (legendGrid ? 12 : 6) ? 'auto' : 'visible',
           paddingRight: 6,
           flex: 1,
-          minWidth: 180,
+          minWidth: 240,
+          alignContent: 'start',
         }}>
           {chartData.map((d, i) => (
             <div key={i} style={{
@@ -335,13 +357,14 @@ export function AllocationDonutChart({
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 8,
-              padding: '4px 8px',
+              padding: '6px 10px',
               borderRadius: 6,
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.05)',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              transition: 'background 0.15s ease',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 2, background: d.color, flexShrink: 0 }} />
+                <div style={{ width: 9, height: 9, borderRadius: 2.5, background: d.color, flexShrink: 0 }} />
                 <span style={{
                   fontSize: 12,
                   color: 'var(--text2)',
@@ -353,20 +376,18 @@ export function AllocationDonutChart({
                   {d.label}
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                {d.subLabel && (
-                  <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--font-mono)' }}>
-                    {d.subLabel}
-                  </span>
-                )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>
+                  {valFmt(d.value)}
+                </span>
                 <span style={{
                   fontSize: 11,
                   fontFamily: 'var(--font-mono)',
                   color: 'var(--text)',
                   fontWeight: 700,
-                  padding: '1px 5px',
+                  padding: '2px 6px',
                   borderRadius: 4,
-                  background: 'rgba(255,255,255,0.04)',
+                  background: 'rgba(255,255,255,0.06)',
                 }}>
                   {d.pct ? d.pct.toFixed(1) + '%' : '0%'}
                 </span>

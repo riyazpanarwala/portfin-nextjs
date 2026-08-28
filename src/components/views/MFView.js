@@ -80,10 +80,11 @@ export default function MFView() {
           </div>
           <AllocationDonutChart
             data={mfAllocationData}
-            size={160}
+            size={240}
             centerLabel={`${mfAllocationData.length}`}
             centerSub="FUNDS"
-            maxLegendHeight={160}
+            maxLegendHeight={260}
+            legendGrid={true}
           />
         </div>
       )}

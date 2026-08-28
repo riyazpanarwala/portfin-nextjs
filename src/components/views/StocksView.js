@@ -82,10 +82,11 @@ export default function StocksView() {
           </div>
           <AllocationDonutChart
             data={stockAllocationData}
-            size={160}
+            size={240}
             centerLabel={`${stockAllocationData.length}`}
             centerSub="STOCKS"
-            maxLegendHeight={160}
+            maxLegendHeight={260}
+            legendGrid={true}
           />
         </div>
       )}

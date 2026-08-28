@@ -194,56 +194,60 @@ export default function OverviewView() {
         </div>
       )}
 
-      {/* 3-col row */}
-      <div className={`${styles.threeCol} glass`} style={{ gap: '14px', marginBottom: '20px', background: 'transparent', border: 'none', borderRadius: 0, padding: 0 }}>
-        <div className="glass" style={{ padding: '18px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div className={styles.panelTitle} style={{ margin: 0 }}>Portfolio Allocation</div>
-            <div style={{ display: 'flex', gap: 3, background: 'rgba(0,0,0,0.25)', padding: 3, borderRadius: 6, border: '1px solid var(--border)' }}>
-              <button
-                onClick={() => setAllocViewTab('combined')}
-                style={{
-                  padding: '3px 7px', fontSize: '10px', fontWeight: 700, borderRadius: 4, border: 'none', cursor: 'pointer',
-                  background: allocViewTab === 'combined' ? 'var(--accent2)' : 'transparent',
-                  color: allocViewTab === 'combined' ? '#0f172a' : 'var(--text2)',
-                  transition: 'all 0.15s ease',
-                }}
-                title="Percentage allocation for each individual equity and MF holding overall"
-              >
-                All Holdings
-              </button>
-              <button
-                onClick={() => setAllocViewTab('asset')}
-                style={{
-                  padding: '3px 7px', fontSize: '10px', fontWeight: 700, borderRadius: 4, border: 'none', cursor: 'pointer',
-                  background: allocViewTab === 'asset' ? 'var(--accent2)' : 'transparent',
-                  color: allocViewTab === 'asset' ? '#0f172a' : 'var(--text2)',
-                  transition: 'all 0.15s ease',
-                }}
-                title="Mutual Funds vs Stocks overall percentage breakdown"
-              >
-                Asset Class
-              </button>
-            </div>
+      {/* Full-width Portfolio Allocation Card */}
+      <div className="glass" style={{ padding: '20px', borderRadius: 10, marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>📊</span> Overall Portfolio Allocation
           </div>
-          {stats.totalValue > 0 ? (
-            allocViewTab === 'combined' && combinedAllocationData.length > 0 ? (
-              <AllocationDonutChart
-                data={combinedAllocationData}
-                size={140}
-                centerLabel={`${combinedAllocationData.length}`}
-                centerSub="HOLDINGS"
-                maxLegendHeight={150}
-              />
-            ) : (
-              <DonutChart data={donutData} size={120} />
-            )
-          ) : (
-            <div className={styles.noData}>No holdings</div>
-          )}
+          <div style={{ display: 'flex', gap: 3, background: 'rgba(0,0,0,0.25)', padding: 3, borderRadius: 6, border: '1px solid var(--border)' }}>
+            <button
+              onClick={() => setAllocViewTab('combined')}
+              style={{
+                padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: 4, border: 'none', cursor: 'pointer',
+                background: allocViewTab === 'combined' ? 'var(--accent2)' : 'transparent',
+                color: allocViewTab === 'combined' ? '#0f172a' : 'var(--text2)',
+                transition: 'all 0.15s ease',
+              }}
+              title="Percentage allocation for each individual equity and MF holding overall"
+            >
+              All Holdings Combined
+            </button>
+            <button
+              onClick={() => setAllocViewTab('asset')}
+              style={{
+                padding: '4px 10px', fontSize: '11px', fontWeight: 700, borderRadius: 4, border: 'none', cursor: 'pointer',
+                background: allocViewTab === 'asset' ? 'var(--accent2)' : 'transparent',
+                color: allocViewTab === 'asset' ? '#0f172a' : 'var(--text2)',
+                transition: 'all 0.15s ease',
+              }}
+              title="Mutual Funds vs Stocks overall percentage breakdown"
+            >
+              Asset Class (MF vs Stocks)
+            </button>
+          </div>
         </div>
+        {stats.totalValue > 0 ? (
+          allocViewTab === 'combined' && combinedAllocationData.length > 0 ? (
+            <AllocationDonutChart
+              data={combinedAllocationData}
+              size={240}
+              centerLabel={`${combinedAllocationData.length}`}
+              centerSub="HOLDINGS"
+              maxLegendHeight={260}
+              legendGrid={true}
+            />
+          ) : (
+            <DonutChart data={donutData} size={160} />
+          )
+        ) : (
+          <div className={styles.noData}>No holdings</div>
+        )}
+      </div>
 
-        <div className="glass" style={{ padding: '18px' }}>
+      {/* 2-col row for MF Category Mix & Portfolio Health */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+        <div className="glass" style={{ padding: '18px', borderRadius: 10 }}>
           <div className={styles.panelTitle}>MF Category Mix</div>
           {Object.entries(mfCatMap).length > 0
             ? Object.entries(mfCatMap).map(([cat, val], i) => (
@@ -253,7 +257,7 @@ export default function OverviewView() {
           }
         </div>
 
-        <div className="glass" style={{ padding: '18px' }}>
+        <div className="glass" style={{ padding: '18px', borderRadius: 10 }}>
           <div className={styles.panelTitle}>Portfolio Health Score</div>
           <HealthGauge score={healthScore} />
           <div className="divider" />
