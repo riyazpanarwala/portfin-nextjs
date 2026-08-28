@@ -20,7 +20,11 @@
   font-size: 12px;
 }
 
-.heatmapScroll { overflow-x: auto; }
+.heatmapScroll {
+  overflow: visible;
+  height: auto;
+  max-height: none;
+}
 
 .heatmapGrid {
   display: grid;
@@ -896,6 +900,21 @@
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.5), 0 0 10px rgba(96, 165, 250, 0.4) !important;
   transform: scale(1.08);
   z-index: 2;
+}
+
+.heatmapCellFuture {
+  cursor: not-allowed !important;
+  opacity: 0.3;
+  border-style: dashed !important;
+  border-color: rgba(45, 64, 96, 0.35) !important;
+  box-shadow: none !important;
+}
+
+.heatmapCellFuture:hover,
+.heatmapCellFuture:focus-visible {
+  border-color: rgba(45, 64, 96, 0.35) !important;
+  box-shadow: none !important;
+  outline: none;
 }
 
 .currentMonthTotal {

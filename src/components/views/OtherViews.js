@@ -400,6 +400,7 @@ function YearTabs({ years, selected, onSelect, compact = false }) {
 
 function MonthlyHeatmap({ data, max, selectedMonth, onSelectMonth }) {
   const [tooltip, setTooltip] = useState(null);
+  const curMonthKey = currentMonthKey();
 
   if (!data || !data.length) return <div className={styles.chartEmpty}>No data</div>;
 
@@ -440,27 +441,37 @@ function MonthlyHeatmap({ data, max, selectedMonth, onSelectMonth }) {
             const value = month.amount || 0;
             const intensity = max > 0 ? value / max : 0;
             const isSelected = month.month === selectedMonth;
+            const isFuture = month.month > curMonthKey;
             return (
               <div
                 key={month.month}
-                className={`${styles.heatmapCell} ${isSelected ? styles.heatmapCellSelected : ''}`}
-                style={{ background: heatmapColor(intensity, value) }}
-                onClick={() => onSelectMonth?.(month.month)}
+                className={`${styles.heatmapCell} ${isFuture ? styles.heatmapCellFuture : (isSelected ? styles.heatmapCellSelected : '')}`}
+                style={{ background: isFuture ? 'rgba(18, 24, 38, 0.4)' : heatmapColor(intensity, value) }}
+                onClick={() => {
+                  if (!isFuture) onSelectMonth?.(month.month);
+                }}
                 onKeyDown={event => {
-                  if (event.key === 'Enter' || event.key === ' ') {
+                  if (!isFuture && (event.key === 'Enter' || event.key === ' ')) {
                     event.preventDefault();
                     onSelectMonth?.(month.month);
                   }
                 }}
-                onMouseEnter={event => showTooltip(event, month, value)}
-                onMouseMove={event => showTooltip(event, month, value)}
+                onMouseEnter={event => {
+                  if (!isFuture) showTooltip(event, month, value);
+                }}
+                onMouseMove={event => {
+                  if (!isFuture) showTooltip(event, month, value);
+                }}
                 onMouseLeave={() => setTooltip(null)}
-                onFocus={event => showTooltip(event, month, value)}
+                onFocus={event => {
+                  if (!isFuture) showTooltip(event, month, value);
+                }}
                 onBlur={() => setTooltip(null)}
-                tabIndex={0}
-                role="button"
+                tabIndex={isFuture ? -1 : 0}
+                role={isFuture ? undefined : 'button'}
+                aria-disabled={isFuture ? true : undefined}
                 aria-pressed={isSelected}
-                aria-label={`${monthLabel(month.month)} invested ${fmtCr(value)}`}
+                aria-label={isFuture ? `${monthLabel(month.month)} (Future)` : `${monthLabel(month.month)} invested ${fmtCr(value)}`}
               />
             );
           }),
