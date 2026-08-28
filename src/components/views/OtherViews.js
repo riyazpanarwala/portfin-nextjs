@@ -25,6 +25,7 @@ import styles from './OtherViews.module.css';
 export function TimelineView() {
   const { trades, monthlyFlow, holdings, stats, setActiveView } = usePortfolio();
   const [selectedYear, setSelectedYear] = useState('all');
+  const [selectedMonthKey, setSelectedMonthKey] = useState(null);
 
   const timeline = useMemo(
     () => buildTimelineModel(holdings, stats, monthlyFlow),
@@ -43,6 +44,19 @@ export function TimelineView() {
   const maxMonthAmount = Math.max(...heatmapRows.flatMap(row => row.months.map(month => month.amount)), 1);
   const maxYearAmount = Math.max(...yearlyRows.map(row => row.amount), 1);
   const monthlyRows = timeline.byYear[activeYear]?.months ?? [];
+
+  const curMonthKey = currentMonthKey();
+  const activeMonthKey = selectedMonthKey || curMonthKey;
+  const isCurrentMonth = activeMonthKey === curMonthKey;
+
+  const monthInvestments = useMemo(() => {
+    if (!timeline.activeLots) return timeline.currentMonth;
+    return buildCurrentMonthInvestments(timeline.activeLots, activeMonthKey);
+  }, [timeline.activeLots, timeline.currentMonth, activeMonthKey]);
+
+  const handleSelectMonth = (monthKey) => {
+    setSelectedMonthKey(prev => prev === monthKey ? null : monthKey);
+  };
 
   if (!trades.length) return (
     <EmptyState
@@ -86,16 +100,30 @@ export function TimelineView() {
             <span>More</span>
           </div>
         </PanelHeading>
-        <MonthlyHeatmap data={heatmapRows} max={maxMonthAmount} />
+        <MonthlyHeatmap
+          data={heatmapRows}
+          max={maxMonthAmount}
+          selectedMonth={activeMonthKey}
+          onSelectMonth={handleSelectMonth}
+        />
       </section>
 
       <section className={`glass ${styles.timelinePanel}`}>
-        <PanelHeading title="Current month investments">
+        <PanelHeading title={isCurrentMonth ? "Current month investments" : `${monthInvestments.label} investments`}>
           <div className={styles.currentMonthTotal}>
-            {timeline.currentMonth.label} · {fmtCr(timeline.currentMonth.amount)}
+            <span>{monthInvestments.label} · {fmtCr(monthInvestments.amount)}</span>
+            {!isCurrentMonth && (
+              <button
+                className={styles.resetMonthBtn}
+                onClick={() => setSelectedMonthKey(null)}
+                title="Reset to current month view"
+              >
+                Show current month
+              </button>
+            )}
           </div>
         </PanelHeading>
-        <CurrentMonthInvestments month={timeline.currentMonth} />
+        <CurrentMonthInvestments month={monthInvestments} />
       </section>
 
       <div className={styles.timelineTwoCol}>
@@ -108,7 +136,13 @@ export function TimelineView() {
           <PanelHeading title="Monthly breakdown">
             <YearTabs years={timeline.years} selected={activeYear} onSelect={setSelectedYear} compact />
           </PanelHeading>
-          <MonthlyBreakdown rows={monthlyRows} total={timeline.byYear[activeYear]?.amount ?? 0} year={activeYear} />
+          <MonthlyBreakdown
+            rows={monthlyRows}
+            total={timeline.byYear[activeYear]?.amount ?? 0}
+            year={activeYear}
+            selectedMonth={activeMonthKey}
+            onSelectMonth={handleSelectMonth}
+          />
         </section>
       </div>
 
@@ -227,6 +261,7 @@ function buildTimelineModel(holdings, stats, monthlyFlow) {
     yearlyTotals,
     cumulativeSeries: cumulative,
     currentMonth,
+    activeLots,
     maxMonthAmount,
     maxYearAmount,
     metricCards: [
@@ -363,7 +398,7 @@ function YearTabs({ years, selected, onSelect, compact = false }) {
   );
 }
 
-function MonthlyHeatmap({ data, max }) {
+function MonthlyHeatmap({ data, max, selectedMonth, onSelectMonth }) {
   const [tooltip, setTooltip] = useState(null);
 
   if (!data || !data.length) return <div className={styles.chartEmpty}>No data</div>;
@@ -404,17 +439,27 @@ function MonthlyHeatmap({ data, max }) {
           ...row.months.map(month => {
             const value = month.amount || 0;
             const intensity = max > 0 ? value / max : 0;
+            const isSelected = month.month === selectedMonth;
             return (
               <div
                 key={month.month}
-                className={styles.heatmapCell}
+                className={`${styles.heatmapCell} ${isSelected ? styles.heatmapCellSelected : ''}`}
                 style={{ background: heatmapColor(intensity, value) }}
+                onClick={() => onSelectMonth?.(month.month)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelectMonth?.(month.month);
+                  }
+                }}
                 onMouseEnter={event => showTooltip(event, month, value)}
                 onMouseMove={event => showTooltip(event, month, value)}
                 onMouseLeave={() => setTooltip(null)}
                 onFocus={event => showTooltip(event, month, value)}
                 onBlur={() => setTooltip(null)}
                 tabIndex={0}
+                role="button"
+                aria-pressed={isSelected}
                 aria-label={`${monthLabel(month.month)} invested ${fmtCr(value)}`}
               />
             );
@@ -461,7 +506,7 @@ function YearlyTotals({ rows, max }) {
   );
 }
 
-function MonthlyBreakdown({ rows, total, year }) {
+function MonthlyBreakdown({ rows, total, year, selectedMonth, onSelectMonth }) {
   const visibleRows = rows.filter(row => row.amount > 0);
   if (!visibleRows.length) return <div className={styles.chartEmpty}>No investments recorded for {year}.</div>;
 
@@ -472,18 +517,26 @@ function MonthlyBreakdown({ rows, total, year }) {
           <tr><th>Month</th><th>Invested</th><th>% of Year</th></tr>
         </thead>
         <tbody>
-          {visibleRows.map(row => (
-            <tr key={row.month}>
-              <td>
-                <div className={styles.monthNameCell}>
-                  <span className={styles.monthLine} style={{ width: `${Math.max(18, row.pct)}px` }} />
-                  {row.label}
-                </div>
-              </td>
-              <td className={styles.moneyCell}>{fmtCr(row.amount)}</td>
-              <td className={styles.percentCell}>{fmt(row.pct, 0)}%</td>
-            </tr>
-          ))}
+          {visibleRows.map(row => {
+            const isSelected = row.month === selectedMonth;
+            return (
+              <tr
+                key={row.month}
+                className={isSelected ? styles.selectedBreakdownRow : undefined}
+                onClick={() => onSelectMonth?.(row.month)}
+                style={{ cursor: 'pointer' }}
+              >
+                <td>
+                  <div className={styles.monthNameCell}>
+                    <span className={styles.monthLine} style={{ width: `${Math.max(18, row.pct)}px` }} />
+                    {row.label}
+                  </div>
+                </td>
+                <td className={styles.moneyCell}>{fmtCr(row.amount)}</td>
+                <td className={styles.percentCell}>{fmt(row.pct, 0)}%</td>
+              </tr>
+            );
+          })}
           <tr>
             <td className={styles.totalRowLabel}>Total {year}</td>
             <td className={styles.totalRowValue}>{fmtCr(total)}</td>
