@@ -342,13 +342,13 @@ export function AllocationDonutChart({
         <div style={{
           display: legendGrid ? 'grid' : 'flex',
           flexDirection: legendGrid ? undefined : 'column',
-          gridTemplateColumns: legendGrid ? 'repeat(auto-fill, minmax(200px, 1fr))' : undefined,
+          gridTemplateColumns: legendGrid ? 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))' : undefined,
           gap: 8,
           maxHeight: maxLegendHeight,
-          overflowY: data.length > (legendGrid ? 12 : 6) ? 'auto' : 'visible',
+          overflowY: 'auto',
           paddingRight: 6,
           flex: 1,
-          minWidth: 240,
+          minWidth: 'min(240px, 100%)',
           alignContent: 'start',
         }}>
           {chartData.map((d, i) => (
