@@ -47,21 +47,9 @@ function makeChunk(type, data) {
   data.copy(buf, 8);
 
   const crcBuf = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-  const crc = crc32(crcBuf);
+  const crc = zlib.crc32(crcBuf);
   buf.writeUInt32BE(crc, 8 + len);
   return buf;
-}
-
-function crc32(buf) {
-  let crc = -1;
-  for (let i = 0; i < buf.length; i++) {
-    const byte = buf[i];
-    for (let j = 0; j < 8; j++) {
-      const bit = (byte ^ crc) & 1;
-      crc = (crc >>> 1) ^ (bit ? 0xedb88320 : 0);
-    }
-  }
-  return (crc ^ -1) >>> 0;
 }
 
 const publicDir = path.resolve('public');
@@ -71,6 +59,8 @@ const images = [
   { name: 'icon-192.png', w: 192, h: 192, r: 59, g: 130, b: 246 },
   { name: 'icon-512.png', w: 512, h: 512, r: 59, g: 130, b: 246 },
   { name: 'apple-touch-icon.png', w: 180, h: 180, r: 59, g: 130, b: 246 },
+  { name: 'icon-trade.png', w: 96, h: 96, r: 16, g: 185, b: 129 },
+  { name: 'icon-analytics.png', w: 96, h: 96, r: 139, g: 92, b: 246 },
 ];
 
 for (const img of images) {
