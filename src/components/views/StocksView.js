@@ -25,6 +25,7 @@ export default function StocksView() {
 
   const {
     sort, sector, setSector, filter, setFilter, expanded,
+    allExpanded, toggleExpandAll,
     mode, setMode, activeCount, exitedCount,
     dataErrorCount, concentrationMap, daysSinceLastBuyMap,
     stockAllocationData,
@@ -119,13 +120,15 @@ export default function StocksView() {
         onGroupChange={setSector}
         sort={sort}
         onSortToggle={toggleSort}
+        onToggleExpandAll={toggleExpandAll}
+        allExpanded={allExpanded}
         onExport={() => exportCSV(fmt, holdStr)}
         extra={
           <input
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            placeholder="Search…"
-            style={{ width: 90, padding: '3px 8px', fontSize: 11 }}
+            placeholder="Search symbol / company…"
+            style={{ width: 150, padding: '4px 8px', fontSize: 11, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text)' }}
           />
         }
       />
@@ -135,15 +138,15 @@ export default function StocksView() {
         {isExited ? (
           <>
             <span>ℹ</span>
-            Click row to expand full FIFO sell history, cost analysis, and realized P&amp;L breakdown
+            Click row to expand full FIFO sell history, cost analysis, and realized P&amp;L breakdown · Click headers to sort
           </>
         ) : (
           <>
             <span className={styles.editHintAccent}>✎</span>
-            Click edit icon next to CMP to update price · Click row to expand lot details, cost analysis + sell history ·
+            Click edit icon next to CMP to update price · Click column headers to sort · Click row to expand lot details &amp; cost analysis ·
             <span className={styles.editHintTeal}>↺</span>
             Click refresh icon to fetch live price ·
-            <span className={styles.concentrationHint}>% badge = stock concentration in equity portfolio</span>
+            <span className={styles.concentrationHint}>% badge = stock concentration</span>
           </>
         )}
       </div>
@@ -156,6 +159,8 @@ export default function StocksView() {
           isExited={isExited}
           tableStyles={styles}
           highlightEditable
+          sort={sort}
+          onSortToggle={toggleSort}
         />
 
         {rows.length === 0 ? (

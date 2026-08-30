@@ -5,13 +5,15 @@ import { HOLDING_EPSILON, downloadCsv, useHoldingsViewState } from '@/hooks/useH
 
 const stockSearchFields = [
   h => h.symbol,
+  h => h.name,
   h => h.sector,
 ];
 
 export function useStocksView({ stHoldings, stats }) {
   const [filter, setFilter] = useState('');
   const {
-    sort, group: sector, setGroup: setSector, expanded,
+    sort, setSort, group: sector, setGroup: setSector, expanded, setExpanded,
+    allExpanded, expandAll, collapseAll, toggleExpandAll,
     mode, setMode, activeHoldings, exitedHoldings,
     activeCount, exitedCount, dataErrorCount,
     groups: sectors, rows, maxRet, toggleSort, toggleExpanded,
@@ -104,7 +106,8 @@ export function useStocksView({ stHoldings, stats }) {
   }, [activeHoldings]);
 
   return {
-    sort, sector, setSector, filter, setFilter, expanded,
+    sort, setSort, sector, setSector, filter, setFilter, expanded,
+    allExpanded, expandAll, collapseAll, toggleExpandAll,
     mode, setMode,
     activeCount,
     exitedCount,

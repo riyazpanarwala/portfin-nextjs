@@ -70,11 +70,40 @@ export function useHoldingsViewState({
     setExpanded(e => ({ ...e, [symbol]: !e[symbol] }));
   }
 
+  const allExpanded = useMemo(() => {
+    if (rows.length === 0) return false;
+    return rows.every(r => !!expanded[r.symbol]);
+  }, [rows, expanded]);
+
+  function expandAll() {
+    const next = {};
+    rows.forEach(r => { next[r.symbol] = true; });
+    setExpanded(next);
+  }
+
+  function collapseAll() {
+    setExpanded({});
+  }
+
+  function toggleExpandAll() {
+    if (allExpanded) {
+      collapseAll();
+    } else {
+      expandAll();
+    }
+  }
+
   return {
     sort,
+    setSort,
     group: effectiveGroup,
     setGroup,
     expanded,
+    setExpanded,
+    allExpanded,
+    expandAll,
+    collapseAll,
+    toggleExpandAll,
     mode,
     setMode,
     activeHoldings,

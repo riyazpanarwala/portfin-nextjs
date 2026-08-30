@@ -37,22 +37,72 @@ export const SORTS = [
   { key: 'lots',           label: 'Lots'       },
 ];
 
-export function HoldingsHeaderRow({ columns, gridTemplateColumns, isExited, tableStyles, highlightEditable = false }) {
+const COLUMN_SORT_KEYS = {
+  'STOCK': 'symbol',
+  'FUND NAME': 'name',
+  'SECTOR': 'sector',
+  'CAT': 'sector',
+  '#': 'lots',
+  'QTY': 'qty',
+  'UNITS': 'qty',
+  'CMP ✎': 'cmp',
+  'CMP': 'cmp',
+  'LAST PRICE': 'cmp',
+  'LAST NAV': 'cmp',
+  'INVESTED': 'invested',
+  'INV. PRICE': 'avgBuy',
+  'VALUE': 'marketValue',
+  'REALIZED': 'realizedGain',
+  'GAIN': 'unrealizedGain',
+  'CAGR': 'cagr',
+  'RETURN %': 'returnPct',
+  'HOLD': 'holdingDays',
+};
+
+export function HoldingsHeaderRow({
+  columns,
+  gridTemplateColumns,
+  isExited,
+  tableStyles,
+  highlightEditable = false,
+  sort,
+  onSortToggle,
+}) {
   return (
     <div className={tableStyles.headerRow} style={{ display: 'grid', gridTemplateColumns }}>
-      {columns.map((column, index) => (
-        <div
-          key={index}
-          className={[
-            tableStyles.headerCell,
-            highlightEditable && index === 5 && !isExited ? tableStyles.headerCellHighlight : '',
-            index === 9 ? tableStyles.headerCellYellow : '',
-          ].filter(Boolean).join(' ')}
-          style={{ textAlign: index > 2 && index < columns.length - 1 ? 'right' : 'left' }}
-        >
-          {column}
-        </div>
-      ))}
+      {columns.map((column, index) => {
+        const cleanName = column.replace(/[✎]/g, '').trim();
+        const sortKey = COLUMN_SORT_KEYS[column] || COLUMN_SORT_KEYS[cleanName];
+        const isSortable = !!sortKey && !!onSortToggle;
+        const isActiveSort = sort && (sort.key === sortKey || (sortKey === 'unrealizedGain' && (sort.key === 'unrealizedGain' || sort.key === 'gain')));
+
+        return (
+          <div
+            key={index}
+            onClick={isSortable ? () => onSortToggle(sortKey) : undefined}
+            title={isSortable ? `Sort by ${cleanName}` : undefined}
+            className={[
+              tableStyles.headerCell,
+              isSortable ? tableStyles.headerCellSortable : '',
+              isActiveSort ? tableStyles.headerCellActiveSort : '',
+              highlightEditable && index === 5 && !isExited ? tableStyles.headerCellHighlight : '',
+              index === 9 ? tableStyles.headerCellYellow : '',
+            ].filter(Boolean).join(' ')}
+            style={{
+              textAlign: index > 2 && index < columns.length - 1 ? 'right' : 'left',
+              cursor: isSortable ? 'pointer' : 'default',
+              userSelect: 'none',
+            }}
+          >
+            {column}
+            {isActiveSort && (
+              <span style={{ marginLeft: 3, fontSize: 8, color: 'var(--accent2)' }}>
+                {sort.dir === 1 ? '▲' : '▼'}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -281,7 +331,7 @@ export function TH({ ch, right }) {
   );
 }
 
-export function TD({ ch, right, mono, color, bold, small }) {
+export function TD({ ch, right, mono, color, bold, small, className = '' }) {
   return (
     <td
       className={[
@@ -290,6 +340,8 @@ export function TD({ ch, right, mono, color, bold, small }) {
         mono  ? styles.tdMono  : '',
         bold  ? styles.tdBold  : '',
         small ? styles.tdSmall : '',
+        mono  ? 'mono-privacy' : '',
+        className,
       ].filter(Boolean).join(' ')}
       style={{ color: color || 'var(--text)' }}
     >
@@ -444,7 +496,18 @@ export function PriceCell({ symbol, cmp, onSaved }) {
 }
 
 // ── Shared controls bar ───────────────────────────────────────────────────────
-export function HoldingsControls({ groupLabel, groups, activeGroup, onGroupChange, sort, onSortToggle, extra, onExport }) {
+export function HoldingsControls({
+  groupLabel,
+  groups,
+  activeGroup,
+  onGroupChange,
+  sort,
+  onSortToggle,
+  extra,
+  onExport,
+  onToggleExpandAll,
+  allExpanded,
+}) {
   return (
     <div className={styles.controlsBar}>
       <div className={styles.controlsGroupPills}>
@@ -466,6 +529,7 @@ export function HoldingsControls({ groupLabel, groups, activeGroup, onGroupChang
       </div>
 
       <div className={styles.sortArea}>
+        {extra}
         <span className={styles.controlsGroupLabel}>SORT</span>
         {SORTS.map(s => (
           <button
@@ -481,7 +545,16 @@ export function HoldingsControls({ groupLabel, groups, activeGroup, onGroupChang
             {s.label}{sort.key === s.key ? (sort.dir === 1 ? ' ↑' : ' ↓') : ''}
           </button>
         ))}
-        {extra}
+        {onToggleExpandAll && (
+          <button
+            onClick={onToggleExpandAll}
+            className="btn btn-ghost"
+            style={{ padding: '3px 9px', fontSize: 11, color: 'var(--text2)', border: '1px solid var(--border)' }}
+            title={allExpanded ? 'Collapse all holding rows' : 'Expand all holding rows'}
+          >
+            {allExpanded ? 'Collapse All ▲' : 'Expand All ▼'}
+          </button>
+        )}
         <button onClick={onExport} className="btn btn-ghost" style={{ padding: '3px 9px', fontSize: 11 }}>↓ CSV</button>
       </div>
     </div>
@@ -619,8 +692,8 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
         {yearSummary.map(y => (
           <div key={y.year} className={styles.monthlyYearCard}>
             <div className={styles.monthlyYearLabel}>{y.year}</div>
-            <div className={styles.monthlyYearValue}>{fmtCr(y.inv)}</div>
-            <div className={styles.monthlyYearMeta} style={{ color: pcol(y.ret) }}>
+            <div className={`${styles.monthlyYearValue} mono-privacy`}>{fmtCr(y.inv)}</div>
+            <div className={`${styles.monthlyYearMeta} mono-privacy`} style={{ color: pcol(y.ret) }}>
               {pct(y.ret, 1)} · {fmt(y.lots, 0)} lots
             </div>
           </div>
@@ -650,7 +723,7 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
                     <div className={styles.monthlyInvestedTrack}>
                       <div className={styles.monthlyInvestedBar} style={{ width: barWidth }} />
                     </div>
-                    <span className={styles.monthlyInvestedValue}>₹{fmt(m.inv, 2)}</span>
+                    <span className={`${styles.monthlyInvestedValue} mono-privacy`}>₹{fmt(m.inv, 2)}</span>
                   </td>
                   <TD ch={fmt(m.qty, qtyDecimals)} right mono color="var(--text2)" />
                   <TD ch={`₹${fmt(m.gain, 2)}`} right mono color={colorPnl(m.gain)} />
@@ -782,25 +855,25 @@ export function SIPConsistencyPanel({ lots }) {
       <div className={styles.sipGrid}>
         <div className={styles.sipStat}>
           <div className={styles.sipStatLabel}>Months invested</div>
-          <div className={styles.sipStatValue} style={{ color: 'var(--accent2)' }}>
+          <div className={`${styles.sipStatValue} mono-privacy`} style={{ color: 'var(--accent2)' }}>
             {monthsInvested} <span className={styles.sipStatOf}>/ {totalMonths}</span>
           </div>
         </div>
         <div className={styles.sipStat}>
           <div className={styles.sipStatLabel}>Consistency</div>
-          <div className={styles.sipStatValue} style={{ color: consistencyColor }}>
+          <div className={`${styles.sipStatValue} mono-privacy`} style={{ color: consistencyColor }}>
             {consistency}% <span className={styles.sipStatOf}>({consistencyLabel})</span>
           </div>
         </div>
         <div className={styles.sipStat}>
           <div className={styles.sipStatLabel}>Avg monthly SIP</div>
-          <div className={styles.sipStatValue} style={{ color: 'var(--text)' }}>
+          <div className={`${styles.sipStatValue} mono-privacy`} style={{ color: 'var(--text)' }}>
             {fmtCr(avgMonthlyInvestment)}
           </div>
         </div>
         <div className={styles.sipStat}>
           <div className={styles.sipStatLabel}>Last buy</div>
-          <div className={styles.sipStatValue} style={{ color: lastBuyColor }}>
+          <div className={`${styles.sipStatValue} mono-privacy`} style={{ color: lastBuyColor }}>
             {lastBuyDate} <span className={styles.sipStatOf}>({daysSinceLastBuy}d ago)</span>
           </div>
         </div>
@@ -812,7 +885,7 @@ export function SIPConsistencyPanel({ lots }) {
             style={{ width: `${consistency}%`, background: consistencyColor }}
           />
         </div>
-        <span className={styles.sipBarLabel} style={{ color: consistencyColor }}>{consistency}%</span>
+        <span className={`${styles.sipBarLabel} mono-privacy`} style={{ color: consistencyColor }}>{consistency}%</span>
       </div>
     </div>
   );
@@ -845,27 +918,27 @@ export function UnrealizedTaxPanel({ h }) {
         {ltcgGain > 0 && (
           <div className={styles.taxStat}>
             <div className={styles.taxStatLabel}>LTCG gain</div>
-            <div className={styles.taxStatValue} style={{ color: 'var(--green2)' }}>{fmtCr(ltcgGain)}</div>
+            <div className={`${styles.taxStatValue} mono-privacy`} style={{ color: 'var(--green2)' }}>{fmtCr(ltcgGain)}</div>
             <div className={styles.taxStatSub}>12.5% · ₹1.25L exempt</div>
           </div>
         )}
         {stcgGain > 0 && (
           <div className={styles.taxStat}>
             <div className={styles.taxStatLabel}>STCG gain</div>
-            <div className={styles.taxStatValue} style={{ color: 'var(--yellow)' }}>{fmtCr(stcgGain)}</div>
+            <div className={`${styles.taxStatValue} mono-privacy`} style={{ color: 'var(--yellow)' }}>{fmtCr(stcgGain)}</div>
             <div className={styles.taxStatSub}>20% rate</div>
           </div>
         )}
         {totalTax > 0 && (
           <div className={styles.taxStat}>
             <div className={styles.taxStatLabel}>Est. tax if booked</div>
-            <div className={styles.taxStatValue} style={{ color: 'var(--red2)' }}>{fmtCr(totalTax)}</div>
+            <div className={`${styles.taxStatValue} mono-privacy`} style={{ color: 'var(--red2)' }}>{fmtCr(totalTax)}</div>
             <div className={styles.taxStatSub}>Approx. FY liability</div>
           </div>
         )}
         <div className={styles.taxStat}>
           <div className={styles.taxStatLabel}>LTCG lots</div>
-          <div className={styles.taxStatValue} style={{ color: 'var(--text2)' }}>{ltcgLots.length}</div>
+          <div className={`${styles.taxStatValue} mono-privacy`} style={{ color: 'var(--text2)' }}>{ltcgLots.length}</div>
           <div className={styles.taxStatSub}>held ≥ 1yr</div>
         </div>
       </div>
@@ -893,11 +966,11 @@ export function CostAveragingPanel({ h }) {
       <div className={styles.caGrid}>
         <div className={styles.caStat}>
           <div className={styles.caStatLabel}>Avg buy price</div>
-          <div className={styles.caStatValue} style={{ color: 'var(--text)' }}>₹{fmt(avgBuy, 2)}</div>
+          <div className={`${styles.caStatValue} mono-privacy`} style={{ color: 'var(--text)' }}>₹{fmt(avgBuy, 2)}</div>
         </div>
         <div className={styles.caStat}>
           <div className={styles.caStatLabel}>Last buy price</div>
-          <div className={styles.caStatValue} style={{ color: priceImproved ? 'var(--green2)' : 'var(--yellow)' }}>
+          <div className={`${styles.caStatValue} mono-privacy`} style={{ color: priceImproved ? 'var(--green2)' : 'var(--yellow)' }}>
             ₹{fmt(recentLot.price, 2)}
           </div>
           <div className={styles.caStatSub} style={{ color: priceImproved ? 'var(--green2)' : 'var(--yellow)' }}>
@@ -906,26 +979,26 @@ export function CostAveragingPanel({ h }) {
         </div>
         <div className={styles.caStat}>
           <div className={styles.caStatLabel}>Last buy vs avg</div>
-          <div className={styles.caStatValue} style={{ color: pcol(recentVsAvg) }}>
+          <div className={`${styles.caStatValue} mono-privacy`} style={{ color: pcol(recentVsAvg) }}>
             {pct(recentVsAvg)}
           </div>
         </div>
         <div className={styles.caStat}>
           <div className={styles.caStatLabel}>Days since last buy</div>
-          <div className={styles.caStatValue} style={{ color: lastBuyColor }}>
+          <div className={`${styles.caStatValue} mono-privacy`} style={{ color: lastBuyColor }}>
             {daysSinceLastBuy}d
           </div>
           <div className={styles.caStatSub}>{recentLot.date}</div>
         </div>
         <div className={styles.caStat}>
           <div className={styles.caStatLabel}>Price range (lots)</div>
-          <div className={styles.caStatValue} style={{ color: 'var(--text2)', fontSize: 13 }}>
+          <div className={`${styles.caStatValue} mono-privacy`} style={{ color: 'var(--text2)', fontSize: 13 }}>
             ₹{fmt(Math.min(...lots.map(l => l.price)), 0)} – ₹{fmt(Math.max(...lots.map(l => l.price)), 0)}
           </div>
         </div>
         <div className={styles.caStat}>
           <div className={styles.caStatLabel}>First purchase</div>
-          <div className={styles.caStatValue} style={{ color: 'var(--text2)', fontSize: 13 }}>
+          <div className={`${styles.caStatValue} mono-privacy`} style={{ color: 'var(--text2)', fontSize: 13 }}>
             {oldestLot.date}
           </div>
         </div>
@@ -936,6 +1009,7 @@ export function CostAveragingPanel({ h }) {
 
 // ── Holding detail panel shell ────────────────────────────────────────────────
 export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirrLabel, assetType }) {
+  const { setActiveView } = usePortfolio();
   const [tab, setTab] = useState('lots');
 
   // Use a stable key derived from primitives to avoid re-computing on
@@ -979,6 +1053,25 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
 
           {/* Trade count chips */}
           <div className={styles.detailSellChips}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveView('trade');
+              }}
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 4,
+                border: '1px solid rgba(59,130,246,0.3)',
+                background: 'rgba(59,130,246,0.1)',
+                color: 'var(--accent2)',
+                cursor: 'pointer',
+              }}
+              title={`Add buy or sell trade for ${h.symbol}`}
+            >
+              + Trade
+            </button>
             <span className={styles.detailTradeChip}>
               {buyTrades}B / {sellTrades}S · {totalTrades} trades
             </span>

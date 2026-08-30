@@ -8,7 +8,7 @@ import {
   HoldingsEmpty, HoldingsControls,
   RefreshPriceButton,
   ModeToggle, ExitedBanner,
-  DataErrorBadge,
+  DataErrorBadge, ConcentrationBadge,
   HoldingsHeaderRow, HoldingsSummaryRefreshBar,
   HoldingCategoryBadge, HoldingMetricCells,
 } from '@/components/views/HoldingsShared';
@@ -23,9 +23,10 @@ export default function MFView() {
   const isRefreshing = priceRefreshState?.active;
 
   const {
-    sort, category, setCategory, expanded,
+    sort, category, setCategory, filter, setFilter, expanded,
+    allExpanded, toggleExpandAll,
     mode, setMode, activeCount, exitedCount,
-    dataErrorCount, mfAllocationData,
+    dataErrorCount, concentrationMap, mfAllocationData,
     categories, rows, maxRet,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   } = useMFView({ mfHoldings, stats });
@@ -116,7 +117,17 @@ export default function MFView() {
         onGroupChange={setCategory}
         sort={sort}
         onSortToggle={toggleSort}
+        onToggleExpandAll={toggleExpandAll}
+        allExpanded={allExpanded}
         onExport={() => exportCSV(fmt)}
+        extra={
+          <input
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            placeholder="Search fund / AMC…"
+            style={{ width: 150, padding: '4px 8px', fontSize: 11, background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 5, color: 'var(--text)' }}
+          />
+        }
       />
 
       {/* Hint bar */}
@@ -124,12 +135,13 @@ export default function MFView() {
         {isExited ? (
           <>
             <span>ℹ</span>
-            Click row to expand full redemption history, SIP consistency, and realized P&amp;L breakdown
+            Click row to expand full redemption history, SIP consistency, and realized P&amp;L breakdown · Click headers to sort
           </>
         ) : (
           <>
             <span className={styles.editHintTeal}>↺</span>
-            Click ✎ on CMP to manually set price · Click refresh icon on each row to fetch latest NAV from AMFI · Click row for SIP insights and tax exposure
+            Click ✎ on CMP to manually set price · Click column headers to sort · Click row for SIP insights and tax exposure ·
+            <span className={styles.concentrationHint}>% badge = fund concentration in MF portfolio</span>
           </>
         )}
       </div>
@@ -141,6 +153,8 @@ export default function MFView() {
           gridTemplateColumns={COL}
           isExited={isExited}
           tableStyles={styles}
+          sort={sort}
+          onSortToggle={toggleSort}
         />
 
         {rows.length === 0 ? (
@@ -170,6 +184,9 @@ export default function MFView() {
                     <span className={styles.symbolText} title={displayName}>
                       {displayName}
                     </span>
+                    {!isExited && concentrationMap[h.symbol] && (
+                      <ConcentrationBadge pct={concentrationMap[h.symbol]} />
+                    )}
                     {isExited && <span className={styles.exitedBadge}>EXITED</span>}
                     {h.hasDataError && <DataErrorBadge qty={h.unmatchedSellQty} />}
                   </div>

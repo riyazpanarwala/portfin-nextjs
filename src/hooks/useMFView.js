@@ -1,16 +1,26 @@
-'use client';
-
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { fmtCr, fmt } from '@/lib/store';
 import { HOLDING_EPSILON, downloadCsv, useHoldingsViewState } from '@/hooks/useHoldingsViewState';
 
+const mfSearchFields = [
+  h => h.name,
+  h => h.symbol,
+  h => h.sector,
+];
+
 export function useMFView({ mfHoldings, stats }) {
+  const [filter, setFilter] = useState('');
   const {
-    sort, group: category, setGroup: setCategory, expanded,
+    sort, setSort, group: category, setGroup: setCategory, expanded, setExpanded,
+    allExpanded, expandAll, collapseAll, toggleExpandAll,
     mode, setMode, activeHoldings, exitedHoldings,
     activeCount, exitedCount, dataErrorCount,
     groups: categories, rows, maxRet, toggleSort, toggleExpanded,
-  } = useHoldingsViewState({ holdings: mfHoldings });
+  } = useHoldingsViewState({
+    holdings: mfHoldings,
+    search: filter,
+    searchFields: mfSearchFields,
+  });
 
   const mfGain = stats.mfValue - stats.mfInvested;
 
@@ -18,6 +28,26 @@ export function useMFView({ mfHoldings, stats }) {
     mfHoldings.reduce((s, h) => s + (h.realizedGain || 0), 0),
     [mfHoldings]
   );
+
+  const mfWins = useMemo(() =>
+    activeHoldings.filter(h => (h.unrealizedGain ?? h.gain ?? 0) >= 0).length,
+    [activeHoldings]
+  );
+
+  const mfLoss = useMemo(() =>
+    activeHoldings.filter(h => (h.unrealizedGain ?? h.gain ?? 0) < 0).length,
+    [activeHoldings]
+  );
+
+  // Concentration: per-holding weight within active MF portfolio
+  const concentrationMap = useMemo(() => {
+    const total = activeHoldings.reduce((s, h) => s + h.marketValue, 0);
+    const map = {};
+    activeHoldings.forEach(h => {
+      map[h.symbol] = total > 0 ? (h.marketValue / total) * 100 : 0;
+    });
+    return map;
+  }, [activeHoldings]);
 
   // Total ever invested across all MF (including exited positions)
   const mfTotalEverInvested = useMemo(() =>
@@ -71,6 +101,13 @@ export function useMFView({ mfHoldings, stats }) {
       sub: 'of total portfolio',
     },
     {
+      l: 'W / L',
+      v: `${mfWins}W / ${mfLoss}L`,
+      c: mfWins >= mfLoss ? 'var(--green2)' : 'var(--red2)',
+      format: v => String(v),
+      sub: 'gainers / draggers',
+    },
+    {
       l: 'Active',
       v: activeHoldings.length,
       c: 'var(--accent2)',
@@ -82,16 +119,17 @@ export function useMFView({ mfHoldings, stats }) {
       c: 'var(--text3)',
       format: v => String(v),
     },
-  ], [stats, mfGain, mfRealized, mfTotalEverInvested, activeHoldings.length, exitedHoldings.length]);
+  ], [stats, mfGain, mfRealized, mfTotalEverInvested, mfWins, mfLoss, activeHoldings.length, exitedHoldings.length]);
 
   function exportCSV(formatNum) {
     const rows2 = [['Fund', 'Category', 'Lots', 'Units', 'CMP', 'Avg NAV', 'Invested', 'Total Deployed',
-      'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Status', 'Data Error']];
+      'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Portfolio%', 'Status', 'Data Error']];
     rows.forEach(h => rows2.push([
       h.name || h.symbol, h.sector || '', h.lots.length, formatNum(h.qty, 3), formatNum(h.cmp, 2), formatNum(h.avgBuy, 2),
       formatNum(h.invested, 0), formatNum(h.totalEverInvested ?? h.invested, 0),
       formatNum(h.marketValue, 0), formatNum(h.unrealizedGain, 0), formatNum(h.realizedGain, 0),
       formatNum(h.totalGain, 0), formatNum(h.returnPct, 2) + '%', formatNum(h.cagr, 2) + '%',
+      formatNum(concentrationMap[h.symbol] ?? 0, 1) + '%',
       h.qty <= HOLDING_EPSILON ? 'Exited' : 'Active',
       h.hasDataError ? 'YES' : '',
     ]));
@@ -113,13 +151,15 @@ export function useMFView({ mfHoldings, stats }) {
   }, [activeHoldings]);
 
   return {
-    sort, category, setCategory, expanded,
+    sort, setSort, category, setCategory, filter, setFilter, expanded,
+    allExpanded, expandAll, collapseAll, toggleExpandAll,
     mode, setMode,
     activeCount,
     exitedCount,
     dataErrorCount,
+    concentrationMap,
     mfAllocationData,
-    categories, rows, maxRet, mfGain, mfRealized, mfTotalEverInvested,
+    categories, rows, maxRet, mfGain, mfRealized, mfTotalEverInvested, mfWins, mfLoss,
     summaryItems, toggleSort, toggleExpanded, exportCSV,
   };
 }
