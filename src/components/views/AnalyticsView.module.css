@@ -3,20 +3,69 @@
    All styles for AnalyticsView — original panels + 6 new feature sections
    ───────────────────────────────────────────────────────────────────────────── */
 
-/* ── Tab bar ─────────────────────────────────────────────────────────────────*/
+/* ── Category & Tab bar ───────────────────────────────────────────────────────*/
 
 .analyticsRoot {
   min-width: 0;
 }
 
+.categoryBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.categoryBar::-webkit-scrollbar { display: none; }
+
+.categoryPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text3);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.categoryPill:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.categoryPillActive {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--accent);
+  color: var(--accent2);
+}
+
+.categoryCount {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: var(--font-mono);
+}
+
 .tabBar {
   display: flex;
-  gap: 0;
+  gap: 4px;
   margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
   scrollbar-width: none;
   flex-wrap: nowrap;
+  padding-bottom: 2px;
 }
 
 .tabBar::-webkit-scrollbar { display: none; }
@@ -32,18 +81,92 @@
   color: var(--text3);
   border-bottom: 2px solid transparent;
   font-family: var(--font-main);
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
+  border-radius: 6px 6px 0 0;
 }
 
 .tabBtnActive {
   color: var(--accent2);
   border-bottom-color: var(--accent2);
+  background: rgba(59, 130, 246, 0.06);
 }
 
 .tabBtn:hover:not(.tabBtnActive) {
   color: var(--text2);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.emptyFeatureBtn {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.emptyFeatureBtn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.emptyFeatureBtn:active {
+  transform: translateY(0);
+}
+
+.cagrControlsBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.cagrFilterGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cagrGroupLabel {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.cagrFilterBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cagrFilterBtnActive {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--accent);
+  color: var(--accent2);
+  font-weight: 600;
 }
 
 /* ── Overview panel ──────────────────────────────────────────────────────────*/

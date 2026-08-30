@@ -44,12 +44,17 @@ const SECTOR_ICONS = {
 // SHARED SUB-COMPONENTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function EmptyFeature({ icon, title, sub }) {
+function EmptyFeature({ icon, title, sub, onAction, actionLabel }) {
   return (
     <div className={styles.emptyFeature}>
       <span className={styles.emptyFeatureIcon}>{icon}</span>
       <div className={styles.emptyFeatureTitle}>{title}</div>
       {sub && <div className={styles.emptyFeatureSub}>{sub}</div>}
+      {onAction && actionLabel && (
+        <button onClick={onAction} className={styles.emptyFeatureBtn}>
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -72,7 +77,7 @@ function MetricCard({ label, value, sub, color }) {
   return (
     <div className={styles.metricCard}>
       <div className={styles.metricLabel}>{label}</div>
-      <div className={styles.metricValue} style={{ color: color || 'var(--text)' }}>{value}</div>
+      <div className={`${styles.metricValue} mono-privacy`} style={{ color: color || 'var(--text)' }}>{value}</div>
       {sub && <div className={styles.metricSub}>{sub}</div>}
     </div>
   );
@@ -213,7 +218,7 @@ function DrawdownLineChart({ analysis }) {
   );
 }
 
-function DrawdownAnalysis({ snapshots }) {
+function DrawdownAnalysis({ snapshots, onTakeSnapshot }) {
   const analysis = useMemo(() => {
     if (!snapshots || snapshots.length < 2) return null;
 
@@ -289,7 +294,15 @@ function DrawdownAnalysis({ snapshots }) {
       avgRecovery, recoveryDays, currentDrawdownDays, currentVal };
   }, [snapshots]);
 
-  if (!analysis) return <EmptyFeature icon="📉" title="Need at least 2 snapshots" sub="Save snapshots over time to track drawdown history" />;
+  if (!analysis) return (
+    <EmptyFeature
+      icon="📉"
+      title="Need at least 2 snapshots"
+      sub="Save snapshots over time to track drawdown history"
+      onAction={onTakeSnapshot}
+      actionLabel="📸 Take Snapshot Now"
+    />
+  );
 
   const ddColor = analysis.currentDrawdown < -10 ? 'var(--red2)' : analysis.currentDrawdown < -3 ? 'var(--yellow)' : 'var(--green2)';
   const maxDdColor = analysis.maxDrawdown < -20 ? 'var(--red2)' : analysis.maxDrawdown < -10 ? 'var(--yellow)' : 'var(--green2)';
@@ -414,20 +427,28 @@ function SIPPerformance({ trades, holdings }) {
 
   const totalSIPInvested = sipData.reduce((s, d) => s + d.totalInvested, 0);
   const totalSIPValue    = sipData.reduce((s, d) => s + d.currentValue, 0);
-  const sipWinners       = sipData.filter(d => d.sipAdvantage > 0).length;
+  const totalLumpSumValue = sipData.reduce((s, d) => s + (d.totalInvested * (1 + d.lumpSumReturn / 100)), 0);
+  const totalRupeeAlpha   = totalSIPValue - totalLumpSumValue;
+  const sipWinners        = sipData.filter(d => d.sipAdvantage > 0).length;
 
   return (
     <div className={styles.featureSection}>
       <FeatureHeader icon="📆" title="SIP Performance Tracker" sub="Recurring investment detection — SIP vs lump-sum comparison" />
 
-      <div className={styles.metricsGrid4}>
+      <div className={styles.metricsGrid}>
         <MetricCard label="SIP Instruments" value={sipData.length} color="var(--accent2)" sub="Auto-detected" />
         <MetricCard label="Total SIP Capital" value={fmtCr(totalSIPInvested)} color="var(--text)" sub="Across all SIPs" />
         <MetricCard label="Current SIP Value" value={fmtCr(totalSIPValue)}
           color={colorPnl(totalSIPValue - totalSIPInvested)} sub={`${fmtCr(totalSIPValue - totalSIPInvested)} gain`} />
+        <MetricCard
+          label="Total SIP Alpha (₹)"
+          value={`${totalRupeeAlpha >= 0 ? '+' : ''}${fmtCr(totalRupeeAlpha)}`}
+          color={totalRupeeAlpha >= 0 ? 'var(--green2)' : 'var(--red2)'}
+          sub="vs Day-1 Lump Sum"
+        />
         <MetricCard label="SIP Beat Lump-sum"
           value={`${sipWinners}/${sipData.length}`}
-          color={sipWinners > sipData.length / 2 ? 'var(--green2)' : 'var(--yellow)'}
+          color={sipWinners >= sipData.length / 2 ? 'var(--green2)' : 'var(--yellow)'}
           sub="instruments" />
       </div>
 
@@ -455,12 +476,12 @@ function SIPPerformance({ trades, holdings }) {
                 </td>
                 <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{d.tradeCount}×</td>
                 <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.avgGap}d</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{fmtCr(d.totalInvested)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(d.currentValue)}</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.sipReturn), fontWeight: 700 }}>
+                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{fmtCr(d.totalInvested)}</td>
+                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(d.currentValue)}</td>
+                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.sipReturn), fontWeight: 700 }}>
                   {d.sipReturn >= 0 ? '+' : ''}{fmt(d.sipReturn, 1)}%
                 </td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.lumpSumReturn) }}>
+                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.lumpSumReturn) }}>
                   {d.lumpSumReturn >= 0 ? '+' : ''}{fmt(d.lumpSumReturn, 1)}%
                 </td>
                 <td style={{ textAlign: 'right' }}>
@@ -471,7 +492,7 @@ function SIPPerformance({ trades, holdings }) {
                     {d.sipAdvantage > 0 ? '+' : ''}{fmt(d.sipAdvantage, 1)}%
                   </Badge>
                 </td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(d.avgMonthlyAmount)}</td>
+                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(d.avgMonthlyAmount)}</td>
               </tr>
             ))}
           </tbody>
@@ -600,7 +621,7 @@ function ConcentrationRisk({ holdings, stats }) {
                 color: h.weight > 25 ? 'var(--red2)' : 'var(--text)' }}>
                 {fmt(h.weight, 1)}%
               </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text3)', minWidth: 70, textAlign: 'right' }}>
+              <div className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text3)', minWidth: 70, textAlign: 'right' }}>
                 {fmtCr(h.marketValue)}
               </div>
             </div>
@@ -621,23 +642,80 @@ function ConcentrationRisk({ holdings, stats }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CAGRWaterfall({ holdings, stats }) {
+  const [assetFilter, setAssetFilter] = useState('ALL'); // ALL | STOCK | MF
+  const [sortBy, setSortBy] = useState('cagrDesc');     // cagrDesc | cagrAsc | invDesc | deltaDesc
+
   const data = useMemo(() => {
     const active = holdings.filter(h => h.qty > 0 && h.marketValue > 0 && h.invested > 0);
     if (!active.length) return null;
-    return { sorted: [...active].sort((a, b) => b.cagr - a.cagr), avgCagr: stats.overallCagr };
-  }, [holdings, stats]);
 
-  if (!data) return <EmptyFeature icon="📊" title="No active holdings" />;
+    let filtered = active.filter(h => {
+      if (assetFilter === 'STOCK') return h.assetType === 'STOCK' || !h.assetType;
+      if (assetFilter === 'MF') return h.assetType === 'MF';
+      return true;
+    });
 
-  const maxAbs = Math.max(...data.sorted.map(h => Math.abs(h.cagr)), Math.abs(data.avgCagr), 1);
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortBy === 'cagrDesc') return b.cagr - a.cagr;
+      if (sortBy === 'cagrAsc')  return a.cagr - b.cagr;
+      if (sortBy === 'invDesc')  return b.invested - a.invested;
+      if (sortBy === 'deltaDesc') return (b.cagr - stats.overallCagr) - (a.cagr - stats.overallCagr);
+      return b.cagr - a.cagr;
+    });
+
+    return { sorted, allActive: active, avgCagr: stats.overallCagr };
+  }, [holdings, stats, assetFilter, sortBy]);
+
+  if (!data || !data.allActive.length) return <EmptyFeature icon="📊" title="No active holdings" />;
+
+  const maxAbs = Math.max(...(data.sorted.map(h => Math.abs(h.cagr))), Math.abs(data.avgCagr), 1);
 
   return (
     <div className={styles.featureSection}>
       <FeatureHeader icon="📊" title="CAGR Waterfall by Holding" sub="Individual holding CAGR vs portfolio average — see what's dragging or driving returns" />
 
+      {/* Filter & Sort Controls */}
+      <div className={styles.cagrControlsBar}>
+        <div className={styles.cagrFilterGroup}>
+          <span className={styles.cagrGroupLabel}>ASSET</span>
+          {[
+            { key: 'ALL', label: 'All Assets' },
+            { key: 'STOCK', label: 'Stocks' },
+            { key: 'MF', label: 'Mutual Funds' },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setAssetFilter(f.key)}
+              className={`${styles.cagrFilterBtn} ${assetFilter === f.key ? styles.cagrFilterBtnActive : ''}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className={styles.cagrFilterGroup}>
+          <span className={styles.cagrGroupLabel}>SORT</span>
+          {[
+            { key: 'cagrDesc', label: 'CAGR ↓' },
+            { key: 'cagrAsc',  label: 'CAGR ↑' },
+            { key: 'invDesc',  label: 'Invested ↓' },
+            { key: 'deltaDesc',label: 'Alpha vs Avg ↓' },
+          ].map(s => (
+            <button
+              key={s.key}
+              onClick={() => setSortBy(s.key)}
+              className={`${styles.cagrFilterBtn} ${sortBy === s.key ? styles.cagrFilterBtnActive : ''}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className={styles.cagrAvgNote}>
         <span className={styles.cagrAvgDot} />
         Portfolio avg CAGR: <strong style={{ color: 'var(--accent2)', fontFamily: 'var(--font-mono)' }}>{fmtPct(data.avgCagr, true)}</strong>
+        <span style={{ color: 'var(--text3)', fontSize: 11, marginLeft: 8 }}>({data.sorted.length} shown)</span>
       </div>
 
       <div className={styles.cagrBarsContainer}>
@@ -649,7 +727,7 @@ function CAGRWaterfall({ holdings, stats }) {
             <div key={i} className={styles.cagrBarRow}>
               <div className={styles.cagrBarSymbol}>
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12 }}>{h.symbol}</span>
-                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{h.assetType}</span>
+                <span style={{ fontSize: 9, color: 'var(--text3)' }}>{h.assetType || 'STOCK'}</span>
               </div>
               <div className={styles.cagrBarTrackWrapper}>
                 <div className={styles.cagrBarTrack}>
@@ -663,7 +741,7 @@ function CAGRWaterfall({ holdings, stats }) {
               <div style={{ fontSize: 10, color: isAboveAvg ? 'var(--green2)' : 'var(--red2)', minWidth: 60, textAlign: 'right' }}>
                 {isAboveAvg ? '▲' : '▼'}{fmt(Math.abs(h.cagr - data.avgCagr), 1)}%
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text3)', minWidth: 60, textAlign: 'right' }}>
+              <div className="mono-privacy" style={{ fontSize: 10, color: 'var(--text3)', minWidth: 60, textAlign: 'right' }}>
                 {fmtCr(h.invested)}
               </div>
             </div>
@@ -671,25 +749,27 @@ function CAGRWaterfall({ holdings, stats }) {
         })}
       </div>
 
-      <div className={styles.cagrSummaryRow}>
-        <div className={styles.cagrSummaryCard} style={{ borderColor: 'rgba(52,211,153,0.3)', background: 'rgba(52,211,153,0.06)' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--green2)', marginBottom: 4 }}>TOP DRIVER</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: 'var(--green2)' }}>{data.sorted[0]?.symbol}</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--green2)' }}>{fmtPct(data.sorted[0]?.cagr, true)} CAGR</div>
-        </div>
-        <div className={styles.cagrSummaryCard} style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.06)' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--red2)', marginBottom: 4 }}>BIGGEST DRAG</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: 'var(--red2)' }}>{data.sorted[data.sorted.length - 1]?.symbol}</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--red2)' }}>{fmtPct(data.sorted[data.sorted.length - 1]?.cagr, true)} CAGR</div>
-        </div>
-        <div className={styles.cagrSummaryCard}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>BEATING AVG</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: 'var(--accent2)' }}>
-            {data.sorted.filter(h => h.cagr > data.avgCagr).length}/{data.sorted.length}
+      {data.sorted.length > 0 && (
+        <div className={styles.cagrSummaryRow}>
+          <div className={styles.cagrSummaryCard} style={{ borderColor: 'rgba(52,211,153,0.3)', background: 'rgba(52,211,153,0.06)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--green2)', marginBottom: 4 }}>TOP DRIVER</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: 'var(--green2)' }}>{data.sorted[0]?.symbol}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--green2)' }}>{fmtPct(data.sorted[0]?.cagr, true)} CAGR</div>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>holdings above avg CAGR</div>
+          <div className={styles.cagrSummaryCard} style={{ borderColor: 'rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.06)' }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--red2)', marginBottom: 4 }}>BIGGEST DRAG</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: 'var(--red2)' }}>{data.sorted[data.sorted.length - 1]?.symbol}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--red2)' }}>{fmtPct(data.sorted[data.sorted.length - 1]?.cagr, true)} CAGR</div>
+          </div>
+          <div className={styles.cagrSummaryCard}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text3)', marginBottom: 4 }}>BEATING AVG</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: 'var(--accent2)' }}>
+              {data.sorted.filter(h => h.cagr > data.avgCagr).length}/{data.sorted.length}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>holdings above avg CAGR</div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -698,7 +778,7 @@ function CAGRWaterfall({ holdings, stats }) {
 // 7. ROLLING XIRR / CAGR CHART
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RollingXIRR({ snapshots }) {
+function RollingXIRR({ snapshots, onTakeSnapshot }) {
   const data = useMemo(() => {
     if (!snapshots || snapshots.length < 2) return null;
     return [...snapshots]
@@ -721,7 +801,15 @@ function RollingXIRR({ snapshots }) {
   }, [snapshots]);
 
   if (!data || data.length < 2)
-    return <EmptyFeature icon="📈" title="Need at least 2 snapshots" sub="Save snapshots regularly to see how CAGR evolves over time" />;
+    return (
+      <EmptyFeature
+        icon="📈"
+        title="Need at least 2 snapshots"
+        sub="Save snapshots regularly to see how CAGR evolves over time"
+        onAction={onTakeSnapshot}
+        actionLabel="📸 Take Snapshot Now"
+      />
+    );
 
   const last  = data[data.length - 1];
   const first = data[0];
@@ -767,8 +855,8 @@ function RollingXIRR({ snapshots }) {
               return (
                 <tr key={i}>
                   <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)', whiteSpace: 'nowrap' }}>{d.date}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(d.totalValue)}</td>
-                  <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.returnPct), fontWeight: 600 }}>{fmtPct(d.returnPct, true)}</td>
+                  <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(d.totalValue)}</td>
+                  <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.returnPct), fontWeight: 600 }}>{fmtPct(d.returnPct, true)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>{d.mfCagr != null ? fmtPct(d.mfCagr, true) : '—'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--purple)' }}>{d.stCagr != null ? fmtPct(d.stCagr, true) : '—'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent2)' }}>
@@ -908,7 +996,7 @@ function TradeBehavior({ trades, realizedSummary }) {
             ].map((m, i) => (
               <div key={i} className={styles.tradeSizeItem}>
                 <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 700, letterSpacing: '0.07em', marginBottom: 4 }}>{m.label}</div>
-                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: m.color }}>{m.value}</div>
+                <div className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: m.color }}>{m.value}</div>
                 {m.sub && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{m.sub}</div>}
               </div>
             ))}
@@ -919,7 +1007,7 @@ function TradeBehavior({ trades, realizedSummary }) {
       {analysis.buyHighSellLow > 0 && (
         <InfoBox borderColor="rgba(239,68,68,0.3)" bg="rgba(239,68,68,0.06)">
           <span style={{ color: 'var(--red2)' }}>⚠</span>
-          <span> <strong>{analysis.buyHighSellLow} sell trades</strong> executed below purchase price, booking {fmtCr(analysis.buyHighSellLowValue)} in realized loss. Review if these were planned tax-loss harvesting exits or panic sales during dips.</span>
+          <span> <strong>{analysis.buyHighSellLow} sell trades</strong> executed below purchase price, booking <span className="mono-privacy">{fmtCr(analysis.buyHighSellLowValue)}</span> in realized loss. Review if these were planned tax-loss harvesting exits or panic sales during dips.</span>
         </InfoBox>
       )}
     </div>
@@ -956,7 +1044,7 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
         {headlines.map((m, i) => (
           <div key={i} className={styles.realizedMetricCell}>
             <div className={styles.realizedMetricLabel}>{m.label}</div>
-            <div className={styles.realizedMetricValue} style={{ color: m.color }}>{m.value}</div>
+            <div className={`${styles.realizedMetricValue} mono-privacy`} style={{ color: m.color }}>{m.value}</div>
             {m.sub && <div className={styles.realizedMetricSub}>{m.sub}</div>}
           </div>
         ))}
@@ -974,11 +1062,11 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
             <div className={styles.taxBreakdownValues}>
               <div className={styles.taxBreakdownItem}>
                 <div className={styles.taxBreakdownItemLabel}>Gain</div>
-                <div className={styles.taxBreakdownItemValue} style={{ color: t.color }}>{fmtCr(t.gain)}</div>
+                <div className={`${styles.taxBreakdownItemValue} mono-privacy`} style={{ color: t.color }}>{fmtCr(t.gain)}</div>
               </div>
               <div className={styles.taxBreakdownItem}>
                 <div className={styles.taxBreakdownItemLabel}>Est. Tax</div>
-                <div className={styles.taxBreakdownItemValue} style={{ color: 'var(--red2)' }}>{fmtCr(t.tax)}</div>
+                <div className={`${styles.taxBreakdownItemValue} mono-privacy`} style={{ color: 'var(--red2)' }}>{fmtCr(t.tax)}</div>
               </div>
             </div>
           </div>
@@ -988,12 +1076,12 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
         <div className={styles.winLossGrid}>
           <div className={styles.winCell}>
             <div className={styles.winLossLabel} style={{ color: 'var(--green2)' }}>AVG WIN</div>
-            <div className={styles.winLossValue} style={{ color: 'var(--green2)' }}>{fmtCr(avgWin)}</div>
+            <div className={`${styles.winLossValue} mono-privacy`} style={{ color: 'var(--green2)' }}>{fmtCr(avgWin)}</div>
             <div className={styles.winLossSub}>per closed winning trade</div>
           </div>
           <div className={styles.lossCell}>
             <div className={styles.winLossLabel} style={{ color: 'var(--red2)' }}>AVG LOSS</div>
-            <div className={styles.winLossValue} style={{ color: 'var(--red2)' }}>{fmtCr(avgLoss)}</div>
+            <div className={`${styles.winLossValue} mono-privacy`} style={{ color: 'var(--red2)' }}>{fmtCr(avgLoss)}</div>
             <div className={styles.winLossSub}>per closed losing trade</div>
           </div>
         </div>
@@ -1022,11 +1110,11 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
                   <tr key={i}>
                     <td style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent2)' }}>{sym}</td>
                     <td style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.sells.length}</td>
-                    <td style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{fmtCr(proceeds)}</td>
-                    <td style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: colorPnl(d.realized) }}>{fmtCr(d.realized)}</td>
-                    <td style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{ltcg !== 0 ? fmtCr(ltcg) : '—'}</td>
-                    <td style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--yellow)' }}>{stcg !== 0 ? fmtCr(stcg) : '—'}</td>
-                    <td style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--red2)' }}>{tax > 0 ? fmtCr(tax) : '—'}</td>
+                    <td className="mono-privacy" style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{fmtCr(proceeds)}</td>
+                    <td className="mono-privacy" style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: colorPnl(d.realized) }}>{fmtCr(d.realized)}</td>
+                    <td className="mono-privacy" style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{ltcg !== 0 ? fmtCr(ltcg) : '—'}</td>
+                    <td className="mono-privacy" style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--yellow)' }}>{stcg !== 0 ? fmtCr(stcg) : '—'}</td>
+                    <td className="mono-privacy" style={{ ...cell, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--red2)' }}>{tax > 0 ? fmtCr(tax) : '—'}</td>
                   </tr>
                 );
               })}
@@ -1037,10 +1125,10 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
         <div className={styles.taxInsightBox}>
           <div className={styles.taxInsightTitle}>💡 Tax Insight</div>
           <div className={styles.taxInsightText}>
-            You have <strong style={{ color: 'var(--red2)' }}>{fmtCr(Math.abs(lossSells.reduce((s, x) => s + x.realized, 0)))}</strong> in realized
+            You have <strong className="mono-privacy" style={{ color: 'var(--red2)' }}>{fmtCr(Math.abs(lossSells.reduce((s, x) => s + x.realized, 0)))}</strong> in realized
             losses that can offset gains.
             {ltcgGain < 125000 && ltcgGain > 0 && (
-              <> LTCG of <strong style={{ color: 'var(--green2)' }}>{fmtCr(ltcgGain)}</strong> is within the ₹1.25L exemption — no LTCG tax owed.</>
+              <> LTCG of <strong className="mono-privacy" style={{ color: 'var(--green2)' }}>{fmtCr(ltcgGain)}</strong> is within the ₹1.25L exemption — no LTCG tax owed.</>
             )}
           </div>
         </div>
@@ -1167,7 +1255,7 @@ function SectorRotationWheel({ holdings, stats }) {
         ].map((m, i) => (
           <div key={i} className={styles.sectorMetricCell}>
             <div className={styles.sectorMetricLabel}>{m.label}</div>
-            <div className={styles.sectorMetricValue} style={{ color: m.color }}>{m.value}</div>
+            <div className={`${styles.sectorMetricValue} mono-privacy`} style={{ color: m.color }}>{m.value}</div>
             {m.sub && <div className={styles.sectorMetricSub}>{m.sub}</div>}
           </div>
         ))}
@@ -1212,7 +1300,7 @@ function SectorRotationWheel({ holdings, stats }) {
                 </div>
                 <div className={styles.sectorRowRight}>
                   <span className={styles.sectorRowPct}  style={{ color: sectorColor(s.label) }}>{fmt(s.pct, 1)}%</span>
-                  <span className={styles.sectorRowValue}>{fmtCr(s.val)}</span>
+                  <span className={`${styles.sectorRowValue} mono-privacy`}>{fmtCr(s.val)}</span>
                   <span className={styles.sectorSignalBadge} style={{ background: cls.bg, color: cls.color, border: `1px solid ${cls.border}` }}>
                     {s.delta > 0 ? '+' : ''}{fmt(s.delta, 1)}% {cls.label}
                   </span>
@@ -1221,8 +1309,8 @@ function SectorRotationWheel({ holdings, stats }) {
               {s.mfVal > 0 && (
                 <div style={{ marginBottom: 3 }}>
                   <div className={styles.barRowHeader}>
-                    <span className={styles.barRowLabel} style={{ color: '#14b8a6' }}>MF {fmtCr(s.mfInvested)}</span>
-                    <span className={styles.barRowValue} style={{ color: '#14b8a6' }}>{fmtCr(s.mfVal)}</span>
+                    <span className={`${styles.barRowLabel} mono-privacy`} style={{ color: '#14b8a6' }}>MF {fmtCr(s.mfInvested)}</span>
+                    <span className={`${styles.barRowValue} mono-privacy`} style={{ color: '#14b8a6' }}>{fmtCr(s.mfVal)}</span>
                   </div>
                   <div className={styles.barTrack}><div className={styles.barFillMF} style={{ width: `${Math.min(100, (s.mfVal / maxVal) * 100)}%` }} /></div>
                 </div>
@@ -1230,8 +1318,8 @@ function SectorRotationWheel({ holdings, stats }) {
               {s.stVal > 0 && (
                 <div style={{ marginBottom: 3 }}>
                   <div className={styles.barRowHeader}>
-                    <span className={styles.barRowLabel} style={{ color: '#c084fc' }}>Stock {fmtCr(s.stInvested)}</span>
-                    <span className={styles.barRowValue} style={{ color: '#c084fc' }}>{fmtCr(s.stVal)}</span>
+                    <span className={`${styles.barRowLabel} mono-privacy`} style={{ color: '#c084fc' }}>Stock {fmtCr(s.stInvested)}</span>
+                    <span className={`${styles.barRowValue} mono-privacy`} style={{ color: '#c084fc' }}>{fmtCr(s.stVal)}</span>
                   </div>
                   <div className={styles.barTrack}><div className={styles.barFillStock} style={{ width: `${Math.min(100, (s.stVal / maxVal) * 100)}%` }} /></div>
                 </div>
@@ -1253,48 +1341,96 @@ function SectorRotationWheel({ holdings, stats }) {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
+const CATEGORIES = [
+  { key: 'all', label: 'All Analysis', icon: '✨' },
+  { key: 'overview', label: 'Overview', icon: '📊' },
+  { key: 'growth', label: 'Returns & Growth', icon: '📈' },
+  { key: 'risk', label: 'Risk & Allocation', icon: '🛡️' },
+  { key: 'trades', label: 'Trades & Tax', icon: '⚡' },
+];
+
 export default function AnalyticsView() {
   const { stats, holdings, taxData, monthlyFlow, realizedSummary,
-    portfolioXIRR, portfolioBeta, trades, currentPrices, portfolioId } = usePortfolio();
+    portfolioXIRR, portfolioBeta, trades, currentPrices, portfolioId, saveSnapshot } = usePortfolio();
 
-  const { snapshots, loading: snapsLoading } = useSnapshots(portfolioId);
+  const { snapshots, loading: snapsLoading, load: reloadSnapshots } = useSnapshots(portfolioId);
 
   const {
     analyticsTab, setAnalyticsTab,
+    categoryFilter, setCategoryFilter,
     ltcg, stcg, ltcgInvested, stcgInvested,
     sharpe, unrealizedTax,
-  } = useAnalyticsView({ stats, holdings, stHoldings: [], mfHoldings: [], taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta });
+  } = useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta });
+
+  const handleTakeSnapshot = async () => {
+    if (saveSnapshot) {
+      await saveSnapshot();
+      if (reloadSnapshots) reloadSnapshots();
+    }
+  };
 
   const returnMetrics = [
-    { label: 'Portfolio XIRR',    value: portfolioXIRR != null ? fmtPct(portfolioXIRR, true) : '—', color: 'var(--green2)', sub: 'True money-weighted' },
-    { label: 'Portfolio Beta',    value: portfolioBeta?.beta != null ? fmt(portfolioBeta.beta, 2) : '—', color: 'var(--yellow)', sub: portfolioBeta?.beta != null ? `${fmt(portfolioBeta.coveragePct, 0)}% coverage` : 'Weighted equity risk' },
-    { label: 'Approx CAGR',       value: fmtPct(stats.overallCagr * 0.93), color: 'var(--accent2)', sub: 'Time-weighted est.' },
-    { label: 'Sharpe Ratio',      value: sharpe,                            color: 'var(--teal)',    sub: 'Risk-adjusted' },
-    { label: 'Unrealized Return', value: fmtPct(stats.totalReturnPct),      color: colorPnl(stats.totalReturnPct), sub: 'Open positions' },
-    { label: 'Total Realized',    value: fmtCr(realizedSummary.totalRealized), color: colorPnl(realizedSummary.totalRealized), sub: 'Closed positions' },
-    { label: 'MF CAGR',           value: fmtPct(stats.mfCagr),             color: 'var(--purple)', sub: 'Weighted avg' },
-    { label: 'Stock CAGR',        value: fmtPct(stats.stCagr),             color: 'var(--teal)',   sub: 'Weighted avg' },
+    { label: 'Portfolio XIRR',    value: portfolioXIRR != null ? fmtPct(portfolioXIRR, true) : '—', color: 'var(--green2)', sub: 'True money-weighted ↗', target: 'cagr' },
+    { label: 'Portfolio Beta',    value: portfolioBeta?.beta != null ? fmt(portfolioBeta.beta, 2) : '—', color: 'var(--yellow)', sub: portfolioBeta?.beta != null ? `${fmt(portfolioBeta.coveragePct, 0)}% coverage ↗` : 'Weighted risk ↗', target: 'concentration' },
+    { label: 'Portfolio CAGR',    value: fmtPct(stats.overallCagr), color: 'var(--accent2)', sub: 'Annualized growth ↗', target: 'rolling' },
+    { label: 'Sharpe Ratio',      value: sharpe,                            color: 'var(--teal)',    sub: 'Est. (Rf = 6.5%) ↗', target: 'concentration' },
+    { label: 'Unrealized Return', value: fmtPct(stats.totalReturnPct),      color: colorPnl(stats.totalReturnPct), sub: 'Open positions ↗', target: 'cagr' },
+    { label: 'Total Realized',    value: fmtCr(realizedSummary.totalRealized), color: colorPnl(realizedSummary.totalRealized), sub: 'Closed positions ↗', target: 'realized' },
+    { label: 'MF CAGR',           value: fmtPct(stats.mfCagr),             color: 'var(--purple)', sub: 'Weighted avg ↗', target: 'cagr' },
+    { label: 'Stock CAGR',        value: fmtPct(stats.stCagr),             color: 'var(--teal)',   sub: 'Weighted avg ↗', target: 'cagr' },
   ];
 
   const TABS = [
-    { key: 'overview',      label: '📊 Overview' },
-    { key: 'realized',      label: `💰 Realized P&L${realizedSummary.sells.length > 0 ? ` (${realizedSummary.sells.length})` : ''}` },
-    { key: 'sectors',       label: '🎯 Sectors' },
-    { key: 'yearByYear',    label: '📅 Year-by-Year' },
-    { key: 'drawdown',      label: '📉 Drawdown' },
-    { key: 'sip',           label: '📆 SIP Tracker' },
-    { key: 'concentration', label: '⚖️ Risk Score' },
-    { key: 'cagr',          label: '📊 CAGR Waterfall' },
-    { key: 'rolling',       label: '📈 Rolling CAGR' },
-    { key: 'behavior',      label: '🔬 Trade Behavior' },
+    { key: 'overview',      label: '📊 Overview', category: 'overview' },
+    { key: 'cagr',          label: '📊 CAGR Waterfall', category: 'growth' },
+    { key: 'rolling',       label: '📈 Rolling CAGR', category: 'growth' },
+    { key: 'yearByYear',    label: '📅 Year-by-Year', category: 'growth' },
+    { key: 'concentration', label: '⚖️ Risk Score', category: 'risk' },
+    { key: 'drawdown',      label: '📉 Drawdown', category: 'risk' },
+    { key: 'sectors',       label: '🎯 Sectors', category: 'risk' },
+    { key: 'sip',           label: '📆 SIP Tracker', category: 'trades' },
+    { key: 'behavior',      label: '🔬 Trade Behavior', category: 'trades' },
+    { key: 'realized',      label: `💰 Realized P&L${realizedSummary.sells.length > 0 ? ` (${realizedSummary.sells.length})` : ''}`, category: 'trades' },
   ];
 
-  const snapsLoaded = !snapsLoading;
+  const visibleTabs = categoryFilter === 'all'
+    ? TABS
+    : TABS.filter(t => t.category === categoryFilter);
+
+  // If current tab is hidden by category filter, keep it accessible or select the first visible tab
+  const activeTabInCategory = visibleTabs.some(t => t.key === analyticsTab);
 
   return (
     <div className={`fade-up ${styles.analyticsRoot}`}>
+      {/* ── Category Filter Pills ── */}
+      <div className={styles.categoryBar}>
+        {CATEGORIES.map(cat => {
+          const count = cat.key === 'all' ? TABS.length : TABS.filter(t => t.category === cat.key).length;
+          return (
+            <button
+              key={cat.key}
+              onClick={() => {
+                setCategoryFilter(cat.key);
+                if (cat.key !== 'all') {
+                  const firstTab = TABS.find(t => t.category === cat.key);
+                  if (firstTab && !TABS.filter(t => t.category === cat.key).some(t => t.key === analyticsTab)) {
+                    setAnalyticsTab(firstTab.key);
+                  }
+                }
+              }}
+              className={`${styles.categoryPill} ${categoryFilter === cat.key ? styles.categoryPillActive : ''}`}
+            >
+              <span>{cat.icon}</span>
+              <span>{cat.label}</span>
+              <span className={styles.categoryCount}>{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Tab Bar ── */}
       <div className={styles.tabBar}>
-        {TABS.map(({ key, label }) => (
+        {visibleTabs.map(({ key, label }) => (
           <button key={key} onClick={() => setAnalyticsTab(key)}
             className={`${styles.tabBtn} ${analyticsTab === key ? styles.tabBtnActive : ''}`}>
             {label}
@@ -1307,9 +1443,17 @@ export default function AnalyticsView() {
         <>
           <div className={`glass ${styles.returnMetricsPanel}`}>
             <div className={styles.panelTitle}>Return Metrics</div>
-            <div className={styles.panelSub}>Unrealized + realized — combined picture</div>
+            <div className={styles.panelSub}>Unrealized + realized — combined picture · click any metric to inspect</div>
             <div className={styles.metricsGrid}>
-              {returnMetrics.map((m, i) => <StatCard key={i} flip label={m.label} value={m.value} color={m.color} sub={m.sub} valueSize={22} />)}
+              {returnMetrics.map((m, i) => (
+                <div
+                  key={i}
+                  onClick={() => m.target && setAnalyticsTab(m.target)}
+                  style={{ cursor: m.target ? 'pointer' : 'default', transition: 'transform 0.1s' }}
+                >
+                  <StatCard flip label={m.label} value={m.value} color={m.color} sub={m.sub} valueSize={22} />
+                </div>
+              ))}
             </div>
           </div>
           <div className={styles.twoCol}>
@@ -1321,22 +1465,22 @@ export default function AnalyticsView() {
                 <div className={styles.taxCell}>
                   <div className={styles.taxCellLabel}>LTCG Holdings</div>
                   <div className={styles.taxCellValue}>{ltcg.length}</div>
-                  <div className={styles.taxCellSub}>{fmtCr(ltcgInvested)} invested</div>
+                  <div className={`${styles.taxCellSub} mono-privacy`}>{fmtCr(ltcgInvested)} invested</div>
                 </div>
                 <div className={styles.taxCell}>
                   <div className={styles.taxCellLabel}>STCG Holdings</div>
                   <div className={styles.taxCellValue} style={{ color: 'var(--yellow)' }}>{stcg.length}</div>
-                  <div className={styles.taxCellSub}>{fmtCr(stcgInvested)} invested</div>
+                  <div className={`${styles.taxCellSub} mono-privacy`}>{fmtCr(stcgInvested)} invested</div>
                 </div>
               </div>
               <div className={styles.unrealizedTaxBox}>
                 <div className={styles.unrealizedTaxLabel}>If Sold Today (Unrealized Tax)</div>
-                <div className={styles.unrealizedTaxValue}>{fmtCr(unrealizedTax)}</div>
+                <div className={`${styles.unrealizedTaxValue} mono-privacy`}>{fmtCr(unrealizedTax)}</div>
               </div>
               {realizedSummary.totalTax > 0 && (
                 <div className={styles.realizedTaxBox}>
                   <div className={styles.realizedTaxLabel}>Already Realized Tax</div>
-                  <div className={styles.realizedTaxValue}>{fmtCr(realizedSummary.totalTax)}</div>
+                  <div className={`${styles.realizedTaxValue} mono-privacy`}>{fmtCr(realizedSummary.totalTax)}</div>
                 </div>
               )}
             </div>
@@ -1380,7 +1524,7 @@ export default function AnalyticsView() {
         <div className="glass" style={{ padding: 20 }}>
           {snapsLoading
             ? <div style={{ color: 'var(--text3)', fontSize: 13, padding: 20 }}>Loading snapshots…</div>
-            : <DrawdownAnalysis snapshots={snapshots} />}
+            : <DrawdownAnalysis snapshots={snapshots} onTakeSnapshot={handleTakeSnapshot} />}
         </div>
       )}
 
@@ -1406,7 +1550,7 @@ export default function AnalyticsView() {
         <div className="glass" style={{ padding: 20 }}>
           {snapsLoading
             ? <div style={{ color: 'var(--text3)', fontSize: 13, padding: 20 }}>Loading snapshots…</div>
-            : <RollingXIRR snapshots={snapshots} />}
+            : <RollingXIRR snapshots={snapshots} onTakeSnapshot={handleTakeSnapshot} />}
         </div>
       )}
 

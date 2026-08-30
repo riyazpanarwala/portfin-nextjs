@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 
 export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realizedSummary, portfolioXIRR, portfolioBeta }) {
   const [analyticsTab, setAnalyticsTab] = useState('overview');
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
   const ltcg         = useMemo(() => holdings.filter(h => h.years >= 1), [holdings]);
   const stcg         = useMemo(() => holdings.filter(h => h.years < 1),  [holdings]);
@@ -21,14 +22,14 @@ export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realiz
   );
 
   const returnMetrics = useMemo(() => [
-    { label: 'Portfolio XIRR',    value: portfolioXIRR != null ? portfolioXIRR : null, color: 'var(--green2)',          sub: 'True money-weighted',  suffix: '%' },
-    { label: 'Portfolio Beta',    value: portfolioBeta?.beta ?? null,                    color: 'var(--yellow)',          sub: 'Weighted equity risk', suffix: '' },
-    { label: 'Approx CAGR',       value: stats.overallCagr * 0.93,                    color: 'var(--accent2)',          sub: 'Time-weighted est.',   suffix: '%' },
-    { label: 'Sharpe Ratio',      value: parseFloat(sharpe),                           color: 'var(--teal)',             sub: 'Risk-adjusted',        suffix: '' },
-    { label: 'Unrealized Return', value: stats.totalReturnPct,                         color: null, /* colorPnl applied in component */ sub: 'Open positions', suffix: '%' },
-    { label: 'Total Realized',    value: null, crValue: realizedSummary.totalRealized, color: null, sub: 'Closed positions' },
-    { label: 'MF CAGR',           value: stats.mfCagr,                                color: 'var(--purple)',           sub: 'Weighted avg',         suffix: '%' },
-    { label: 'Stock CAGR',        value: stats.stCagr,                                color: 'var(--teal)',             sub: 'Weighted avg',         suffix: '%' },
+    { label: 'Portfolio XIRR',    value: portfolioXIRR != null ? portfolioXIRR : null, color: 'var(--green2)',          sub: 'True money-weighted',  suffix: '%', target: 'cagr' },
+    { label: 'Portfolio Beta',    value: portfolioBeta?.beta ?? null,                    color: 'var(--yellow)',          sub: 'Weighted equity risk', suffix: '', target: 'concentration' },
+    { label: 'Portfolio CAGR',    value: stats.overallCagr,                            color: 'var(--accent2)',          sub: 'Annualized growth',    suffix: '%', target: 'rolling' },
+    { label: 'Sharpe Ratio',      value: parseFloat(sharpe),                           color: 'var(--teal)',             sub: 'Est. (Rf = 6.5%)',     suffix: '', target: 'concentration' },
+    { label: 'Unrealized Return', value: stats.totalReturnPct,                         color: null, /* colorPnl applied in component */ sub: 'Open positions', suffix: '%', target: 'cagr' },
+    { label: 'Total Realized',    value: null, crValue: realizedSummary.totalRealized, color: null, sub: 'Closed positions', target: 'realized' },
+    { label: 'MF CAGR',           value: stats.mfCagr,                                color: 'var(--purple)',           sub: 'Weighted avg',         suffix: '%', target: 'cagr' },
+    { label: 'Stock CAGR',        value: stats.stCagr,                                color: 'var(--teal)',             sub: 'Weighted avg',         suffix: '%', target: 'cagr' },
   ], [stats, sharpe, realizedSummary, portfolioXIRR, portfolioBeta]);
 
   const sectorData = useMemo(() => {
@@ -62,6 +63,7 @@ export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realiz
 
   return {
     analyticsTab, setAnalyticsTab,
+    categoryFilter, setCategoryFilter,
     ltcg, stcg, ltcgInvested, stcgInvested,
     sharpe, unrealizedTax,
     returnMetrics, sectorData, realizedSells,
