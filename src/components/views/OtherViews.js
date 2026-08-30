@@ -952,7 +952,7 @@ export function ActionView() {
 
 export function SnapshotView() {
   const { portfolioId, saveSnapshot } = usePortfolio();
-  const { snapshots, loading, reload } = useSnapshots(portfolioId, 30);
+  const { snapshots, loading, reload } = useSnapshots(portfolioId, 100);
   const [saving, setSaving] = useState(false);
 
   async function handleSaveSnapshot() {
@@ -962,18 +962,21 @@ export function SnapshotView() {
     setSaving(false);
   }
 
+  const latest = snapshots[0];
+  const earliest = snapshots[snapshots.length - 1];
+  const lifetimeGrowth = latest && earliest ? parseFloat(latest.totalValue) - parseFloat(earliest.totalValue) : 0;
+  const lifetimeGrowthPct = latest && earliest && parseFloat(earliest.totalValue) > 0 ? (lifetimeGrowth / parseFloat(earliest.totalValue)) * 100 : 0;
+  const latestMfCagr = latest?.mfCagr ? parseFloat(latest.mfCagr) : null;
+  const latestStCagr = latest?.stCagr ? parseFloat(latest.stCagr) : null;
+
   return (
     <div className={`fade-up ${styles.snapshotWrapper}`}>
-
       <div className={`glass ${styles.snapshotHeaderPanel}`}>
         <div className={styles.snapshotHeaderLeft}>
-          <div className={styles.snapshotHeaderTitle}>Portfolio Snapshots</div>
+          <div className={styles.snapshotHeaderTitle}>Portfolio Snapshots &amp; Checkpoint History</div>
           <div className={styles.snapshotHeaderSub}>
             Save a snapshot of today&apos;s portfolio value to track progress over time.
-            {/* FIX (Bug 18): inform user that rapid duplicate saves within the same
-                minute will update the existing snapshot rather than adding a new one. */}
-            {' '}Each snapshot is unique per minute - saving twice within the same minute
-            updates the existing entry.
+            {' '}Each snapshot is unique per minute — saving twice within the same minute updates the existing entry.
           </div>
         </div>
         <button
@@ -982,24 +985,70 @@ export function SnapshotView() {
           disabled={saving}
           style={{ whiteSpace: 'nowrap' }}
         >
-          {saving ? 'Saving...' : 'Save Snapshot Now'}
+          {saving ? 'Saving Checkpoint...' : '📸 Save Snapshot Now'}
         </button>
       </div>
 
+      {snapshots.length > 0 && (
+        <div className={styles.snapshotMetricGrid}>
+          <div className={styles.snapshotMetricCard}>
+            <div className={styles.snapshotMetricLabel}>Checkpoints Saved</div>
+            <div className={styles.snapshotMetricValue} style={{ color: 'var(--accent2)' }}>
+              {snapshots.length}
+            </div>
+            <div className={styles.snapshotMetricSub}>Historical baselines</div>
+          </div>
+          <div className={styles.snapshotMetricCard}>
+            <div className={styles.snapshotMetricLabel}>Latest Checkpoint Value</div>
+            <div className={`${styles.snapshotMetricValue} mono-privacy`} style={{ color: 'var(--text)' }}>
+              {latest ? fmtCr(parseFloat(latest.totalValue)) : '—'}
+            </div>
+            <div className={styles.snapshotMetricSub}>
+              {latest ? new Date(latest.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+            </div>
+          </div>
+          <div className={styles.snapshotMetricCard}>
+            <div className={styles.snapshotMetricLabel}>Growth Captured</div>
+            <div className={`${styles.snapshotMetricValue} mono-privacy`} style={{ color: colorPnl(lifetimeGrowth) }}>
+              {lifetimeGrowth >= 0 ? '+' : ''}{fmtCr(lifetimeGrowth)}
+            </div>
+            <div className={styles.snapshotMetricSub}>
+              {snapshots.length >= 2 ? `${lifetimeGrowthPct >= 0 ? '+' : ''}${fmt(lifetimeGrowthPct, 1)}% since initial checkpoint` : 'Need ≥ 2 checkpoints'}
+            </div>
+          </div>
+          <div className={styles.snapshotMetricCard}>
+            <div className={styles.snapshotMetricLabel}>Latest CAGR</div>
+            <div className={styles.snapshotMetricValue} style={{ color: 'var(--teal)' }}>
+              {latestMfCagr != null ? `MF ${fmtPct(latestMfCagr)}` : latestStCagr != null ? `ST ${fmtPct(latestStCagr)}` : '—'}
+            </div>
+            <div className={styles.snapshotMetricSub}>
+              {latestStCagr != null && latestMfCagr != null ? `Stocks: ${fmtPct(latestStCagr)}` : 'Annualized trend'}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={`glass ${styles.snapshotTablePanel}`}>
         <div className={styles.snapshotTableHeader}>
-          <span className={styles.snapshotTableTitle}>Snapshot History</span>
+          <span className={styles.snapshotTableTitle}>Checkpoint Logs</span>
           <span className={styles.snapshotTableCount}>{snapshots.length} saved</span>
         </div>
 
         {loading ? (
-          <div className={styles.snapshotLoading}>Loading...</div>
+          <div className={styles.snapshotLoading}>Loading snapshot logs...</div>
         ) : snapshots.length === 0 ? (
           <div className={styles.snapshotEmpty}>
-            <div className={styles.snapshotEmptyIcon}>SS</div>
+            <div className={styles.snapshotEmptyIcon}>📸</div>
             <div className={styles.snapshotEmptyText}>
-              No snapshots yet. Click Save Snapshot Now to record your first checkpoint.
+              No historical checkpoints yet. Click below to record your very first portfolio baseline.
             </div>
+            <button
+              className={styles.snapshotEmptyBtn}
+              onClick={handleSaveSnapshot}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : '📸 Save First Checkpoint'}
+            </button>
           </div>
         ) : (
           <table className={styles.snapshotTable}>
@@ -1018,34 +1067,53 @@ export function SnapshotView() {
               </tr>
             </thead>
             <tbody>
-              {snapshots.map(s => (
-                <tr key={s.id}>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                    {new Date(s.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(parseFloat(s.totalValue))}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(parseFloat(s.totalInvested))}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalRealizedGain)), fontWeight: 600 }}>
-                    {s.totalRealizedGain != null ? fmtCr(parseFloat(s.totalRealizedGain)) : '-'}
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalGain)), fontWeight: 600 }}>
-                    {fmtCr(parseFloat(s.totalGain))}
-                  </td>
-                  <td>
-                    <span className={parseFloat(s.totalReturnPct) >= 0 ? 'chip chip-green' : 'chip chip-red'}>
-                      {fmtPct(parseFloat(s.totalReturnPct), true)}
-                    </span>
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>
-                    {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '-'}
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>
-                    {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : '-'}
-                  </td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '-'}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '-'}</td>
-                </tr>
-              ))}
+              {snapshots.map((s, idx) => {
+                const prev = snapshots[idx + 1];
+                const valDelta = prev ? parseFloat(s.totalValue) - parseFloat(prev.totalValue) : null;
+                const pctDelta = prev && parseFloat(prev.totalValue) > 0 ? (valDelta / parseFloat(prev.totalValue)) * 100 : null;
+
+                return (
+                  <tr key={s.id || idx}>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {new Date(s.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td>
+                      <div className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                        {fmtCr(parseFloat(s.totalValue))}
+                      </div>
+                      {valDelta !== null && (
+                        <div className={`${styles.snapshotDeltaBadge} mono-privacy`} style={{ color: colorPnl(valDelta) }}>
+                          <span>{valDelta >= 0 ? '▲' : '▼'}</span>
+                          <span>{valDelta >= 0 ? '+' : ''}{fmtCr(valDelta)}</span>
+                          {pctDelta !== null && (
+                            <span style={{ fontSize: 9, opacity: 0.85 }}>({pctDelta >= 0 ? '+' : ''}{fmt(pctDelta, 1)}%)</span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(parseFloat(s.totalInvested))}</td>
+                    <td className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalRealizedGain)), fontWeight: 600 }}>
+                      {s.totalRealizedGain != null ? fmtCr(parseFloat(s.totalRealizedGain)) : '—'}
+                    </td>
+                    <td className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', color: colorPnl(parseFloat(s.totalGain)), fontWeight: 600 }}>
+                      {fmtCr(parseFloat(s.totalGain))}
+                    </td>
+                    <td>
+                      <span className={parseFloat(s.totalReturnPct) >= 0 ? 'chip chip-green' : 'chip chip-red'}>
+                        {fmtPct(parseFloat(s.totalReturnPct), true)}
+                      </span>
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>
+                      {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '—'}
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>
+                      {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : '—'}
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '—'}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '—'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
