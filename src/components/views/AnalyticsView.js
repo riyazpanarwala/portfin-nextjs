@@ -1052,10 +1052,10 @@ function TradeBehavior({ trades, realizedSummary }) {
 
     // Holding duration brackets
     const durationBrackets = [
-      { label: '< 30 Days (Momentum / Swing)', lots: allLots.filter(l => (l.holdDays || 0) < 30), color: 'var(--yellow)' },
-      { label: '1 – 6 Months (Medium-Term)', lots: allLots.filter(l => (l.holdDays || 0) >= 30 && (l.holdDays || 0) < 180), color: 'var(--accent2)' },
-      { label: '6 – 12 Months (Pre-LTCG)', lots: allLots.filter(l => (l.holdDays || 0) >= 180 && (l.holdDays || 0) < 365), color: 'var(--purple)' },
-      { label: '> 1 Year (LTCG Compounding)', lots: allLots.filter(l => (l.holdDays || 0) >= 365), color: 'var(--green2)' },
+      { label: '< 30 Days', sub: 'Momentum / Swing', lots: allLots.filter(l => (l.holdDays || 0) < 30), color: 'var(--yellow)' },
+      { label: '1 – 6 Months', sub: 'Medium-Term', lots: allLots.filter(l => (l.holdDays || 0) >= 30 && (l.holdDays || 0) < 180), color: 'var(--accent2)' },
+      { label: '6 – 12 Months', sub: 'Pre-LTCG', lots: allLots.filter(l => (l.holdDays || 0) >= 180 && (l.holdDays || 0) < 365), color: 'var(--purple)' },
+      { label: '> 1 Year', sub: 'LTCG Compounding', lots: allLots.filter(l => (l.holdDays || 0) >= 365), color: 'var(--green2)' },
     ].map(b => ({
       ...b,
       count: b.lots.length,
@@ -1233,17 +1233,25 @@ function TradeBehavior({ trades, realizedSummary }) {
           <div className={styles.behaviorCardTitle}>Holding Duration Distribution (Realized Exits)</div>
           <div className={styles.durationBracketsContainer}>
             {analysis.durationBrackets.map((b, i) => (
-              <div key={i} className={styles.durationRow}>
-                <span className={styles.durationLabel}>{b.label}</span>
+              <div key={i} className={styles.durationItem}>
+                <div className={styles.durationItemHeader}>
+                  <div className={styles.durationItemTitle}>
+                    <span className={styles.durationTierDot} style={{ background: b.color }} />
+                    <span className={styles.durationLabel}>{b.label}</span>
+                    <span className={styles.durationSub}>({b.sub})</span>
+                  </div>
+                  <div className={styles.durationItemValues}>
+                    <span className={styles.durationPct} style={{ color: b.color }}>
+                      {fmt(b.pct, 0)}%
+                    </span>
+                    <span className="mono-privacy" style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text3)' }}>
+                      ({fmtCr(b.totalCapital)})
+                    </span>
+                  </div>
+                </div>
                 <div className={styles.durationTrack}>
                   <div className={styles.durationFill} style={{ width: `${b.pct}%`, background: b.color }} />
                 </div>
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700, color: b.color, textAlign: 'right' }}>
-                  {fmt(b.pct, 0)}%
-                </span>
-                <span className="mono-privacy" style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text3)', textAlign: 'right' }}>
-                  {fmtCr(b.totalCapital)}
-                </span>
               </div>
             ))}
           </div>
