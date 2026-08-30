@@ -14,14 +14,16 @@ import { usePortfolio } from '@/context/PortfolioContext';
 //   flip   – if true, renders value above label (AnalyticsView Return Metrics)
 //   valueSize – override font-size of value in px (default 18)
 
-export function StatCard({ label, value, sub, color, flip = false, valueSize = 18 }) {
+export function StatCard({ label, value, sub, color, flip = false, valueSize = 18, onClick, style = {}, className = '' }) {
   const labelEl = (
     <div style={{
       fontSize: 10, color: 'var(--text3)', fontWeight: 600,
       letterSpacing: '0.08em', textTransform: 'uppercase',
       marginBottom: flip ? 0 : 4, marginTop: flip ? 2 : 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     }}>
-      {label}
+      <span>{label}</span>
+      {onClick && <span style={{ fontSize: 9, opacity: 0.6 }}>↗</span>}
     </div>
   );
 
@@ -40,7 +42,18 @@ export function StatCard({ label, value, sub, color, flip = false, valueSize = 1
   );
 
   return (
-    <div className="metric-card">
+    <div
+      className={`metric-card ${onClick ? 'cursor-pointer' : ''} ${className}`.trim()}
+      onClick={onClick}
+      style={{
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'transform 0.15s ease, border-color 0.15s ease, background 0.15s ease',
+        ...style,
+      }}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && onClick(e) : undefined}
+    >
       {flip ? <>{valueEl}{labelEl}{subEl}</> : <>{labelEl}{valueEl}{subEl}</>}
     </div>
   );

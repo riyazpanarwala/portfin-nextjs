@@ -12,7 +12,7 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
 
   const sectorMap = useMemo(() => {
     const map = {};
-    holdings.forEach(h => {
+    holdings.filter(h => h.qty > 0 && h.marketValue > 0).forEach(h => {
       map[h.sector || 'Other'] = (map[h.sector || 'Other'] || 0) + h.marketValue;
     });
     return map;
@@ -20,19 +20,37 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
 
   const mfCatMap = useMemo(() => {
     const map = {};
-    mfHoldings.forEach(h => {
+    mfHoldings.filter(h => h.qty > 0 && h.marketValue > 0).forEach(h => {
       map[h.sector || 'Other'] = (map[h.sector || 'Other'] || 0) + h.marketValue;
     });
     return map;
   }, [mfHoldings]);
 
+  const stockSectorMap = useMemo(() => {
+    const map = {};
+    stHoldings.filter(h => h.qty > 0 && h.marketValue > 0).forEach(h => {
+      map[h.sector || 'Other'] = (map[h.sector || 'Other'] || 0) + h.marketValue;
+    });
+    return map;
+  }, [stHoldings]);
+
   const topMF = useMemo(() =>
-    [...mfHoldings].sort((a, b) => b.returnPct - a.returnPct).slice(0, 4),
+    [...mfHoldings.filter(h => h.qty > 0)].sort((a, b) => b.returnPct - a.returnPct).slice(0, 4),
+    [mfHoldings]
+  );
+
+  const topMFLaggards = useMemo(() =>
+    [...mfHoldings.filter(h => h.qty > 0)].sort((a, b) => a.returnPct - b.returnPct).slice(0, 4),
     [mfHoldings]
   );
 
   const topSt = useMemo(() =>
-    [...stHoldings].sort((a, b) => b.returnPct - a.returnPct).slice(0, 4),
+    [...stHoldings.filter(h => h.qty > 0)].sort((a, b) => b.returnPct - a.returnPct).slice(0, 4),
+    [stHoldings]
+  );
+
+  const topStLaggards = useMemo(() =>
+    [...stHoldings.filter(h => h.qty > 0)].sort((a, b) => a.returnPct - b.returnPct).slice(0, 4),
     [stHoldings]
   );
 
@@ -43,8 +61,6 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
     (stats.stockCount >= 5 ? 15 : stats.stockCount >= 2 ? 10 : 5) +
     (stats.mfPct >= 50 ? 10 : 5)
   )), [stats]);
-
-  const priceSymbols = useMemo(() => Object.keys(currentPrices), [currentPrices]);
 
   const donutData = useMemo(() => [
     { label: 'Mutual Funds', value: stats.mfValue, color: '#38bdf8', pct: stats.mfPct },
@@ -71,28 +87,31 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
       list.push({ type: 'warning', msg: `Direct equity is ${stats.stPct.toFixed(1)}% of portfolio — consider capping at 40%` });
     if (stats.mfCagr < 8 && stats.mfCagr > 0)
       list.push({ type: 'info', msg: 'MF CAGR below 8% — some funds may be underperforming' });
-    if (stats.fundCount + stats.stockCount < 3)
+    if (stats.fundCount + stats.stockCount < 3 && stats.totalValue > 0)
       list.push({ type: 'warning', msg: 'Very concentrated portfolio — consider adding more holdings' });
     if (realizedSummary.totalTax > 0)
       list.push({ type: 'warning', msg: `Estimated tax liability of ₹${(realizedSummary.totalTax / 100000).toFixed(2)}L on realized gains` });
     if (harvestingData.potentialTaxSavings > 0)
       list.push({ type: 'info', msg: `Tax Harvesting: Potential tax savings of ₹${Math.round(harvestingData.potentialTaxSavings).toLocaleString('en-IN')} available by setting off losses` });
-    list.push({ type: 'success', msg: `${stats.fundCount} MF + ${stats.stockCount} stocks across your portfolio` });
+    if (stats.fundCount > 0 || stats.stockCount > 0)
+      list.push({ type: 'success', msg: `${stats.fundCount} MF + ${stats.stockCount} stocks across your portfolio` });
     return list;
   }, [stats, realizedSummary, harvestingData]);
 
   const suggestedActions = useMemo(() => {
     const actions = [
-      { icon: '📈', action: 'Continue SIP',      detail: 'Maintain existing SIP amounts and review after 6 months' },
-      { icon: '⚖️', action: 'Review Allocation', detail: `MF at ${stats.mfPct.toFixed(1)}% — ideal range is 60–75%` },
-      { icon: '💰', action: 'LTCG Planning',     detail: 'Book equity gains below ₹1.25L annually to stay tax-free' },
-      { icon: '🔄', action: 'Rebalance Check',   detail: 'Use the Rebalancer tab to check if drift exceeds ±5%' },
+      { icon: '📈', action: 'Continue SIP',      detail: 'Maintain existing SIP amounts and record fresh trades', actionType: 'trade', targetView: 'trade' },
+      { icon: '⚖️', action: 'Review Allocation', detail: `MF at ${stats.mfPct.toFixed(1)}% — ideal range is 60–75%`, actionType: 'rebalance', targetView: 'rebalancer' },
+      { icon: '💰', action: 'LTCG Planning',     detail: 'Book equity gains below ₹1.25L annually to stay tax-free', actionType: 'analytics', targetView: 'analytics' },
+      { icon: '🔄', action: 'Rebalance Check',   detail: 'Use the Rebalancer tab to check if drift exceeds ±5%', actionType: 'rebalance', targetView: 'rebalancer' },
     ];
     if (harvestingData.candidateLots.length > 0) {
       actions.unshift({
         icon: '📉',
         action: 'Tax-Loss Harvest',
         detail: `Review ${harvestingData.candidateLots.length} lot(s) with ₹${Math.round(harvestingData.totalHarvestableLoss).toLocaleString('en-IN')} harvestable loss`,
+        actionType: 'harvest',
+        targetView: 'tax-harvest',
       });
     }
     return actions.slice(0, 4);
@@ -119,9 +138,21 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
   }, [holdings, stats.totalValue]);
 
   return {
-    sectorMap, mfCatMap, topMF, topSt, healthScore,
-    priceSymbols, donutData, combinedAllocationData, healthBars, hasSells,
-    alerts, suggestedActions, recentSells,
+    sectorMap,
+    mfCatMap,
+    stockSectorMap,
+    topMF,
+    topMFLaggards,
+    topSt,
+    topStLaggards,
+    healthScore,
+    donutData,
+    combinedAllocationData,
+    healthBars,
+    hasSells,
+    alerts,
+    suggestedActions,
+    recentSells,
     harvestingData,
   };
 }
