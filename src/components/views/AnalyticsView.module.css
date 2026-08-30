@@ -1226,6 +1226,8 @@
 
 .positionBarRow {
   display: grid;
+
+
   grid-template-columns: 120px 1fr 50px 70px;
   align-items: center;
   gap: 10px;
@@ -1283,70 +1285,6 @@
   padding: 4px 0;
   min-width: 0;
 }
-
-.cagrBarRow {
-  display: grid;
-  grid-template-columns: 90px 1fr 64px 60px 60px;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.15s;
-}
-
-.cagrBarRow:hover { background: rgba(255, 255, 255, 0.03); }
-
-.cagrBarSymbol {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.cagrBarTrackWrapper { position: relative; }
-
-.cagrBarTrack {
-  position: relative;
-  height: 10px;
-  background: var(--bg2);
-  border-radius: 5px;
-  overflow: visible;
-}
-
-.cagrBarFill {
-  height: 100%;
-  border-radius: 5px;
-  transition: width 0.5s ease;
-}
-
-/* Vertical line showing portfolio average */
-.cagrAvgMarker {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  background: var(--accent2);
-  border-radius: 1px;
-  transform: translateX(-50%);
-  box-shadow: 0 0 4px rgba(96, 165, 250, 0.6);
-}
-
-.cagrSummaryRow {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-top: 4px;
-}
-
-.cagrSummaryCard {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  transition: border-color 0.2s;
-}
-
-.cagrSummaryCard:hover { border-color: var(--border2); }
 
 /* ─────────────────────────────────────────────────────────────────────────────
    7. ROLLING XIRR / CAGR
@@ -1436,11 +1374,136 @@
   padding: 12px;
 }
 
+/* Disposition Effect Comparison */
+.dispositionGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.dispositionCard {
+  border-radius: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+}
+
+.dispositionTitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.dispositionValue {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.dispositionSub {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+/* Holding Duration Distribution */
+.durationBracketsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.durationRow {
+  display: grid;
+  grid-template-columns: 120px 1fr 45px 65px;
+  align-items: center;
+  gap: 10px;
+}
+
+.durationLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.durationTrack {
+  height: 8px;
+  background: var(--bg2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.durationFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* Ticket Size Grid */
+.ticketGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.ticketCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ticketBracketLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: 0.05em;
+}
+
+.ticketCountValue {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--accent2);
+}
+
+.ticketAmountSub {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: var(--font-mono);
+}
+
+/* Discipline Badges */
+.disciplineBadgesRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.disciplineBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    RESPONSIVE
    ───────────────────────────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {
+  .ticketGrid { grid-template-columns: 1fr 1fr; }
+  .dispositionGrid { grid-template-columns: 1fr; }
   .metricsGrid4 { grid-template-columns: repeat(2, 1fr); }
   .drawdownMetricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .drawdownAnalyzerHeader {

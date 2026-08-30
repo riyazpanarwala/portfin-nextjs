@@ -1037,10 +1037,31 @@ function TradeBehavior({ trades, realizedSummary }) {
     const buys  = trades.filter(t => t.tradeType === 'BUY');
     const sells = trades.filter(t => t.tradeType === 'SELL');
 
-    // Avg hold before selling from FIFO lot data
+    // Matched FIFO lots
     const allLots    = realizedSummary.sells.flatMap(s => s.matchedLots || []);
     const avgHoldDays = allLots.length > 0
       ? Math.round(allLots.reduce((s, l) => s + (l.holdDays || 0), 0) / allLots.length) : null;
+
+    // Winner vs Loser Holding Time (Disposition Effect)
+    const winLots = allLots.filter(l => (l.sellPrice || 0) >= (l.buyPrice || 0));
+    const lossLots = allLots.filter(l => (l.sellPrice || 0) < (l.buyPrice || 0));
+    const avgWinHoldDays = winLots.length > 0
+      ? Math.round(winLots.reduce((s, l) => s + (l.holdDays || 0), 0) / winLots.length) : null;
+    const avgLossHoldDays = lossLots.length > 0
+      ? Math.round(lossLots.reduce((s, l) => s + (l.holdDays || 0), 0) / lossLots.length) : null;
+
+    // Holding duration brackets
+    const durationBrackets = [
+      { label: '< 30 Days (Momentum / Swing)', lots: allLots.filter(l => (l.holdDays || 0) < 30), color: 'var(--yellow)' },
+      { label: '1 – 6 Months (Medium-Term)', lots: allLots.filter(l => (l.holdDays || 0) >= 30 && (l.holdDays || 0) < 180), color: 'var(--accent2)' },
+      { label: '6 – 12 Months (Pre-LTCG)', lots: allLots.filter(l => (l.holdDays || 0) >= 180 && (l.holdDays || 0) < 365), color: 'var(--purple)' },
+      { label: '> 1 Year (LTCG Compounding)', lots: allLots.filter(l => (l.holdDays || 0) >= 365), color: 'var(--green2)' },
+    ].map(b => ({
+      ...b,
+      count: b.lots.length,
+      pct: allLots.length > 0 ? (b.lots.length / allLots.length) * 100 : 0,
+      totalCapital: b.lots.reduce((s, l) => s + (l.qty || 0) * (l.buyPrice || 0), 0),
+    }));
 
     // Buys by symbol for gap analysis
     const buysBySymbol = {};
@@ -1065,9 +1086,27 @@ function TradeBehavior({ trades, realizedSummary }) {
     const dayKeys   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     trades.forEach(t => { const d = dayKeys[new Date(t.tradeDate).getDay()]; if (dayOfWeek[d] !== undefined) dayOfWeek[d]++; });
 
-    // Trade size stats
-    const tradeSizes   = trades.map(t => parseFloat(t.quantity) * parseFloat(t.price));
+    // Trade size stats & Ticket size buckets
+    const tradeSizes = trades.map(t => parseFloat(t.quantity) * parseFloat(t.price));
     const avgTradeSize = tradeSizes.reduce((s, v) => s + v, 0) / tradeSizes.length;
+
+    const ticketBuckets = [
+      { label: '< ₹10k', min: 0, max: 10000 },
+      { label: '₹10k – ₹50k', min: 10000, max: 50000 },
+      { label: '₹50k – ₹1L', min: 50000, max: 100000 },
+      { label: '> ₹1L', min: 100000, max: Infinity },
+    ].map(b => {
+      const matching = buys.filter(t => {
+        const val = parseFloat(t.quantity) * parseFloat(t.price);
+        return val >= b.min && val < b.max;
+      });
+      return {
+        label: b.label,
+        count: matching.length,
+        totalVal: matching.reduce((s, t) => s + parseFloat(t.quantity) * parseFloat(t.price), 0),
+        pct: buys.length > 0 ? (matching.length / buys.length) * 100 : 0,
+      };
+    });
 
     // Conviction adds (adding within 30d of initial buy)
     let convictionAdds = 0;
@@ -1078,12 +1117,38 @@ function TradeBehavior({ trades, realizedSummary }) {
       }
     });
 
+    // Trading Velocity & Timeline
+    const sortedAllDates = [...trades].map(t => t.tradeDate).sort();
+    const firstTradeDate = sortedAllDates[0] || '—';
+    const lastTradeDate  = sortedAllDates[sortedAllDates.length - 1] || '—';
+    const activeDays     = Math.max(1, Math.round((new Date(lastTradeDate) - new Date(firstTradeDate)) / 864e5));
+    const activeMonths   = Math.max(1, Math.round(activeDays / 30));
+    const monthlyPace    = (trades.length / activeMonths).toFixed(1);
+    const buySellRatio   = sells.length > 0 ? (buys.length / sells.length).toFixed(1) : `${buys.length}:0`;
+
+    // Monthly activity count map
+    const monthCounts = {};
+    trades.forEach(t => {
+      const m = (t.tradeDate || '').slice(0, 7);
+      if (m) monthCounts[m] = (monthCounts[m] || 0) + 1;
+    });
+    const peakMonthEntry = Object.entries(monthCounts).sort(([, a], [, b]) => b - a)[0];
+
+    const ltcgExitPct = allLots.length > 0
+      ? Math.round((allLots.filter(l => (l.holdDays || 0) >= 365).length / allLots.length) * 100)
+      : 0;
+
     return {
       totalTrades: trades.length, totalBuys: buys.length, totalSells: sells.length,
-      avgHoldDays, buyHighSellLow, buyHighSellLowValue, dayOfWeek,
+      avgHoldDays, avgWinHoldDays, avgLossHoldDays,
+      durationBrackets, ticketBuckets,
+      buyHighSellLow, buyHighSellLowValue, dayOfWeek,
       avgTradeSize, maxTradeSize: Math.max(...tradeSizes), minTradeSize: Math.min(...tradeSizes),
       convictionAdds, uniqueSymbols: Object.keys(buysBySymbol).length,
       avgBuysPerSymbol: buys.length / Math.max(1, Object.keys(buysBySymbol).length),
+      firstTradeDate, lastTradeDate, activeMonths, monthlyPace, buySellRatio,
+      peakMonth: peakMonthEntry ? `${peakMonthEntry[0]} (${peakMonthEntry[1]} trades)` : '—',
+      ltcgExitPct,
     };
   }, [trades, realizedSummary]);
 
@@ -1093,20 +1158,109 @@ function TradeBehavior({ trades, realizedSummary }) {
 
   return (
     <div className={styles.featureSection}>
-      <FeatureHeader icon="🔬" title="Trade Behavior Analysis" sub="Timing patterns, conviction signals, and behavioral biases from trade history" />
+      <FeatureHeader
+        icon="🔬"
+        title="Trade Behavior & Execution Discipline"
+        sub="Disposition effect detection, holding duration tiers, ticket sizing, and accumulation velocity"
+      />
 
-      <div className={styles.metricsGrid4}>
+      {/* Discipline Badges */}
+      <div className={styles.disciplineBadgesRow}>
+        <div className={styles.disciplineBadge} style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--green2)' }}>
+          <span>💎 Long-Term Patience:</span>
+          <span>{analysis.ltcgExitPct}% of realized exits held &gt; 1 year (LTCG)</span>
+        </div>
+        <div className={styles.disciplineBadge} style={{ background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.3)', color: 'var(--accent2)' }}>
+          <span>🎯 Conviction Dip-Buys:</span>
+          <span>{analysis.convictionAdds} follow-up adds within 30d</span>
+        </div>
+        <div className={styles.disciplineBadge} style={{ background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.3)', color: 'var(--teal)' }}>
+          <span>📈 Accumulation Ratio:</span>
+          <span>{analysis.buySellRatio} Buys per Sell</span>
+        </div>
+      </div>
+
+      {/* Hero Metrics */}
+      <div className={styles.metricsGrid}>
         <MetricCard label="Total Trades" value={analysis.totalTrades} color="var(--accent2)"
           sub={`${analysis.totalBuys} Buys · ${analysis.totalSells} Sells`} />
-        <MetricCard label="Avg Hold Time Before Selling"
+        <MetricCard label="Avg Hold Duration"
           value={analysis.avgHoldDays != null ? `${analysis.avgHoldDays}d` : '—'}
           color={analysis.avgHoldDays != null && analysis.avgHoldDays >= 365 ? 'var(--green2)' : 'var(--yellow)'}
-          sub={analysis.avgHoldDays != null && analysis.avgHoldDays >= 365 ? 'LTCG (>1yr hold) ✓' : 'Held < 1yr (20% tax)'} />
-        <MetricCard label="Sells At A Loss"
+          sub={analysis.avgHoldDays != null && analysis.avgHoldDays >= 365 ? 'Tax-Efficient (>1yr) ✓' : 'Held < 1yr (STCG 20%)'} />
+        <MetricCard label="Trading Velocity"
+          value={`~${analysis.monthlyPace}/mo`}
+          color="var(--teal)"
+          sub={`Over ${analysis.activeMonths} active months`} />
+        <MetricCard label="Loss Exits"
           value={`${analysis.buyHighSellLow} trades`}
           color={analysis.buyHighSellLow > 0 ? 'var(--red2)' : 'var(--green2)'}
-          sub={analysis.buyHighSellLow > 0 ? `${fmtCr(analysis.buyHighSellLowValue)} loss booked` : 'No loss exits ✓'} />
-        <MetricCard label="Follow-Up Buys" value={analysis.convictionAdds} color="var(--teal)" sub="Re-invested within 30 days" />
+          sub={analysis.buyHighSellLow > 0 ? `${fmtCr(analysis.buyHighSellLowValue)} booked loss` : 'No panic exits ✓'} />
+      </div>
+
+      {/* Winner vs Loser Holding Time (Disposition Effect) */}
+      {analysis.avgWinHoldDays !== null && (
+        <div className={styles.dispositionGrid}>
+          <div className={styles.dispositionCard} style={{ background: 'rgba(16,185,129,0.06)', borderColor: 'rgba(16,185,129,0.25)' }}>
+            <div className={styles.dispositionTitle} style={{ color: 'var(--green2)' }}>Avg Hold on Winning Trades</div>
+            <div className={`${styles.dispositionValue} mono-privacy`} style={{ color: 'var(--green2)' }}>
+              {analysis.avgWinHoldDays} Days
+            </div>
+            <div className={styles.dispositionSub}>
+              {analysis.avgLossHoldDays !== null && analysis.avgWinHoldDays >= analysis.avgLossHoldDays
+                ? '✓ Patient discipline: letting winners run longer than losers'
+                : 'Profitable positions closed'}
+            </div>
+          </div>
+
+          <div className={styles.dispositionCard} style={{ background: analysis.avgLossHoldDays !== null ? 'rgba(239,68,68,0.06)' : 'var(--bg3)', borderColor: analysis.avgLossHoldDays !== null ? 'rgba(239,68,68,0.25)' : 'var(--border)' }}>
+            <div className={styles.dispositionTitle} style={{ color: analysis.avgLossHoldDays !== null ? 'var(--red2)' : 'var(--text3)' }}>Avg Hold on Losing Trades</div>
+            <div className={`${styles.dispositionValue} mono-privacy`} style={{ color: analysis.avgLossHoldDays !== null ? 'var(--red2)' : 'var(--text3)' }}>
+              {analysis.avgLossHoldDays !== null ? `${analysis.avgLossHoldDays} Days` : 'No loss exits'}
+            </div>
+            <div className={styles.dispositionSub}>
+              {analysis.avgLossHoldDays !== null && analysis.avgLossHoldDays > (analysis.avgWinHoldDays || 0)
+                ? '⚠️ Disposition bias: holding losing positions longer than winners'
+                : 'Disciplined risk control'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Holding Duration Brackets & Ticket Size Distribution */}
+      <div className={styles.behaviorTwoCol} style={{ marginBottom: 14 }}>
+        <div className={styles.behaviorCard}>
+          <div className={styles.behaviorCardTitle}>Holding Duration Distribution (Realized Exits)</div>
+          <div className={styles.durationBracketsContainer}>
+            {analysis.durationBrackets.map((b, i) => (
+              <div key={i} className={styles.durationRow}>
+                <span className={styles.durationLabel}>{b.label}</span>
+                <div className={styles.durationTrack}>
+                  <div className={styles.durationFill} style={{ width: `${b.pct}%`, background: b.color }} />
+                </div>
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700, color: b.color, textAlign: 'right' }}>
+                  {fmt(b.pct, 0)}%
+                </span>
+                <span className="mono-privacy" style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text3)', textAlign: 'right' }}>
+                  {fmtCr(b.totalCapital)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className={styles.behaviorCard}>
+          <div className={styles.behaviorCardTitle}>Buy Order Ticket Size Distribution</div>
+          <div className={styles.ticketGrid}>
+            {analysis.ticketBuckets.map((t, i) => (
+              <div key={i} className={styles.ticketCard}>
+                <div className={styles.ticketBracketLabel}>{t.label}</div>
+                <div className={styles.ticketCountValue}>{t.count} <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 400 }}>({fmt(t.pct, 0)}%)</span></div>
+                <div className={`${styles.ticketAmountSub} mono-privacy`}>{fmtCr(t.totalVal)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className={styles.behaviorTwoCol}>
@@ -1129,18 +1283,18 @@ function TradeBehavior({ trades, realizedSummary }) {
         </div>
 
         <div className={styles.behaviorCard}>
-          <div className={styles.behaviorCardTitle}>Trade Size Profile</div>
+          <div className={styles.behaviorCardTitle}>Execution Sizing &amp; Velocity Profile</div>
           <div className={styles.tradeSizeGrid}>
             {[
               { label: 'AVG TRADE',    value: fmtCr(analysis.avgTradeSize), color: 'var(--text)' },
               { label: 'LARGEST',      value: fmtCr(analysis.maxTradeSize),  color: 'var(--green2)' },
-              { label: 'SMALLEST',     value: fmtCr(analysis.minTradeSize),  color: 'var(--text2)' },
-              { label: 'INVESTMENTS',  value: analysis.uniqueSymbols,        color: 'var(--accent2)',
+              { label: 'PEAK MONTH',   value: analysis.peakMonth,            color: 'var(--accent2)' },
+              { label: 'INVESTMENTS',  value: analysis.uniqueSymbols,        color: 'var(--teal)',
                 sub: `~${fmt(analysis.avgBuysPerSymbol, 1)} buys/asset` },
             ].map((m, i) => (
               <div key={i} className={styles.tradeSizeItem}>
                 <div style={{ fontSize: 9, color: 'var(--text3)', fontWeight: 700, letterSpacing: '0.07em', marginBottom: 4 }}>{m.label}</div>
-                <div className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 16, color: m.color }}>{m.value}</div>
+                <div className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 14, color: m.color }}>{m.value}</div>
                 {m.sub && <div style={{ fontSize: 10, color: 'var(--text3)' }}>{m.sub}</div>}
               </div>
             ))}
