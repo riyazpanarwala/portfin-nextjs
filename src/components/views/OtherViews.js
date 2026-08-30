@@ -652,11 +652,11 @@ function TimelineTooltip({ active, payload, label }) {
 // â”€â”€ WaterfallView â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function WaterfallView() {
-  const { stats, holdings, setActiveView } = usePortfolio();
+  const { stats, holdings, trades = [], realizedSummary, setActiveView } = usePortfolio();
 
   if (!holdings.length) return (
     <EmptyState
-      icon="ðŸ’§"
+      icon="🌊"
       label="No holdings yet"
       sub="Add trades to see your wealth waterfall."
       cta="+ Add Trade"
@@ -664,22 +664,36 @@ export function WaterfallView() {
     />
   );
 
+  const earliestDate = trades.length
+    ? [...trades].map(t => t.tradeDate).filter(Boolean).sort()[0]
+    : null;
+  const sinceText = earliestDate
+    ? ` · Since ${new Date(earliestDate).toLocaleString('en-US', { month: 'short', year: 'numeric' })}`
+    : '';
+
   const mfGain = stats.mfValue - stats.mfInvested;
   const stGain = stats.stValue - stats.stInvested;
+  const realizedGain = realizedSummary?.totalRealized || 0;
   const totalCapital = stats.mfInvested + stats.stInvested;
-  const totalGains = mfGain + stGain;
-  const gainsVsCapital = totalCapital > 0 ? totalGains / totalCapital * 100 : 0;
+  const totalGains = mfGain + stGain + realizedGain;
+  const gainsVsCapital = totalCapital > 0 ? (totalGains / totalCapital) * 100 : 0;
   const wealthMultiplier = totalCapital > 0 ? stats.totalValue / totalCapital : 0;
-  const marketReturnShare = stats.totalValue > 0 ? totalGains / stats.totalValue * 100 : 0;
+  const marketReturnShare = stats.totalValue > 0 ? (totalGains / stats.totalValue) * 100 : 0;
   const capitalShare = Math.max(0, 100 - marketReturnShare);
-  const mfReturnOnCapital = stats.mfInvested > 0 ? mfGain / stats.mfInvested * 100 : 0;
-  const stReturnOnCapital = stats.stInvested > 0 ? stGain / stats.stInvested * 100 : 0;
+  const mfReturnOnCapital = stats.mfInvested > 0 ? (mfGain / stats.mfInvested) * 100 : 0;
+  const stReturnOnCapital = stats.stInvested > 0 ? (stGain / stats.stInvested) * 100 : 0;
 
   const steps = [
-    { label: 'MF Invested', value: stats.mfInvested, color: '#60a5fa', pct: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0 },
-    { label: 'Stocks Bought', value: stats.stInvested, color: '#a78bfa', pct: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0 },
-    { label: 'MF Gains', value: mfGain, color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0 },
-    { label: 'Stock P&L', value: stGain, color: stGain >= 0 ? '#5fd66f' : 'var(--red2)', pct: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0 },
+    { label: 'MF Invested', value: stats.mfInvested, color: '#60a5fa', pct: stats.totalValue > 0 ? (stats.mfInvested / stats.totalValue) * 100 : 0 },
+    { label: 'Stocks Bought', value: stats.stInvested, color: '#a78bfa', pct: stats.totalValue > 0 ? (stats.stInvested / stats.totalValue) * 100 : 0 },
+    { label: 'MF Gains', value: mfGain, color: mfGain >= 0 ? 'var(--green2)' : 'var(--red2)', pct: stats.totalValue > 0 ? (mfGain / stats.totalValue) * 100 : 0 },
+    { label: 'Stock P&L', value: stGain, color: stGain >= 0 ? '#5fd66f' : 'var(--red2)', pct: stats.totalValue > 0 ? (stGain / stats.totalValue) * 100 : 0 },
+    ...(realizedGain !== 0 ? [{
+      label: 'Realized Gains',
+      value: realizedGain,
+      color: realizedGain >= 0 ? '#10b981' : '#ef4444',
+      pct: stats.totalValue > 0 ? (realizedGain / stats.totalValue) * 100 : 0,
+    }] : []),
     { label: 'Current Value', value: stats.totalValue, color: '#d6a72f', isTotal: true, pct: 100 },
   ];
 
@@ -710,22 +724,22 @@ export function WaterfallView() {
     { label: 'Capital Deployed', value: fmtCr(totalCapital), sub: 'Total invested (MF + Stocks)', tone: styles.waterfallToneBlue },
     { label: 'Total Gains', value: fmtCr(totalGains), sub: fmtPct(gainsVsCapital, true), tone: styles.waterfallToneGreen },
     { label: 'Current Value', value: fmtCr(stats.totalValue), sub: 'Portfolio today', tone: styles.waterfallToneGold },
-    { label: 'Wealth Multiplier', value: `${fmt(wealthMultiplier, 2)}x`, sub: `Rs 1 invested -> Rs ${fmt(wealthMultiplier, 2)}`, tone: styles.waterfallTonePurple },
+    { label: 'Wealth Multiplier', value: `${fmt(wealthMultiplier, 2)}x`, sub: `₹1 invested → ₹${fmt(wealthMultiplier, 2)}`, tone: styles.waterfallTonePurple },
     { label: 'Gains vs Capital', value: fmtPct(marketReturnShare, false), sub: 'Wealth from market returns', tone: styles.waterfallToneSlate },
   ];
 
   const contributionCards = [
-    { label: 'MF Contribution', value: stats.totalValue > 0 ? stats.mfInvested / stats.totalValue * 100 : 0, color: '#60a5fa' },
-    { label: 'Stock Contribution', value: stats.totalValue > 0 ? stats.stInvested / stats.totalValue * 100 : 0, color: '#a78bfa' },
-    { label: 'MF Gains Contribution', value: stats.totalValue > 0 ? mfGain / stats.totalValue * 100 : 0, color: '#43d357' },
-    { label: 'Stock Gain Contribution', value: stats.totalValue > 0 ? stGain / stats.totalValue * 100 : 0, color: stGain >= 0 ? '#5fd66f' : 'var(--red2)' },
+    { label: 'MF Capital', value: stats.totalValue > 0 ? (stats.mfInvested / stats.totalValue) * 100 : 0, color: '#60a5fa' },
+    { label: 'Stock Capital', value: stats.totalValue > 0 ? (stats.stInvested / stats.totalValue) * 100 : 0, color: '#a78bfa' },
+    { label: 'MF Unrealized', value: stats.totalValue > 0 ? (mfGain / stats.totalValue) * 100 : 0, color: '#43d357' },
+    { label: 'Stock Unrealized', value: stats.totalValue > 0 ? (stGain / stats.totalValue) * 100 : 0, color: stGain >= 0 ? '#5fd66f' : 'var(--red2)' },
   ];
 
   return (
     <div className={`fade-up ${styles.waterfallWrapper}`}>
       <div className={styles.waterfallHero}>
         <div>
-          <p>{stats.fundCount} mutual funds · {stats.stockCount} equity stocks · Since Aug 2017</p>
+          <p>{stats.fundCount} mutual funds · {stats.stockCount} equity stocks{sinceText}</p>
         </div>
         <div className={styles.waterfallHeroBadges}>
           <span>MF {fmtPct(mfReturnOnCapital, true)}</span>
@@ -738,7 +752,7 @@ export function WaterfallView() {
         {metricCards.map(card => (
           <div key={card.label} className={`glass ${styles.waterfallMetricCard} ${card.tone}`}>
             <div className={styles.waterfallMetricLabel}>{card.label}</div>
-            <div className={styles.waterfallMetricValue}>{card.value}</div>
+            <div className={`${styles.waterfallMetricValue} mono-privacy`}>{card.value}</div>
             <div className={styles.waterfallMetricSub}>{card.sub}</div>
           </div>
         ))}
@@ -760,24 +774,27 @@ export function WaterfallView() {
 
       <section className={`glass ${styles.waterfallChartPanel}`}>
         <div className={styles.waterfallPanelHeader}>
-          <div className={styles.waterfallPanelTitle}>Wealth waterfall - where your money came from</div>
-          <div className={styles.waterfallPanelSub}>Starting capital to SIPs added to MF gains to Stock gains to Current portfolio value</div>
+          <div className={styles.waterfallPanelTitle}>Wealth Waterfall — Capital Flow &amp; Value Creation</div>
+          <div className={styles.waterfallPanelSub}>Invested capital → MF &amp; Stock gains → Realized profits → Current portfolio value</div>
         </div>
         <div className={styles.waterfallCanvas}>
           <div className={styles.waterfallYAxis}>
             {[1, 0.75, 0.5, 0.25, 0].map(mark => (
-              <div key={mark}>{fmtCr(maxChartValue * mark)}</div>
+              <div key={mark} className="mono-privacy">{fmtCr(maxChartValue * mark)}</div>
             ))}
           </div>
-          <div className={styles.waterfallPlot}>
+          <div
+            className={styles.waterfallPlot}
+            style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(104px, 1fr))` }}
+          >
             {[0.25, 0.5, 0.75, 1].map(line => (
               <span key={line} className={styles.waterfallGridLine} style={{ bottom: `${line * 100}%` }} />
             ))}
-            {runningSteps.map(step => {
-              const bottom = step.isTotal ? 0 : step.start / maxChartValue * 100;
-              const height = Math.max(0.8, step.height / maxChartValue * 100);
+            {runningSteps.map((step, idx) => {
+              const bottom = step.isTotal ? 0 : (step.start / maxChartValue) * 100;
+              const height = Math.max(0.8, (step.height / maxChartValue) * 100);
               return (
-                <div key={step.label} className={styles.waterfallBarSlot}>
+                <div key={step.label || idx} className={styles.waterfallBarSlot}>
                   <div
                     className={`${styles.waterfallBar} ${step.isTotal ? styles.waterfallBarTotal : ''}`}
                     style={{
@@ -786,7 +803,7 @@ export function WaterfallView() {
                       height: `${height}%`,
                     }}
                   >
-                    <span className={styles.waterfallBarValue}>{fmtCr(step.value)}</span>
+                    <span className={`${styles.waterfallBarValue} mono-privacy`}>{fmtCr(step.value)}</span>
                   </div>
                   <div className={styles.waterfallBarLabel}>{step.label}</div>
                 </div>
@@ -797,35 +814,35 @@ export function WaterfallView() {
       </section>
 
       <div className={styles.waterfallLowerGrid}>
-      <div className={`glass ${styles.waterfallBreakdownPanel}`}>
-        <div className={styles.waterfallBreakdownHeader}>
-          <span className={styles.waterfallBreakdownTitle}>Waterfall breakdown</span>
-        </div>
-        <div className={styles.waterfallBreakdownRows}>
-          {steps.map(s => (
-            <div key={s.label} className={styles.waterfallBreakdownRow}>
-              <div className={styles.colorDotCell}>
-                <div className={styles.colorDot} style={{ background: s.color }} />
-                {s.label}
+        <div className={`glass ${styles.waterfallBreakdownPanel}`}>
+          <div className={styles.waterfallBreakdownHeader}>
+            <span className={styles.waterfallBreakdownTitle}>Waterfall Breakdown</span>
+          </div>
+          <div className={styles.waterfallBreakdownRows}>
+            {steps.map(s => (
+              <div key={s.label} className={styles.waterfallBreakdownRow}>
+                <div className={styles.colorDotCell}>
+                  <div className={styles.colorDot} style={{ background: s.color }} />
+                  {s.label}
+                </div>
+                <strong className="mono-privacy" style={{ color: s.color }}>{fmtCr(s.value)}</strong>
+                <span>{fmt(s.pct ?? 0, 1)}%</span>
               </div>
-              <strong style={{ color: s.color }}>{fmtCr(s.value)}</strong>
-              <span>{fmt(s.pct ?? 0, 1)}%</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className={`glass ${styles.waterfallInsightPanel}`}>
-        <div className={styles.waterfallBreakdownHeader}>
-          <span className={styles.waterfallBreakdownTitle}>Wealth composition insight</span>
+        <div className={`glass ${styles.waterfallInsightPanel}`}>
+          <div className={styles.waterfallBreakdownHeader}>
+            <span className={styles.waterfallBreakdownTitle}>Wealth Composition Insight</span>
+          </div>
+          <div className={styles.waterfallInsightRows}>
+            <div><span>▰</span><strong>{fmt(marketReturnShare, 1)}%</strong> of your wealth comes from market returns — genuine compounding power.</div>
+            <div><span>●</span><strong>{fmt(capitalShare, 1)}%</strong> is from your deployed savings capital — the disciplined foundation.</div>
+            <div><span>◎</span>Mutual Funds generated <strong>{fmtPct(mfReturnOnCapital, true)}</strong> on invested capital of <span className="mono-privacy">{fmtCr(stats.mfInvested)}</span>.</div>
+            <div><span>◐</span>Equity stocks generated <strong>{fmtPct(stReturnOnCapital, true)}</strong> on invested capital of <span className="mono-privacy">{fmtCr(stats.stInvested)}</span>.</div>
+          </div>
         </div>
-        <div className={styles.waterfallInsightRows}>
-          <div><span>▰</span><strong>{fmt(marketReturnShare, 1)}%</strong> of your wealth comes from market returns - your portfolio is genuinely compounding.</div>
-          <div><span>●</span><strong>{fmt(capitalShare, 1)}%</strong> is from your invested capital - the savings discipline is the foundation.</div>
-          <div><span>◎</span>Mutual Funds returned <strong>{fmtPct(mfReturnOnCapital, true)}</strong> on invested capital of {fmtCr(stats.mfInvested)}.</div>
-          <div><span>◐</span>Equity stocks returned <strong>{fmtPct(stReturnOnCapital, true)}</strong> on invested capital of {fmtCr(stats.stInvested)}.</div>
-        </div>
-      </div>
       </div>
     </div>
   );
