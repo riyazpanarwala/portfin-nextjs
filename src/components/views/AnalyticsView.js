@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmtPct, fmt, colorPnl, sectorColor } from '@/lib/store';
 import { BarChart, HBar } from '@/components/charts/Charts';
@@ -381,6 +381,9 @@ function DrawdownAnalysis({ snapshots, onTakeSnapshot }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SIPPerformance({ trades, holdings }) {
+  const [assetFilter, setAssetFilter] = useState('ALL'); // ALL | MF | STOCK
+  const [expandedSymbol, setExpandedSymbol] = useState(null);
+
   const sipData = useMemo(() => {
     const bySymbol = {};
     trades.filter(t => t.tradeType === 'BUY').forEach(t => {
@@ -396,60 +399,138 @@ function SIPPerformance({ trades, holdings }) {
       for (let i = 1; i < sorted.length; i++)
         totalGap += (new Date(sorted[i].tradeDate) - new Date(sorted[i - 1].tradeDate)) / 864e5;
       const avgGap = totalGap / (sorted.length - 1);
-      if (avgGap < 20) continue;
 
-      const holding = holdings.find(h => h.symbol === symbol);
+      const holding = holdings.find(h => (h.symbol || '').toUpperCase() === symbol.toUpperCase());
       if (!holding) continue;
 
-      const totalInvested = sorted.reduce((s, t) => s + parseFloat(t.quantity) * parseFloat(t.price), 0);
-      const totalUnits    = sorted.reduce((s, t) => s + parseFloat(t.quantity), 0);
+      let runningUnits = 0;
+      let runningInvested = 0;
+      const installments = sorted.map(t => {
+        const qty = parseFloat(t.quantity) || 0;
+        const price = parseFloat(t.price) || 0;
+        const amt = qty * price;
+        runningUnits += qty;
+        runningInvested += amt;
+        const avgCost = runningUnits > 0 ? runningInvested / runningUnits : price;
+        return {
+          date: t.tradeDate,
+          qty,
+          price,
+          amt,
+          runningUnits,
+          runningInvested,
+          avgCost,
+        };
+      });
+
+      const totalInvested = runningInvested;
+      const totalUnits    = runningUnits;
       const currentValue  = totalUnits * holding.cmp;
-      const firstPrice    = parseFloat(sorted[0].price);
+      const firstPrice    = parseFloat(sorted[0].price) || 1;
       const lumpSumUnits  = totalInvested / firstPrice;
       const lumpSumValue  = lumpSumUnits * holding.cmp;
       const sipReturn     = totalInvested > 0 ? ((currentValue - totalInvested) / totalInvested) * 100 : 0;
       const lumpSumReturn = totalInvested > 0 ? ((lumpSumValue - totalInvested) / totalInvested) * 100 : 0;
-      const holdDays      = Math.round((new Date() - new Date(sorted[0].tradeDate)) / 864e5);
+
+      const cadenceLabel = avgGap <= 10 ? 'Weekly (~7d)'
+        : avgGap <= 18 ? 'Bi-Weekly (~14d)'
+        : avgGap <= 45 ? 'Monthly (~30d)'
+        : `Staggered (~${Math.round(avgGap)}d)`;
 
       results.push({
-        symbol, name: holding.name, assetType: holding.assetType,
-        tradeCount: sorted.length, avgGap: Math.round(avgGap),
-        totalInvested, currentValue, sipReturn, lumpSumReturn,
+        symbol,
+        name: holding.name || symbol,
+        assetType: holding.assetType || 'STOCK',
+        tradeCount: sorted.length,
+        avgGap: Math.round(avgGap),
+        cadenceLabel,
+        totalInvested,
+        currentValue,
+        sipReturn,
+        lumpSumReturn,
         sipAdvantage: sipReturn - lumpSumReturn,
-        firstTrade: sorted[0].tradeDate, lastTrade: sorted[sorted.length - 1].tradeDate,
-        avgMonthlyAmount: totalInvested / (holdDays / 30),
+        firstTrade: sorted[0].tradeDate,
+        lastTrade: sorted[sorted.length - 1].tradeDate,
+        avgInstallment: totalInvested / sorted.length,
+        avgCostBasis: totalUnits > 0 ? totalInvested / totalUnits : 0,
+        cmp: holding.cmp,
+        installments,
       });
     }
     return results.sort((a, b) => b.totalInvested - a.totalInvested);
   }, [trades, holdings]);
 
-  if (!sipData.length) return <EmptyFeature icon="📆" title="No SIP patterns detected" sub="3+ buy trades spaced 20+ days apart on the same instrument qualify as SIP" />;
+  const filteredData = useMemo(() => {
+    if (assetFilter === 'MF') return sipData.filter(d => d.assetType === 'MF');
+    if (assetFilter === 'STOCK') return sipData.filter(d => d.assetType === 'STOCK');
+    return sipData;
+  }, [sipData, assetFilter]);
 
-  const totalSIPInvested = sipData.reduce((s, d) => s + d.totalInvested, 0);
-  const totalSIPValue    = sipData.reduce((s, d) => s + d.currentValue, 0);
-  const totalLumpSumValue = sipData.reduce((s, d) => s + (d.totalInvested * (1 + d.lumpSumReturn / 100)), 0);
+  if (!sipData.length) {
+    return (
+      <EmptyFeature
+        icon="📆"
+        title="No SIP patterns detected"
+        sub="3+ buy trades on the same instrument qualify as systematic recurring investments"
+      />
+    );
+  }
+
+  const totalSIPInvested  = filteredData.reduce((s, d) => s + d.totalInvested, 0);
+  const totalSIPValue     = filteredData.reduce((s, d) => s + d.currentValue, 0);
+  const totalLumpSumValue = filteredData.reduce((s, d) => s + (d.totalInvested * (1 + d.lumpSumReturn / 100)), 0);
   const totalRupeeAlpha   = totalSIPValue - totalLumpSumValue;
-  const sipWinners        = sipData.filter(d => d.sipAdvantage > 0).length;
+  const sipWinners        = filteredData.filter(d => d.sipAdvantage > 0).length;
 
   return (
     <div className={styles.featureSection}>
-      <FeatureHeader icon="📆" title="SIP Performance Tracker" sub="Recurring investment detection — SIP vs lump-sum comparison" />
+      <FeatureHeader
+        icon="📆"
+        title="SIP Performance Tracker"
+        sub="Recurring investment cadence detection & rupee-cost averaging vs Day-1 lump-sum comparison"
+      />
+
+      {/* Filter Controls */}
+      <div className={styles.cagrControlsBar}>
+        <div className={styles.cagrFilterGroup}>
+          <span className={styles.cagrGroupLabel}>ASSET FILTER</span>
+          {[
+            { key: 'ALL', label: `All Instruments (${sipData.length})` },
+            { key: 'MF', label: `Mutual Funds (${sipData.filter(d => d.assetType === 'MF').length})` },
+            { key: 'STOCK', label: `Stocks (${sipData.filter(d => d.assetType === 'STOCK').length})` },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => setAssetFilter(f.key)}
+              className={`${styles.cagrFilterBtn} ${assetFilter === f.key ? styles.cagrFilterBtnActive : ''}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className={styles.metricsGrid}>
-        <MetricCard label="SIP Instruments" value={sipData.length} color="var(--accent2)" sub="Auto-detected" />
-        <MetricCard label="Total SIP Capital" value={fmtCr(totalSIPInvested)} color="var(--text)" sub="Across all SIPs" />
-        <MetricCard label="Current SIP Value" value={fmtCr(totalSIPValue)}
-          color={colorPnl(totalSIPValue - totalSIPInvested)} sub={`${fmtCr(totalSIPValue - totalSIPInvested)} gain`} />
+        <MetricCard label="SIP Plans Tracked" value={filteredData.length} color="var(--accent2)" sub="Auto-detected" />
+        <MetricCard label="Total SIP Capital" value={fmtCr(totalSIPInvested)} color="var(--text)" sub="Across active plans" />
+        <MetricCard
+          label="Current SIP Value"
+          value={fmtCr(totalSIPValue)}
+          color={colorPnl(totalSIPValue - totalSIPInvested)}
+          sub={`${fmtCr(totalSIPValue - totalSIPInvested)} gain`}
+        />
         <MetricCard
           label="Total SIP Alpha (₹)"
           value={`${totalRupeeAlpha >= 0 ? '+' : ''}${fmtCr(totalRupeeAlpha)}`}
           color={totalRupeeAlpha >= 0 ? 'var(--green2)' : 'var(--red2)'}
-          sub="vs Day-1 Lump Sum"
+          sub="Rupee outperformance"
         />
-        <MetricCard label="SIP Beat Lump-sum"
-          value={`${sipWinners}/${sipData.length}`}
-          color={sipWinners >= sipData.length / 2 ? 'var(--green2)' : 'var(--yellow)'}
-          sub="instruments" />
+        <MetricCard
+          label="SIP Beat Lump-sum"
+          value={`${sipWinners}/${filteredData.length}`}
+          color={sipWinners >= filteredData.length / 2 ? 'var(--green2)' : 'var(--yellow)'}
+          sub="plans ahead of lump-sum"
+        />
       </div>
 
       <div className={styles.sipTableWrapper}>
@@ -457,51 +538,114 @@ function SIPPerformance({ trades, holdings }) {
           <thead>
             <tr>
               <th>Instrument</th>
+              <th style={{ textAlign: 'center' }}>Cadence</th>
               <th style={{ textAlign: 'right' }}>Installments</th>
-              <th style={{ textAlign: 'right' }}>Avg Gap</th>
               <th style={{ textAlign: 'right' }}>Invested</th>
               <th style={{ textAlign: 'right' }}>Current Value</th>
               <th style={{ textAlign: 'right' }}>SIP Return</th>
-              <th style={{ textAlign: 'right' }}>Lump-sum Return</th>
+              <th style={{ textAlign: 'right' }}>Lump-sum</th>
               <th style={{ textAlign: 'right' }}>SIP Advantage</th>
-              <th style={{ textAlign: 'right' }}>Avg ₹/Month</th>
+              <th style={{ textAlign: 'right' }}>Avg / Installment</th>
             </tr>
           </thead>
           <tbody>
-            {sipData.map((d, i) => (
-              <tr key={i}>
-                <td>
-                  <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent2)' }}>{d.symbol}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)' }}>{d.firstTrade} → {d.lastTrade}</div>
-                </td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{d.tradeCount}×</td>
-                <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{d.avgGap}d</td>
-                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{fmtCr(d.totalInvested)}</td>
-                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(d.currentValue)}</td>
-                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.sipReturn), fontWeight: 700 }}>
-                  {d.sipReturn >= 0 ? '+' : ''}{fmt(d.sipReturn, 1)}%
-                </td>
-                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.lumpSumReturn) }}>
-                  {d.lumpSumReturn >= 0 ? '+' : ''}{fmt(d.lumpSumReturn, 1)}%
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <Badge
-                    color={d.sipAdvantage > 0 ? 'var(--green2)' : 'var(--red2)'}
-                    bg={d.sipAdvantage > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)'}
-                    border={d.sipAdvantage > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}>
-                    {d.sipAdvantage > 0 ? '+' : ''}{fmt(d.sipAdvantage, 1)}%
-                  </Badge>
-                </td>
-                <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{fmtCr(d.avgMonthlyAmount)}</td>
-              </tr>
-            ))}
+            {filteredData.map((d, i) => {
+              const isExpanded = expandedSymbol === d.symbol;
+              return (
+                <React.Fragment key={d.symbol || i}>
+                  <tr
+                    onClick={() => setExpandedSymbol(isExpanded ? null : d.symbol)}
+                    className={`${styles.sipRowExpandable} ${isExpanded ? styles.sipRowExpanded : ''}`}
+                    title="Click to view installment breakdown"
+                  >
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 10, color: 'var(--text3)' }}>{isExpanded ? '▼' : '▶'}</span>
+                        <div>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent2)' }}>{d.symbol}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text3)' }}>{d.firstTrade} → {d.lastTrade}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className={styles.sipCadenceBadge}>{d.cadenceLabel}</span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{d.tradeCount}×</td>
+                    <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)' }}>{fmtCr(d.totalInvested)}</td>
+                    <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmtCr(d.currentValue)}</td>
+                    <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.sipReturn), fontWeight: 700 }}>
+                      {d.sipReturn >= 0 ? '+' : ''}{fmt(d.sipReturn, 1)}%
+                    </td>
+                    <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: colorPnl(d.lumpSumReturn) }}>
+                      {d.lumpSumReturn >= 0 ? '+' : ''}{fmt(d.lumpSumReturn, 1)}%
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <Badge
+                        color={d.sipAdvantage > 0 ? 'var(--green2)' : 'var(--red2)'}
+                        bg={d.sipAdvantage > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.12)'}
+                        border={d.sipAdvantage > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}>
+                        {d.sipAdvantage > 0 ? '+' : ''}{fmt(d.sipAdvantage, 1)}%
+                      </Badge>
+                    </td>
+                    <td className="mono-privacy" style={{ textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                      {fmtCr(d.avgInstallment)}
+                    </td>
+                  </tr>
+
+                  {/* Expanded Installment History Sub-Panel */}
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={9} style={{ padding: 0 }}>
+                        <div className={styles.sipInstallmentPanel}>
+                          <div className={styles.sipInstallmentTitle}>
+                            <span>📊 Installment Breakdown &amp; Cost Averaging Timeline — {d.name}</span>
+                            <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 400 }}>
+                              (Avg Buy: ₹{fmt(d.avgCostBasis, 2)} · CMP: ₹{fmt(d.cmp, 2)})
+                            </span>
+                          </div>
+                          <table className={styles.sipInstallmentTable}>
+                            <thead>
+                              <tr>
+                                <th># Date</th>
+                                <th>Units Bought</th>
+                                <th>Buy Price / NAV</th>
+                                <th>Installment (₹)</th>
+                                <th>Cumulative Units</th>
+                                <th>Running Avg Cost</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {d.installments.map((inst, idx) => (
+                                <tr key={idx}>
+                                  <td style={{ color: 'var(--text2)' }}>{idx + 1}. {inst.date}</td>
+                                  <td className="mono-privacy">{fmt(inst.qty, 3)}</td>
+                                  <td className="mono-privacy">₹{fmt(inst.price, 2)}</td>
+                                  <td className="mono-privacy" style={{ fontWeight: 600 }}>{fmtCr(inst.amt)}</td>
+                                  <td className="mono-privacy" style={{ color: 'var(--accent2)' }}>{fmt(inst.runningUnits, 3)}</td>
+                                  <td className="mono-privacy" style={{ color: inst.avgCost <= d.cmp ? 'var(--green2)' : 'var(--yellow)' }}>
+                                    ₹{fmt(inst.avgCost, 2)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       <InfoBox borderColor="rgba(59,130,246,0.25)" bg="rgba(59,130,246,0.06)">
         <span style={{ color: 'var(--accent2)' }}>ℹ</span>
-        <span> <strong>SIP Advantage</strong> = SIP return% − Lump-sum return% (same total capital invested at day-1 price). Positive means your staggered buying outperformed going all-in on day one.</span>
+        <span>
+          <strong>SIP Advantage</strong> compares your actual staggered buying returns against deploying 100% of the capital on Day 1 at the initial price.
+          Click any row to expand its full installment timeline and see Rupee Cost Averaging in action.
+        </span>
       </InfoBox>
     </div>
   );

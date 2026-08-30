@@ -1070,15 +1070,107 @@
   overflow-x: auto;
   border-radius: 10px;
   border: 1px solid var(--border);
+  margin-bottom: 14px;
 }
 
 .sipTableWrapper table {
-  min-width: 800px;
+  min-width: 860px;
+  width: 100%;
+  border-collapse: collapse;
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   3. CONCENTRATION RISK
-   ───────────────────────────────────────────────────────────────────────────── */
+.sipRowExpandable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sipRowExpandable:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sipRowExpanded {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.sipCadenceBadge {
+  display: inline-block;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent2);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  margin-top: 2px;
+}
+
+.sipInstallmentPanel {
+  padding: 14px 18px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+
+.sipInstallmentTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sipInstallmentTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.sipInstallmentTable th {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: 0.06em;
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.sipInstallmentTable th:first-child {
+  text-align: left;
+}
+
+.sipInstallmentTable td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.sipInstallmentTable td:first-child {
+  text-align: left;
+}
+
+.sipDualBar {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 80px;
+}
+
+.sipDualBarTrack {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.sipDualBarFill {
+  height: 100%;
+  border-radius: 2px;
+}
 
 .concentrationLayout {
   display: grid;
