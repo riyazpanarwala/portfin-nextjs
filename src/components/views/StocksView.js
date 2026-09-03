@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt } from '@/lib/store';
 import { AllocationDonutChart } from '@/components/charts/Charts';
+import FundamentalsPanel from '@/components/views/FundamentalsPanel';
 import {
   holdStr,
   PriceCell, HoldingDetailPanel,
@@ -20,6 +22,7 @@ const COL = '20px 1fr 120px 32px 72px 110px 80px 90px 80px 80px 88px 64px 130px 
 
 export default function StocksView() {
   const { stHoldings, stats, setActiveView, priceMeta, refreshPrices, priceRefreshState } = usePortfolio();
+  const [activeTab, setActiveTab] = useState('holdings'); // 'holdings' | 'fundamentals'
 
   const isRefreshing = priceRefreshState?.active;
 
@@ -66,7 +69,51 @@ export default function StocksView() {
         formatValue={value => typeof value === 'string' ? value : fmtCr(value)}
       />
 
-      {/* Equity Stock Allocation Donut Chart */}
+      {/* View Tab Switcher: Holdings vs Valuation & Fundamentals */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <button
+          onClick={() => setActiveTab('holdings')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 700,
+            border: activeTab === 'holdings' ? '1px solid var(--purple)' : '1px solid var(--border)',
+            background: activeTab === 'holdings' ? 'rgba(139, 92, 246, 0.15)' : 'var(--bg2)',
+            color: activeTab === 'holdings' ? 'var(--purple)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          💼 Holdings &amp; FIFO Lots ({activeCount})
+        </button>
+        <button
+          onClick={() => setActiveTab('fundamentals')}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 700,
+            border: activeTab === 'fundamentals' ? '1px solid var(--purple)' : '1px solid var(--border)',
+            background: activeTab === 'fundamentals' ? 'rgba(139, 92, 246, 0.15)' : 'var(--bg2)',
+            color: activeTab === 'fundamentals' ? 'var(--purple)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          📈 Valuation &amp; Fundamentals
+        </button>
+      </div>
+
+      {activeTab === 'fundamentals' ? (
+        <FundamentalsPanel holdings={stHoldings.filter(h => h.qty > 0)} />
+      ) : (
+        <>
+          {/* Equity Stock Allocation Donut Chart */}
       {!isExited && stockAllocationData.length > 0 && (
         <div className="glass" style={{ padding: '16px 20px', borderRadius: 10 }}>
           <div style={{
@@ -263,6 +310,8 @@ export default function StocksView() {
           );
         })}
       </div>
+        </>
+      )}
     </div>
   );
 }
