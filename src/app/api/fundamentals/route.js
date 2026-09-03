@@ -136,11 +136,12 @@ export const POST = withErrorHandler(
           }
 
           const debtToEquity = isEtf ? null : (finData.debtToEquity ? finData.debtToEquity / 100 : null);
+          const cmpPrice = priceObj.regularMarketPrice ?? item.cmp ?? item.price;
           const rawCap =
             summaryDetail.marketCap ??
             priceObj.marketCap ??
-            (keyStats.sharesOutstanding && priceObj.regularMarketPrice
-              ? keyStats.sharesOutstanding * priceObj.regularMarketPrice
+            (keyStats.sharesOutstanding && cmpPrice
+              ? keyStats.sharesOutstanding * parseFloat(cmpPrice)
               : null) ??
             summaryDetail.totalAssets ??
             null;

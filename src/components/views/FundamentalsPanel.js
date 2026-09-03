@@ -22,6 +22,7 @@ export default function FundamentalsPanel({ holdings = [] }) {
         symbol: h.symbol,
         exchange: h.exchange || 'NSE',
         sector: h.sector || '',
+        cmp: h.cmp || 0,
         marketValue: h.marketValue || 0,
       }));
 
