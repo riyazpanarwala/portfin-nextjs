@@ -1,6 +1,6 @@
 # PortFin — Personal Portfolio Dashboard
 
-**PortFin** is a comprehensive, full-stack personal finance application for tracking Indian equity and mutual fund investments. Built with **Next.js 16.2.3**, **Tailwind CSS v4**, **Prisma 6**, and **PostgreSQL**, it delivers real-time analytics, FIFO-based P&L tracking, goal planning, and a local AI-powered portfolio advisor.
+**PortFin** is a comprehensive, full-stack personal finance application for tracking Indian equity and mutual fund investments. Built with **Next.js 16.3.2**, **Tailwind CSS v4**, **Prisma 6**, and **PostgreSQL**, it delivers real-time analytics, FIFO-based P&L tracking, goal planning, and a local AI-powered portfolio advisor.
 
 ---
 
@@ -17,6 +17,8 @@
 
 ### Analytics & Insights
 - **Advanced Analytics** — Benchmark comparison (Nifty 50, Sensex, Midcap, Smallcap), unrealized tax liability, loss-harvesting assistant, monthly flow chart, holding period distribution, and sector rotation wheel with donut + radar charts
+- **Portfolio Beta & Risk Engine** — Live calculation of Portfolio Beta and volatility vs Nifty 50 benchmark
+- **Year-by-Year P&L Breakdown** — Annualized performance, capital deployed, and yearly gain breakdown
 - **Investment Timeline** — Cumulative investment chart, monthly heatmap, full trade history grouped by month
 - **Wealth Waterfall** — Visual breakdown of how capital transformed into current portfolio value
 - **Action Signal** — Portfolio pulse, top gainer/loser, weekly investor checklist
@@ -27,6 +29,8 @@
 - **Portfolio Rebalancer** — Target allocation sliders (MF / Stocks / ETF), current vs target comparison, rebalancing action plan with ₹ amounts
 
 ### Data Management
+- **Trade Importer** — Bulk trade importer for broker CSV exports (Zerodha, Groww, ICICI Direct, custom CSVs) with column mapping and validation
+- **Snapshot Backfiller** — Generate backfilled point-in-time portfolio snapshot history across custom date ranges for rolling returns and Portfolio vs Nifty comparison
 - **Trade Form** — Add buy/sell trades with instrument autocomplete from the DB; recent trades list with delete
 - **Instrument Manager** — Search instruments from DB + NSE/BSE/ETF CSV static data with Yahoo Finance sector enrichment; add single instruments; bulk CSV import (BSE equity, NSE equity, ETF list); instrument browser table with pagination
 - **Snapshot History** — Manual snapshot saving, snapshot table with full metrics, used by Portfolio vs Nifty 50 chart
@@ -78,15 +82,19 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## ⚙️ Database Commands
 
-| Command              | Description                                         |
-| :------------------- | :-------------------------------------------------- |
-| `npm run db:push`    | Push schema to DB (no migration history)            |
-| `npm run db:seed`    | Load NSE equities + AMFI funds + portfolio trades   |
-| `npm run db:migrate` | Create a named migration (for production)           |
-| `npm run db:reset`   | Drop all tables and re-seed ⚠️ destructive          |
-| `npm run db:studio`  | Open Prisma Studio GUI                              |
-| `npm run db:setup`   | Push + seed in one command                          |
-| `npm run update-prices` | Run price update script via Yahoo Finance / AMFI |
+| Command                      | Description                                         |
+| :--------------------------- | :-------------------------------------------------- |
+| `npm run db:push`            | Push schema to DB (no migration history)            |
+| `npm run db:seed`            | Load NSE equities + AMFI funds + portfolio trades   |
+| `npm run db:migrate`         | Create a named migration (for production)           |
+| `npm run db:reset`           | Drop all tables and re-seed ⚠️ destructive          |
+| `npm run db:studio`          | Open Prisma Studio GUI                              |
+| `npm run db:setup`           | Push + seed in one command                          |
+| `npm run update-prices`      | Run price update script via Yahoo Finance / AMFI    |
+| `npm run update-prices-stocks` | Refresh stock & ETF prices via Yahoo Finance     |
+| `npm run update-prices-mf`   | Refresh mutual fund NAVs via AMFI                   |
+| `npm run update-instruments` | Update local instrument lookup static data          |
+| `npm run update-instruments:watch` | Watch and auto-update instrument static files  |
 
 ---
 
@@ -200,6 +208,18 @@ The advisor receives full portfolio context on every message: holdings, sector b
 | `POST`   | `/api/fundamentals`       | Live valuation ratios (P/E, P/B, ROE, Debt/Eq) & market cap class |
 | `POST`   | `/api/corporate-actions`  | Preview and execute Stock Splits, Bonus Shares, & Reverse Splits |
 
+### Analytics & Benchmarks
+| Method   | Endpoint                                   | Description                                                     |
+| :------- | :----------------------------------------- | :-------------------------------------------------------------- |
+| `GET`    | `/api/nifty-history?benchmark=&from=&to=`  | Historical index candles via Upstox API (Nifty 50, Sensex, etc) |
+| `POST`   | `/api/portfolio-beta`                      | Dynamic calculation of Portfolio Beta vs Nifty 50               |
+| `POST`   | `/api/backfill-snapshots`                  | Backfill point-in-time snapshot histories across date ranges    |
+
+### Auth
+| Method   | Endpoint          | Description                                      |
+| :------- | :---------------- | :----------------------------------------------- |
+| `POST`   | `/api/auth/login` | User authentication & session login             |
+
 ### AI
 | Method   | Endpoint           | Description                                      |
 | :------- | :----------------- | :----------------------------------------------- |
@@ -216,10 +236,15 @@ The advisor receives full portfolio context on every message: holdings, sector b
 | `src/components/Dashboard.js` | Main shell — sidebar, header, view router |
 | `src/components/views/FundamentalsPanel.js` | Equity valuation summary KPIs & fundamentals table |
 | `src/components/views/CorporateActionModal.js` | Corporate action interactive preview & execution modal |
+| `src/components/views/TradeImporter.js` | Broker CSV trade importer component |
+| `src/components/views/BackfillView.js` | Snapshot backfilling tool component |
+| `src/components/views/YearByYearView.js` | Annualized P&L breakdown component |
 | `src/components/views/` | One file per view (Overview, MF, Stocks, Analytics, etc.) |
 | `src/components/charts/Charts.js` | Chart.js wrappers — donut, bar, line, sparkline, waterfall |
 | `src/app/api/fundamentals/route.js` | On-demand equity fundamentals & valuation API |
 | `src/app/api/corporate-actions/route.js` | Corporate actions engine API (Splits, Bonus, Reverse Split) |
+| `src/app/api/nifty-history/route.js` | Live index candle API via Upstox |
+| `src/app/api/portfolio-beta/route.js` | Portfolio Beta calculation API |
 | `prisma/schema.prisma` | Database schema |
 | `src/app/api/` | Next.js API routes |
 
@@ -228,6 +253,6 @@ The advisor receives full portfolio context on every message: holdings, sector b
 ## ⚠️ Important Notes
 
 - **Tax figures are estimates** — consult a CA before filing. LTCG/STCG classification is based on calendar-day holding period per FIFO lot.
-- **Nifty 50 data** in the comparison view uses approximate end-of-month closes hardcoded up to April 2026 — not a live feed.
-- **Benchmark CAGR figures** in Analytics are as of early 2025 and may diverge.
+- **Nifty 50 historical benchmark data** can be fetched live via the Upstox integration (`/api/nifty-history`) or fall back to pre-packaged historical closes.
+- **Benchmark CAGR figures** in Analytics are as of early 2025 and may diverge over time.
 - **AI advice** is for informational purposes only. PortFin is not a SEBI-registered investment advisor.
