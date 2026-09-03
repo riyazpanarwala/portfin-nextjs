@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { fmt } from '@/lib/store';
 
 export default function CorporateActionModal({ isOpen, onClose, holdings = [], onSuccess }) {
@@ -13,6 +14,11 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
   const [previewData, setPreviewData] = useState(null);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (holdings.length > 0 && !symbol) {
@@ -20,7 +26,7 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
     }
   }, [holdings, symbol]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const handlePreview = async () => {
     if (!symbol) return setError('Please select a stock symbol.');
@@ -89,12 +95,17 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
     }
   };
 
-  return (
+  return createPortal(
     <div
       style={{
         position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        height: '100vh',
+        zIndex: 99999,
         background: 'rgba(0, 0, 0, 0.75)',
         backdropFilter: 'blur(4px)',
         display: 'flex',
@@ -314,6 +325,7 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
