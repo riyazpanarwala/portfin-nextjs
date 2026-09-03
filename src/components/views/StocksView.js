@@ -5,6 +5,7 @@ import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt } from '@/lib/store';
 import { AllocationDonutChart } from '@/components/charts/Charts';
 import FundamentalsPanel from '@/components/views/FundamentalsPanel';
+import CorporateActionModal from '@/components/views/CorporateActionModal';
 import {
   holdStr,
   PriceCell, HoldingDetailPanel,
@@ -21,8 +22,9 @@ import styles from './HoldingsTable.module.css';
 const COL = '20px 1fr 120px 32px 72px 110px 80px 90px 80px 80px 88px 64px 130px 50px 28px';
 
 export default function StocksView() {
-  const { stHoldings, stats, setActiveView, priceMeta, refreshPrices, priceRefreshState } = usePortfolio();
+  const { stHoldings, stats, setActiveView, priceMeta, refreshPrices, priceRefreshState, refreshData } = usePortfolio();
   const [activeTab, setActiveTab] = useState('holdings'); // 'holdings' | 'fundamentals'
+  const [isCorpActionOpen, setIsCorpActionOpen] = useState(false);
 
   const isRefreshing = priceRefreshState?.active;
 
@@ -70,44 +72,72 @@ export default function StocksView() {
       />
 
       {/* View Tab Switcher: Holdings vs Valuation & Fundamentals */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => setActiveTab('holdings')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              border: activeTab === 'holdings' ? '1px solid var(--purple)' : '1px solid var(--border)',
+              background: activeTab === 'holdings' ? 'rgba(139, 92, 246, 0.15)' : 'var(--bg2)',
+              color: activeTab === 'holdings' ? 'var(--purple)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            💼 Holdings &amp; FIFO Lots ({activeCount})
+          </button>
+          <button
+            onClick={() => setActiveTab('fundamentals')}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 700,
+              border: activeTab === 'fundamentals' ? '1px solid var(--purple)' : '1px solid var(--border)',
+              background: activeTab === 'fundamentals' ? 'rgba(139, 92, 246, 0.15)' : 'var(--bg2)',
+              color: activeTab === 'fundamentals' ? 'var(--purple)' : 'var(--text-muted)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            📈 Valuation &amp; Fundamentals
+          </button>
+        </div>
+
         <button
-          onClick={() => setActiveTab('holdings')}
+          onClick={() => setIsCorpActionOpen(true)}
           style={{
-            padding: '8px 16px',
+            padding: '8px 14px',
             borderRadius: 6,
             fontSize: 12,
-            fontWeight: 700,
-            border: activeTab === 'holdings' ? '1px solid var(--purple)' : '1px solid var(--border)',
-            background: activeTab === 'holdings' ? 'rgba(139, 92, 246, 0.15)' : 'var(--bg2)',
-            color: activeTab === 'holdings' ? 'var(--purple)' : 'var(--text-muted)',
+            fontWeight: 600,
+            background: 'rgba(245, 158, 11, 0.15)',
+            color: '#F59E0B',
+            border: '1px solid rgba(245, 158, 11, 0.3)',
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
             gap: 6,
           }}
         >
-          💼 Holdings &amp; FIFO Lots ({activeCount})
-        </button>
-        <button
-          onClick={() => setActiveTab('fundamentals')}
-          style={{
-            padding: '8px 16px',
-            borderRadius: 6,
-            fontSize: 12,
-            fontWeight: 700,
-            border: activeTab === 'fundamentals' ? '1px solid var(--purple)' : '1px solid var(--border)',
-            background: activeTab === 'fundamentals' ? 'rgba(139, 92, 246, 0.15)' : 'var(--bg2)',
-            color: activeTab === 'fundamentals' ? 'var(--purple)' : 'var(--text-muted)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          📈 Valuation &amp; Fundamentals
+          ⚡ Corporate Action (Split/Bonus)
         </button>
       </div>
+
+      <CorporateActionModal
+        isOpen={isCorpActionOpen}
+        onClose={() => setIsCorpActionOpen(false)}
+        holdings={stHoldings.filter(h => h.qty > 0)}
+        onSuccess={refreshData}
+      />
 
       {activeTab === 'fundamentals' ? (
         <FundamentalsPanel holdings={stHoldings.filter(h => h.qty > 0)} />
