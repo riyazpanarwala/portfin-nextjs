@@ -10,6 +10,8 @@
 - **Portfolio Overview** — Consolidated view with unrealized P&L, realized P&L, overall CAGR, XIRR, and portfolio health score
 - **Mutual Funds** — Dedicated view with lot-wise breakup, monthly breakup, redemption history, XIRR per fund, and NAV chart
 - **Equity Stocks** — Per-stock detail with lot-wise XIRR, win/loss stats, sell history with FIFO lot matching, inline CMP editor, and CSV export
+- **Equity Valuation & Fundamentals** — Live P/E, Forward P/E, P/B, ROE %, Debt/Equity, Market Cap Class (Large/Mid/Small), and risk flags via Yahoo Finance (on-demand, zero DB storage)
+- **Corporate Actions Engine** — 1-click execution for Stock Splits (1:N), Bonus Issues (N:M), and Reverse Splits with live lot preview; preserves holding tax clocks (LTCG/STCG) and cost basis without DB schema changes
 - **FIFO P&L Engine** — Oldest lots consumed first on every sell; realized gain, tax type (LTCG/STCG), and matched lots tracked precisely
 - **Realized P&L** — Separate tracking of closed-position gains alongside unrealized gains; full sell history per holding
 
@@ -192,6 +194,12 @@ The advisor receives full portfolio context on every message: holdings, sector b
 | `GET`    | `/api/snapshots?portfolioId=&limit=`| Retrieve snapshot history           |
 | `POST`   | `/api/snapshots`                    | Save a portfolio snapshot           |
 
+### Fundamentals & Corporate Actions
+| Method   | Endpoint                  | Description                                                  |
+| :------- | :------------------------ | :----------------------------------------------------------- |
+| `POST`   | `/api/fundamentals`       | Live valuation ratios (P/E, P/B, ROE, Debt/Eq) & market cap class |
+| `POST`   | `/api/corporate-actions`  | Preview and execute Stock Splits, Bonus Shares, & Reverse Splits |
+
 ### AI
 | Method   | Endpoint           | Description                                      |
 | :------- | :----------------- | :----------------------------------------------- |
@@ -206,8 +214,12 @@ The advisor receives full portfolio context on every message: holdings, sector b
 | `src/lib/store.js` | Core portfolio engine — FIFO, XIRR, CAGR, tax, formatters |
 | `src/context/PortfolioContext.js` | React context — data loading, state, actions |
 | `src/components/Dashboard.js` | Main shell — sidebar, header, view router |
+| `src/components/views/FundamentalsPanel.js` | Equity valuation summary KPIs & fundamentals table |
+| `src/components/views/CorporateActionModal.js` | Corporate action interactive preview & execution modal |
 | `src/components/views/` | One file per view (Overview, MF, Stocks, Analytics, etc.) |
 | `src/components/charts/Charts.js` | Chart.js wrappers — donut, bar, line, sparkline, waterfall |
+| `src/app/api/fundamentals/route.js` | On-demand equity fundamentals & valuation API |
+| `src/app/api/corporate-actions/route.js` | Corporate actions engine API (Splits, Bonus, Reverse Split) |
 | `prisma/schema.prisma` | Database schema |
 | `src/app/api/` | Next.js API routes |
 
