@@ -21,6 +21,7 @@ export default function FundamentalsPanel({ holdings = [] }) {
       const payload = holdings.map((h) => ({
         symbol: h.symbol,
         exchange: h.exchange || 'NSE',
+        sector: h.sector || '',
         marketValue: h.marketValue || 0,
       }));
 
@@ -53,15 +54,21 @@ export default function FundamentalsPanel({ holdings = [] }) {
     return holdings
       .map((h) => {
         const f = fundamentals[h.symbol] || {};
+        const isCommodity = f.isCommodity || h.symbol?.includes('SILV') || h.symbol?.includes('GOLD') || false;
+        const isEtf = f.isEtf || isCommodity || h.sector?.includes('ETF') || h.symbol?.endsWith('BEES') || h.symbol?.includes('BETA') || false;
+        const defaultCap = isCommodity ? 'COMMODITY ETF' : isEtf ? 'INDEX ETF' : 'UNKNOWN';
         return {
           ...h,
+          isEtf,
+          isCommodity,
           pe: f.pe ?? null,
           forwardPE: f.forwardPE ?? null,
           pb: f.pb ?? null,
           roe: f.roe ?? null,
+          trailingEps: f.trailingEps ?? null,
           debtToEquity: f.debtToEquity ?? null,
           marketCapCr: f.marketCapCr ?? null,
-          marketCapClass: f.marketCapClass ?? 'UNKNOWN',
+          marketCapClass: f.marketCapClass && f.marketCapClass !== 'UNKNOWN' ? f.marketCapClass : defaultCap,
           flags: f.flags || [],
         };
       })
@@ -216,11 +223,17 @@ export default function FundamentalsPanel({ holdings = [] }) {
               <div style={{ width: `${summary.marketCapBreakdown.large}%`, background: '#3B82F6' }} title={`Large Cap: ${summary.marketCapBreakdown.large}%`} />
               <div style={{ width: `${summary.marketCapBreakdown.mid}%`, background: '#10B981' }} title={`Mid Cap: ${summary.marketCapBreakdown.mid}%`} />
               <div style={{ width: `${summary.marketCapBreakdown.small}%`, background: '#F59E0B' }} title={`Small Cap: ${summary.marketCapBreakdown.small}%`} />
+              {summary.marketCapBreakdown.etf > 0 && (
+                <div style={{ width: `${summary.marketCapBreakdown.etf}%`, background: '#8B5CF6' }} title={`Index ETFs: ${summary.marketCapBreakdown.etf}%`} />
+              )}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text)', flexWrap: 'wrap', gap: 4 }}>
               <span><strong style={{ color: '#3B82F6' }}>Large:</strong> {summary.marketCapBreakdown.large}%</span>
               <span><strong style={{ color: '#10B981' }}>Mid:</strong> {summary.marketCapBreakdown.mid}%</span>
               <span><strong style={{ color: '#F59E0B' }}>Small:</strong> {summary.marketCapBreakdown.small}%</span>
+              {summary.marketCapBreakdown.etf > 0 && (
+                <span><strong style={{ color: '#8B5CF6' }}>ETF:</strong> {summary.marketCapBreakdown.etf}%</span>
+              )}
             </div>
           </div>
         </div>
@@ -297,11 +310,23 @@ export default function FundamentalsPanel({ holdings = [] }) {
               </tr>
             ) : (
               tableRows.map((r) => {
+                const isCommodityRow = r.isCommodity || r.marketCapClass === 'COMMODITY ETF';
+                const isEtfRow = r.isEtf || r.marketCapClass === 'INDEX ETF' || r.marketCapClass === 'ETF' || isCommodityRow;
                 const capBadgeColor =
-                  r.marketCapClass === 'LARGE' ? '#3B82F6' : r.marketCapClass === 'MID' ? '#10B981' : r.marketCapClass === 'SMALL' ? '#F59E0B' : '#9CA3AF';
+                  isCommodityRow
+                    ? '#F59E0B'
+                    : isEtfRow
+                    ? '#8B5CF6'
+                    : r.marketCapClass === 'LARGE'
+                    ? '#3B82F6'
+                    : r.marketCapClass === 'MID'
+                    ? '#10B981'
+                    : r.marketCapClass === 'SMALL'
+                    ? '#F59E0B'
+                    : '#9CA3AF';
 
                 return (
-                  <tr key={r.symbol} style={{ borderBottom: '1px solid var(--border)', hover: { background: 'rgba(255,255,255,0.01)' } }}>
+                  <tr key={r.symbol} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ fontWeight: 700, color: 'var(--text)' }}>{r.symbol}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -320,32 +345,102 @@ export default function FundamentalsPanel({ holdings = [] }) {
                           border: `1px solid ${capBadgeColor}30`,
                         }}
                       >
-                        {r.marketCapClass}
+                        {isCommodityRow ? 'COMMODITY ETF' : isEtfRow ? 'INDEX ETF' : r.marketCapClass}
                       </span>
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
                       ₹{fmt(r.cmp)}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: r.pe && r.pe > 50 ? '#F59E0B' : 'var(--text)' }}>
-                      {r.pe !== null ? `${r.pe}x` : '—'}
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>
+                      {isCommodityRow ? (
+                        <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Commodity</span>
+                      ) : isEtfRow ? (
+                        r.pe !== null ? (
+                          <span style={{ color: 'var(--text)' }}>{r.pe}x</span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>Index Basket</span>
+                        )
+                      ) : r.trailingEps !== null && r.trailingEps < 0 && r.pe === null ? (
+                        <span title="Company is loss-making (Negative EPS)" style={{ color: '#EF4444', fontSize: 11 }}>
+                          Loss (N/A)
+                        </span>
+                      ) : r.pe !== null ? (
+                        <span style={{ color: r.pe > 50 ? '#F59E0B' : 'var(--text)' }}>{r.pe}x</span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
                       {r.forwardPE !== null ? `${r.forwardPE}x` : '—'}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                      {r.pb !== null ? `${r.pb}x` : '—'}
+                      {r.pb !== null ? `${r.pb}x` : isEtfRow ? '— (ETF)' : '—'}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: r.roe && r.roe > 15 ? '#10B981' : 'var(--text)' }}>
-                      {r.roe !== null ? `${r.roe}%` : '—'}
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
+                      {isCommodityRow ? (
+                        <span title="Commodity ETFs track physical bullion and do not report ROE" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                          Commodity
+                        </span>
+                      ) : isEtfRow ? (
+                        <span title="ETFs track an index basket and do not report single company ROE" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                          Index Basket
+                        </span>
+                      ) : r.roe !== null ? (
+                        <span style={{ color: r.roe > 15 ? '#10B981' : r.roe < 0 ? '#EF4444' : r.roe < 8 ? '#F59E0B' : 'var(--text)' }}>
+                          {r.roe}%
+                        </span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', color: r.debtToEquity && r.debtToEquity > 1.5 ? '#EF4444' : 'var(--text)' }}>
-                      {r.debtToEquity !== null ? r.debtToEquity : '—'}
+                    <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                      {isEtfRow ? (
+                        <span title="ETFs do not carry corporate balance sheet debt" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                          —
+                        </span>
+                      ) : r.debtToEquity !== null ? (
+                        <span style={{ color: r.debtToEquity > 1.5 ? '#EF4444' : 'var(--text)' }}>
+                          {r.debtToEquity}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', color: 'var(--text-muted)' }}>
-                      {r.marketCapCr ? `₹${fmt(r.marketCapCr)}` : '—'}
+                      {r.marketCapCr ? `₹${fmt(r.marketCapCr)}` : isCommodityRow ? 'Bullion Fund' : isEtfRow ? 'Index Fund' : '—'}
                     </td>
                     <td style={{ padding: '10px 12px' }}>
-                      {r.flags && r.flags.length > 0 ? (
+                      {isCommodityRow ? (
+                        <span
+                          title="Commodity ETF tracking precious metals"
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: 'rgba(245, 158, 11, 0.15)',
+                            color: '#F59E0B',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                          }}
+                        >
+                          🥇 Commodity ETF
+                        </span>
+                      ) : isEtfRow ? (
+                        <span
+                          title="Exchange-Traded Fund tracking an index"
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            background: 'rgba(139, 92, 246, 0.15)',
+                            color: 'var(--purple)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                          }}
+                        >
+                          📊 Index Basket
+                        </span>
+                      ) : r.flags && r.flags.length > 0 ? (
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           {r.flags.map((flag) => (
                             <span
@@ -356,12 +451,27 @@ export default function FundamentalsPanel({ holdings = [] }) {
                                 fontWeight: 700,
                                 padding: '1px 5px',
                                 borderRadius: 4,
-                                background: flag.type === 'HIGH_VALUATION' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                color: flag.type === 'HIGH_VALUATION' ? '#F59E0B' : '#EF4444',
-                                border: flag.type === 'HIGH_VALUATION' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                                background:
+                                  flag.type === 'NEGATIVE_EARNINGS' || flag.type === 'HIGH_LEVERAGE'
+                                    ? 'rgba(239, 68, 68, 0.15)'
+                                    : 'rgba(245, 158, 11, 0.15)',
+                                color:
+                                  flag.type === 'NEGATIVE_EARNINGS' || flag.type === 'HIGH_LEVERAGE'
+                                    ? '#EF4444'
+                                    : '#F59E0B',
+                                border:
+                                  flag.type === 'NEGATIVE_EARNINGS' || flag.type === 'HIGH_LEVERAGE'
+                                    ? '1px solid rgba(239, 68, 68, 0.3)'
+                                    : '1px solid rgba(245, 158, 11, 0.3)',
                               }}
                             >
-                              {flag.type === 'HIGH_VALUATION' ? '⚠️ High P/E' : flag.type === 'HIGH_LEVERAGE' ? '🔴 High Debt' : '🟡 Low ROE'}
+                              {flag.type === 'NEGATIVE_EARNINGS'
+                                ? '🔴 Loss-Making'
+                                : flag.type === 'HIGH_VALUATION'
+                                ? '⚠️ High P/E'
+                                : flag.type === 'HIGH_LEVERAGE'
+                                ? '🔴 High Debt'
+                                : '🟡 Low ROE'}
                             </span>
                           ))}
                         </div>
