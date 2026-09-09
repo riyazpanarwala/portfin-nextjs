@@ -4,6 +4,7 @@ import {
   generateGeminiResponse,
   parseStructuredJson,
   sanitizeErrorOutput,
+  sanitizeActionOptions,
   MAX_PROMPT_LENGTH,
 } from "../../src/services/ai/geminiService.js";
 import { askGeminiAction } from "../../src/app/actions/gemini.js";
@@ -204,61 +205,67 @@ test("Gemini Service: API key is never exposed in errors or responses", async ()
   );
 });
 
-test("Server Action: askGeminiAction works cleanly", async () => {
+test("Server Action: sanitizeActionOptions enforces allowlist and bounds", () => {
+  const unsafe = {
+    apiKey: "secret-key",
+    client: { mock: true },
+    timeoutMs: 99999,
+    model: "unsafe-model",
+    temperature: 3.5,
+    maxOutputTokens: 99999,
+    responseFormat: "json",
+    systemInstruction: "test instruction",
+  };
+
+  const safe = sanitizeActionOptions(unsafe);
+  assert.equal(safe.apiKey, undefined);
+  assert.equal(safe.client, undefined);
+  assert.equal(safe.timeoutMs, undefined);
+  assert.equal(safe.model, undefined);
+  assert.equal(safe.temperature, 2.0);
+  assert.equal(safe.maxOutputTokens, 8192);
+  assert.equal(safe.responseFormat, "json");
+  assert.equal(safe.systemInstruction, "test instruction");
+});
+
+test("Server Action: askGeminiAction validates serializable input and limits", async () => {
   // Empty input rejection
   const invalidRes = await askGeminiAction({ prompt: "" });
   assert.equal(invalidRes.success, false);
+  assert.equal(invalidRes.code, "EMPTY_PROMPT");
   assert.match(invalidRes.error, /Prompt cannot be empty/);
 
   // Non-string prompt
   const nonStringRes = await askGeminiAction({ prompt: null });
   assert.equal(nonStringRes.success, false);
+  assert.equal(nonStringRes.code, "INVALID_PROMPT");
   assert.match(nonStringRes.error, /Prompt must be a string/);
-
-  // Successful call with mock client
-  const mockClient = createMockClient({ text: "Server action response" });
-  const successRes = await askGeminiAction({
-    prompt: "Valid prompt",
-    options: { client: mockClient },
-  });
-  assert.equal(successRes.success, true);
-  assert.equal(successRes.response, "Server action response");
-});
-
-test("Server Action: askGeminiAction supports structured JSON and error propagation", async () => {
-  // Structured JSON output
-  const jsonMockClient = createMockClient({
-    text: JSON.stringify({ sentiment: "bullish", score: 0.95 }),
-  });
-  const jsonRes = await askGeminiAction({
-    prompt: "Analyze sentiment",
-    options: { client: jsonMockClient, responseFormat: "json" },
-  });
-  assert.equal(jsonRes.success, true);
-  assert.equal(jsonRes.response.sentiment, "bullish");
-  assert.equal(jsonRes.response.score, 0.95);
 
   // Length limit exceeded
   const longPrompt = "x".repeat(MAX_PROMPT_LENGTH + 1);
   const lengthRes = await askGeminiAction({ prompt: longPrompt });
   assert.equal(lengthRes.success, false);
+  assert.equal(lengthRes.code, "PROMPT_TOO_LONG");
   assert.match(lengthRes.error, /exceeds maximum allowed length/);
+});
 
-  // Upstream error handled cleanly without crash
-  const errorMockClient = createMockClient({
-    error: new Error("Model unavailable upstream"),
-  });
-  const errorRes = await askGeminiAction({
-    prompt: "Valid prompt",
-    options: { client: errorMockClient },
-  });
-  assert.equal(errorRes.success, false);
-  assert.match(errorRes.error, /Model unavailable upstream/);
+test("Server Action: askGeminiAction masks upstream server errors safely", async () => {
+  // Calling without API key triggers upstream error
+  const origKey = process.env.GEMINI_API_KEY;
+  try {
+    delete process.env.GEMINI_API_KEY;
+    const res = await askGeminiAction({ prompt: "Test prompt" });
+    assert.equal(res.success, false);
+    // Verifies generic message is returned to client without leaking internal error details
+    assert.equal(res.error, "Failed to process AI request. Please try again later.");
+    assert.ok(res.code);
+  } finally {
+    if (origKey !== undefined) process.env.GEMINI_API_KEY = origKey;
+  }
 });
 
 test("Client Helper: askGemini delegates to Server Action cleanly", async () => {
-  const mockClient = createMockClient({ text: "Client helper response" });
-  const res = await askGemini("Hello from client helper", { client: mockClient });
-  assert.equal(res.success, true);
-  assert.equal(res.response, "Client helper response");
+  const res = await askGemini("");
+  assert.equal(res.success, false);
+  assert.match(res.error, /Prompt cannot be empty/);
 });
