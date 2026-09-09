@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { fmtCr, fmt, fmtPct } from '@/lib/store';
+import { askGemini } from '@/lib/ai/geminiClient';
 import styles from '@/components/ui/UI.module.css';
 
 // ── Portfolio context builder ─────────────────────────────────────────────────
@@ -129,7 +130,7 @@ function MessageBubble({ msg }) {
       )}
       <div className={`${styles.messageBubble} ${isUser ? styles.messageBubbleUser : styles.messageBubbleAssistant}`}>
         {msg.streaming
-          ? <span className={styles.streamingText}>{msg.content}</span>
+          ? <span className={styles.streamingText}>{msg.content || 'Analyzing portfolio with Gemini…'}</span>
           : <FormattedMessage text={msg.content} />
         }
         {msg.streaming && <span className={styles.streamingCursor} />}
@@ -145,27 +146,25 @@ function MessageBubble({ msg }) {
 
 function ErrorDisplay({ error }) {
   if (!error) return null;
-  const isOllama = error.includes('ollama serve') || error.includes('Ollama is not running');
-  const isModel  = error.includes('not found') || error.includes('Model');
+  const isKey = error.includes('GEMINI_API_KEY') || error.includes('API key');
+  const isQuota = error.includes('rate limit') || error.includes('quota') || error.includes('429');
 
   return (
     <div className={styles.errorBox}>
-      {isOllama ? (
+      {isKey ? (
         <>
-          <div className={styles.errorTitle}>⚠ Ollama is not running</div>
+          <div className={styles.errorTitle}>⚠ Gemini API Key Not Configured</div>
           <div className={styles.errorCode}>
-            <div><span className={styles.errorCodeLine}>1. Install Ollama →</span> <a href="https://ollama.com" target="_blank" rel="noreferrer" style={{ color: 'var(--accent2)' }}>ollama.com</a></div>
-            <div><span className={styles.errorCodeLine}>2. Start it →</span> <code className={styles.fmtCode}>ollama serve</code></div>
-            <div><span className={styles.errorCodeLine}>3. Pull model →</span> <code className={styles.fmtCode}>ollama pull llama3.2</code></div>
-            <div className={styles.errorCodeNote}>Then try again — no API key or internet needed.</div>
+            <div><span className={styles.errorCodeLine}>1. Get API key →</span> <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--accent2)' }}>Google AI Studio</a></div>
+            <div><span className={styles.errorCodeLine}>2. Add to .env →</span> <code className={styles.fmtCode}>GEMINI_API_KEY=your_key_here</code></div>
+            <div className={styles.errorCodeNote}>Restart your server after updating your .env file.</div>
           </div>
         </>
-      ) : isModel ? (
+      ) : isQuota ? (
         <>
-          <div className={styles.errorTitle}>⚠ Model not downloaded yet</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-            Run: <code className={styles.fmtCode}>ollama pull llama3.2</code>
-            <span style={{ color: 'var(--text3)', marginLeft: 8 }}>(~2GB download)</span>
+          <div className={styles.errorTitle}>⚠ Rate Limit / Quota Exceeded</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text2)' }}>
+            Gemini API rate limit or quota exceeded. Please wait a moment and try again.
           </div>
         </>
       ) : (
@@ -229,49 +228,27 @@ Guidelines:
 - Always caveat that you're an AI and not a SEBI-registered advisor
 - When suggesting actions, be specific (e.g., "increase your Parag Parikh allocation from 12% to 18%")`;
 
-      const historyForAPI = newMessages.slice(-10).map(m => ({ role: m.role, content: m.content }));
+      const recentHistory = newMessages.slice(-10);
+      let promptWithHistory = userText;
+      if (recentHistory.length > 1) {
+        const historyText = recentHistory
+          .slice(0, -1)
+          .map(m => `${m.role === 'user' ? 'User' : 'Advisor'}: ${m.content}`)
+          .join('\n\n');
+        promptWithHistory = `Previous conversation:\n${historyText}\n\nCurrent user question:\n${userText}`;
+      }
 
-      const response = await fetch('/api/ai-advisor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: historyForAPI, systemPrompt }),
+      const res = await askGemini(promptWithHistory, {
+        systemInstruction: systemPrompt,
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Server error ${response.status}`);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to get advice from Gemini.');
       }
 
-      const reader  = response.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = '';
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(data);
-            const token = parsed.choices?.[0]?.delta?.content;
-            if (token) {
-              accumulated += token;
-              const textChunk = accumulated;
-              setMessages(prev => prev.map(m => m.id === streamingId ? { ...m, content: textChunk } : m));
-            }
-          } catch { /* skip malformed */ }
-        }
-      }
-
-      const finalText = accumulated;
+      const responseText = res.response;
       setMessages(prev => prev.map(m =>
-        m.id === streamingId ? { role: 'assistant', content: finalText, streaming: false } : m
+        m.id === streamingId ? { role: 'assistant', content: responseText, streaming: false } : m
       ));
     } catch (err) {
       console.error('AI Advisor error:', err);
@@ -313,7 +290,7 @@ Guidelines:
           <div>
             <div className={styles.advisorTitle}>AI Portfolio Advisor</div>
             <div className={styles.advisorSubtitle}>
-              Powered by Ollama (local) · {stats.fundCount} funds + {stats.stockCount} stocks loaded
+              Powered by Google Gemini · {stats.fundCount} funds + {stats.stockCount} stocks loaded
             </div>
           </div>
           <div className={styles.advisorLiveIndicator}>

@@ -1,6 +1,6 @@
 # PortFin — Personal Portfolio Dashboard
 
-**PortFin** is a comprehensive, full-stack personal finance application for tracking Indian equity and mutual fund investments. Built with **Next.js 16.3.2**, **Tailwind CSS v4**, **Prisma 6**, and **PostgreSQL**, it delivers real-time analytics, FIFO-based P&L tracking, goal planning, and a local AI-powered portfolio advisor.
+**PortFin** is a comprehensive, full-stack personal finance application for tracking Indian equity and mutual fund investments. Built with **Next.js 16.3.2**, **Tailwind CSS v4**, **Prisma 6**, and **PostgreSQL**, it delivers real-time analytics, FIFO-based P&L tracking, goal planning, and a Google Gemini AI-powered portfolio advisor.
 
 ---
 
@@ -37,7 +37,7 @@
 - **Live Prices** — Stocks/ETFs refreshed from Yahoo Finance (6-hour cache); MF NAVs from AMFI on demand; manual CMP override per symbol
 
 ### AI Advisor
-- **AI Portfolio Advisor** — Powered by **Ollama** (local, free, no API key); full portfolio context injected; streaming SSE responses; suggested prompts; markdown-formatted output
+- **AI Portfolio Advisor** — Powered by **Google Gemini API** (`gemini-3.6-flash`); internal Next.js Server Action architecture with zero public REST endpoints; full portfolio context injected; suggested prompts; markdown-formatted output
 
 ---
 
@@ -54,10 +54,10 @@ cp .env.example .env
 # Set DATABASE_URL to your PostgreSQL connection string
 ```
 
-For the AI Portfolio Advisor (optional):
+For the AI Portfolio Advisor:
 ```env
-OLLAMA_URL="http://localhost:11434"
-OLLAMA_MODEL="llama3.2"
+GEMINI_API_KEY="your-gemini-api-key"
+GEMINI_MODEL="gemini-3.6-flash"
 ```
 
 ### 3. Database Setup
@@ -149,20 +149,38 @@ The core engine (`src/lib/store.js`) uses production-grade calculations:
 
 ---
 
+## 🧪 Testing & Verification
+
+| Command | Description |
+| :--- | :--- |
+| `npm test` | Run 11 automated unit & integration tests (`test/engine/*.test.js`) via Node's native test runner |
+| `npm run test:gemini` | Run live Google Gemini API connectivity & JSON verification script with masked credentials |
+| `npm run lint` | Run ESLint across codebase |
+| `npm run build` | Compile Next.js production build with Turbopack |
+
+---
+
 ## 🤖 AI Portfolio Advisor
 
-Powered by [Ollama](https://ollama.com) — runs 100% locally, no API key or internet required.
+Powered by [Google Gemini](https://ai.google.dev/) via the official `@google/genai` SDK and Next.js Server Actions.
 
-**Setup:**
-```bash
-# 1. Install Ollama from https://ollama.com
-# 2. Start the server
-ollama serve
-# 3. Pull a model (~2 GB)
-ollama pull llama3.2
+- **Architecture:** 100% internal execution via Next.js Server Action (`askGeminiAction`) with built-in CSRF protection and origin validation. Zero public REST API routes are exposed, preventing external scraping or direct API abuse.
+- **Default Model:** `gemini-3.6-flash` (configurable via `GEMINI_MODEL` environment variable).
+- **Security & Secret Redaction:** `GEMINI_API_KEY` stays strictly server-side. Automatic redaction ensures API keys are never leaked in error messages or client responses.
+- **Context Injection:** On every query, the advisor receives comprehensive portfolio context (holdings, sector weightings, CAGR, XIRR, realized gains, and LTCG/STCG tax profiles).
+- **Structured Output Support:** Includes helper utilities to safely extract and parse structured JSON responses with automatic markdown code fence stripping.
+
+**Configuration:**
+Add your Gemini API key to `.env`:
+```env
+GEMINI_API_KEY="your-gemini-api-key"
+GEMINI_MODEL="gemini-3.6-flash"
 ```
 
-The advisor receives full portfolio context on every message: holdings, sector breakdown, CAGR, XIRR, realized P&L, and tax profile. Responses stream via SSE and render with markdown formatting.
+Verify live connectivity anytime:
+```bash
+npm run test:gemini
+```
 
 ---
 
@@ -220,10 +238,8 @@ The advisor receives full portfolio context on every message: holdings, sector b
 | :------- | :---------------- | :----------------------------------------------- |
 | `POST`   | `/api/auth/login` | User authentication & session login             |
 
-### AI
-| Method   | Endpoint           | Description                                      |
-| :------- | :----------------- | :----------------------------------------------- |
-| `POST`   | `/api/ai-advisor`  | Streaming AI advice via local Ollama (SSE)       |
+### AI (Internal Server Action)
+Gemini AI inference runs strictly internal via Next.js Server Action (`askGeminiAction`) with CSRF protection, ensuring zero public REST endpoint exposure.
 
 ---
 
@@ -231,6 +247,12 @@ The advisor receives full portfolio context on every message: holdings, sector b
 
 | File | Purpose |
 | :--- | :------ |
+| `src/services/ai/geminiService.js` | Core generic Gemini service (`@google/genai`, prompt validation, redaction, JSON parser) |
+| `src/app/actions/gemini.js` | Internal Next.js Server Action (`askGeminiAction`) with CSRF protection |
+| `src/lib/ai/geminiClient.js` | Client-side helper (`askGemini`) invoking the Server Action |
+| `src/components/views/AIAdvisorView.js` | AI Advisor chat interface with full portfolio context injection |
+| `test/engine/gemini.test.js` | 11 automated unit & integration tests using Node's native test runner |
+| `scripts/testGemini.mjs` | Live Gemini API connectivity verification script with key masking |
 | `src/lib/store.js` | Core portfolio engine — FIFO, XIRR, CAGR, tax, formatters |
 | `src/context/PortfolioContext.js` | React context — data loading, state, actions |
 | `src/components/Dashboard.js` | Main shell — sidebar, header, view router |

@@ -18,12 +18,15 @@
     "update-prices-stocks": "node prisma/updatePrices.js --stocks",
     "update-prices-mf": "node prisma/updatePrices.js --mf",
     "update-instruments": "node scripts/updateInstrumentsData.js",
-    "update-instruments:watch": "node scripts/updateInstrumentsData.js --watch"
+    "update-instruments:watch": "node scripts/updateInstrumentsData.js --watch",
+    "test": "node --test test/engine/*.test.js",
+    "test:gemini": "node --env-file=.env scripts/testGemini.mjs"
   },
   "prisma": {
     "seed": "node --experimental-vm-modules prisma/seed.js"
   },
   "dependencies": {
+    "@google/genai": "^2.21.0",
     "@prisma/client": "^6.19.3",
     "csv-parse": "^6.2.1",
     "lucide-react": "^1.33.0",

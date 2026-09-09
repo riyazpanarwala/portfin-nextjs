@@ -88,7 +88,7 @@ export default function Dashboard() {
                 background: 'linear-gradient(135deg, rgba(59,130,246,0.25), rgba(139,92,246,0.2))',
                 border: '1px solid rgba(59,130,246,0.4)',
                 color: 'var(--accent2)', letterSpacing: '0.04em',
-              }}>POWERED BY OLLAMA</span>
+              }}>POWERED BY GEMINI</span>
             )}
             {activeView === 'vs-nifty' && (
               <span className="title-badge" style={{
