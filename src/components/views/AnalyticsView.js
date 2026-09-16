@@ -1325,6 +1325,7 @@ function TradeBehavior({ trades, realizedSummary }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RealizedPanel({ realizedSummary, portfolioXIRR }) {
+  const { setActiveView } = usePortfolio();
   const { sells, ltcgGain, stcgGain, ltcgTax, stcgTax, totalTax, totalRealized, sellsBySymbol } = realizedSummary;
   if (!sells.length) return (
     <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)', fontSize: 13 }}>
@@ -1346,6 +1347,26 @@ function RealizedPanel({ realizedSummary, portfolioXIRR }) {
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px', background: 'rgba(59, 130, 246, 0.08)',
+        border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: 10,
+        gap: 12, flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)' }}>
+          <span>🧾</span>
+          <span>
+            Need detailed FY-wise breakdown (FY 2026-27), loss set-offs & Schedule CG?
+          </span>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={() => setActiveView('tax')}
+          style={{ padding: '6px 14px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          View Full Tax Report →
+        </button>
+      </div>
       <div className={styles.realizedMetricsGrid}>
         {headlines.map((m, i) => (
           <div key={i} className={styles.realizedMetricCell}>

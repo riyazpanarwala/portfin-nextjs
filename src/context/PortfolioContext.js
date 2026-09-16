@@ -27,7 +27,7 @@ const ACTIVE_QTY_EPSILON = 1e-6;
 const VALID_VIEWS = new Set([
   'overview', 'mf', 'stocks', 'analytics', 'timeline', 'goal',
   'waterfall', 'action', 'snapshots', 'rebalancer', 'vs-nifty',
-  'ai-advisor', 'instruments', 'backfill', 'trade',
+  'ai-advisor', 'instruments', 'backfill', 'trade', 'tax',
 ]);
 
 function getViewFromHash() {

@@ -22,6 +22,7 @@ import {
   WalletCards,
   Waves,
   CalendarRange,
+  ReceiptIndianRupee,
 } from 'lucide-react';
 import { usePortfolio } from '@/context/PortfolioContext';
 
@@ -44,6 +45,7 @@ const NAV = [
   {
     group: 'Tools',
     items: [
+      { id: 'tax',          icon: ReceiptIndianRupee, label: 'Tax Report', badge: 'FY27' },
       { id: 'rebalancer',   icon: Scale,        label: 'Rebalancer' },
       { id: 'ai-advisor',   icon: Bot,          label: 'AI Advisor', badge: 'AI' },
       { id: 'instruments',  icon: Database,     label: 'Instruments', badge: 'NEW' },

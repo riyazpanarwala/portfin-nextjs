@@ -2,7 +2,7 @@
 // PRODUCTION PORTFOLIO ENGINE
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { xirr } from '@/lib/xirr';
+import { xirr } from './xirr.js';
 
 const EPSILON = 1e-6;
 
@@ -242,33 +242,228 @@ export function computePortfolioXIRR(trades, currentPrices = {}, precomputedHold
   return xirr(cashflows);
 }
 
-// ─── Realized P&L summary ────────────────────────────────────────────────────
+// ─── Realized P&L & Capital Gains Engine ─────────────────────────────────────
+
+export function getFinancialYear(dateStr) {
+  if (!dateStr) return 'Unknown';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'Unknown';
+  const year = d.getFullYear();
+  const month = d.getMonth() + 1; // 1 to 12
+  // Indian Financial Year runs from April 1 to March 31
+  if (month >= 4) {
+    const nextYear = (year + 1).toString().slice(-2);
+    return `${year}-${nextYear}`;
+  } else {
+    const prevYear = year - 1;
+    const curYear = year.toString().slice(-2);
+    return `${prevYear}-${curYear}`;
+  }
+}
+
+export function computeCapitalGainsReport(holdings, { fy = '2026-27' } = {}) {
+  // 1. Flatten all sell records with symbol, name, exchange, and assetType
+  const allSells = [];
+  for (const h of holdings) {
+    for (const s of (h.sells || [])) {
+      const fyOfTrade = getFinancialYear(s.date);
+      allSells.push({
+        ...s,
+        symbol: h.symbol,
+        name: h.name || h.symbol,
+        assetType: h.assetType,
+        exchange: h.exchange,
+        fy: fyOfTrade,
+      });
+    }
+  }
+
+  // 2. Extract available Financial Years
+  const fySet = new Set(allSells.map(s => s.fy).filter(f => f && f !== 'Unknown'));
+  fySet.add('2026-27'); // Always include current FY
+  const availableFys = Array.from(fySet).sort().reverse();
+
+  // 3. Filter for requested FY (unless 'ALL')
+  const filteredSells = fy === 'ALL'
+    ? allSells
+    : allSells.filter(s => s.fy === fy);
+
+  // 4. Detailed lot-level breakdown
+  let grossLtcg = 0;
+  let grossLtcl = 0;
+  let grossStcg = 0;
+  let grossStcl = 0;
+
+  let stockLtcg = 0, stockLtcl = 0, stockStcg = 0, stockStcl = 0;
+  let mfLtcg = 0, mfLtcl = 0, mfStcg = 0, mfStcl = 0;
+
+  const enrichedSells = filteredSells.map(s => {
+    let sellLtcg = 0, sellLtcl = 0, sellStcg = 0, sellStcl = 0;
+    const isMF = s.assetType === 'MF';
+
+    for (const m of (s.matchedLots || [])) {
+      if (m.taxType === 'LTCG') {
+        if (m.gain >= 0) {
+          sellLtcg += m.gain;
+          grossLtcg += m.gain;
+          if (isMF) mfLtcg += m.gain; else stockLtcg += m.gain;
+        } else {
+          sellLtcl += Math.abs(m.gain);
+          grossLtcl += Math.abs(m.gain);
+          if (isMF) mfLtcl += Math.abs(m.gain); else stockLtcl += Math.abs(m.gain);
+        }
+      } else {
+        if (m.gain >= 0) {
+          sellStcg += m.gain;
+          grossStcg += m.gain;
+          if (isMF) mfStcg += m.gain; else stockStcg += m.gain;
+        } else {
+          sellStcl += Math.abs(m.gain);
+          grossStcl += Math.abs(m.gain);
+          if (isMF) mfStcl += Math.abs(m.gain); else stockStcl += Math.abs(m.gain);
+        }
+      }
+    }
+
+    const totalCost = (s.matchedLots || []).reduce((sum, m) => sum + (m.costBasis || 0), 0);
+    const totalProceeds = s.qty * s.sellPrice;
+    const netGain = totalProceeds - totalCost;
+
+    return {
+      ...s,
+      totalCost,
+      totalProceeds,
+      netGain,
+      sellLtcg,
+      sellLtcl,
+      sellStcg,
+      sellStcl,
+    };
+  });
+
+  // 5. Inter-head Loss Set-off Rules (Income Tax Act):
+  // Rule 1: LTCL can ONLY be set off against LTCG.
+  const ltclUsedAgainstLtcg = Math.min(grossLtcl, grossLtcg);
+  const unabsorbedLtcl = grossLtcl - ltclUsedAgainstLtcg;
+  let remainingLtcg = grossLtcg - ltclUsedAgainstLtcg;
+
+  // Rule 2: STCL can be set off against STCG first.
+  const stclUsedAgainstStcg = Math.min(grossStcl, grossStcg);
+  let remainingStcl = grossStcl - stclUsedAgainstStcg;
+  const netTaxableStcg = grossStcg - stclUsedAgainstStcg;
+
+  // Rule 3: Any remaining STCL can be set off against remaining LTCG
+  const stclUsedAgainstLtcg = Math.min(remainingStcl, remainingLtcg);
+  remainingLtcg -= stclUsedAgainstLtcg;
+  remainingStcl -= stclUsedAgainstLtcg;
+  const unabsorbedStcl = remainingStcl;
+
+  // 6. Section 112A LTCG Exemption (₹1,25,000 post Budget 2024):
+  const LTCG_EXEMPTION_LIMIT = 125000;
+  const exemptLtcg = Math.min(remainingLtcg, LTCG_EXEMPTION_LIMIT);
+  const taxableLtcg = Math.max(0, remainingLtcg - LTCG_EXEMPTION_LIMIT);
+
+  // 7. Tax Liability calculation:
+  // LTCG tax @ 12.5% u/s 112A
+  const ltcgTax = taxableLtcg * 0.125;
+
+  // STCG tax @ 20% u/s 111A
+  const stcgTax = netTaxableStcg * 0.20;
+
+  // 4% Health & Education Cess
+  const baseTax = ltcgTax + stcgTax;
+  const cess = baseTax * 0.04;
+  const totalTax = baseTax + cess;
+
+  const totalRealized = (grossLtcg - grossLtcl) + (grossStcg - grossStcl);
+
+  return {
+    fy,
+    availableFys,
+    totalRealized,
+    // LTCG
+    grossLtcg,
+    grossLtcl,
+    netLtcg: grossLtcg - grossLtcl,
+    ltclUsedAgainstLtcg,
+    unabsorbedLtcl,
+    stclUsedAgainstLtcg,
+    exemptLtcg,
+    taxableLtcg,
+    ltcgTax,
+    // STCG
+    grossStcg,
+    grossStcl,
+    netStcg: grossStcg - grossStcl,
+    stclUsedAgainstStcg,
+    unabsorbedStcl,
+    netTaxableStcg,
+    stcgTax,
+    // Tax summary
+    baseTax,
+    cess,
+    totalTax,
+    // Category Breakdown
+    breakdown: {
+      stocks: {
+        ltcg: stockLtcg - stockLtcl,
+        stcg: stockStcg - stockStcl,
+        total: (stockLtcg - stockLtcl) + (stockStcg - stockStcl),
+        grossLtcg: stockLtcg,
+        grossLtcl: stockLtcl,
+        grossStcg: stockStcg,
+        grossStcl: stockStcl,
+      },
+      mf: {
+        ltcg: mfLtcg - mfLtcl,
+        stcg: mfStcg - mfStcl,
+        total: (mfLtcg - mfLtcl) + (mfStcg - mfStcl),
+        grossLtcg: mfLtcg,
+        grossLtcl: mfLtcl,
+        grossStcg: mfStcg,
+        grossStcl: mfStcl,
+      },
+    },
+    // Set-off schedule details
+    setOffSchedule: [
+      {
+        description: 'LTCL set-off against LTCG',
+        amount: ltclUsedAgainstLtcg,
+        remainingLtcl: unabsorbedLtcl,
+      },
+      {
+        description: 'STCL set-off against STCG',
+        amount: stclUsedAgainstStcg,
+        remainingStcl: grossStcl - stclUsedAgainstStcg,
+      },
+      ...(stclUsedAgainstLtcg > 0 ? [{
+        description: 'Remaining STCL set-off against LTCG',
+        amount: stclUsedAgainstLtcg,
+        remainingStcl: unabsorbedStcl,
+      }] : []),
+    ],
+    sells: enrichedSells,
+  };
+}
 
 export function computeRealizedSummary(holdings) {
-  const sells = holdings.flatMap(h =>
-    h.sells.map(s => ({ ...s, symbol: h.symbol, assetType: h.assetType }))
-  );
-
-  const ltcgGain = sells.filter(s => s.taxType === 'LTCG').reduce((sum, s) => sum + s.realized, 0);
-  const stcgGain = sells.filter(s => s.taxType === 'STCG').reduce((sum, s) => sum + s.realized, 0);
-
-  const ltcgExemption = 125000;
-  const ltcgTax = ltcgGain > ltcgExemption ? (ltcgGain - ltcgExemption) * 0.125 : 0;
-  const stcgTax = stcgGain > 0 ? stcgGain * 0.20 : 0;
-
+  const report = computeCapitalGainsReport(holdings, { fy: 'ALL' });
   const sellsBySymbol = {};
-  for (const s of sells) {
+  for (const s of report.sells) {
     if (!sellsBySymbol[s.symbol]) sellsBySymbol[s.symbol] = { realized: 0, sells: [] };
-    sellsBySymbol[s.symbol].realized += s.realized;
+    sellsBySymbol[s.symbol].realized += (s.realized ?? s.netGain);
     sellsBySymbol[s.symbol].sells.push(s);
   }
 
   return {
-    totalRealized: ltcgGain + stcgGain,
-    ltcgGain, stcgGain,
-    ltcgTax, stcgTax,
-    totalTax: ltcgTax + stcgTax,
-    sells, sellsBySymbol,
+    totalRealized: report.totalRealized,
+    ltcgGain: report.netLtcg,
+    stcgGain: report.netStcg,
+    ltcgTax: report.ltcgTax,
+    stcgTax: report.stcgTax,
+    totalTax: report.totalTax,
+    sells: report.sells,
+    sellsBySymbol,
   };
 }
 
