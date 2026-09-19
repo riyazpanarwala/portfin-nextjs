@@ -45,14 +45,74 @@ export function parseETF(text) {
   return results;
 }
 
+export function parseAMFI(text) {
+  const lines = text.split(/\r?\n/);
+  const results = [];
+  const seenSymbol = new Set();
+  let currentCategory = 'Mutual Fund';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('Open Ended Schemes') || trimmed.startsWith('Close Ended Schemes') || trimmed.startsWith('Interval Fund Schemes')) {
+      const m = trimmed.match(/\((.*?)\)/);
+      const inner = m ? m[1] : trimmed;
+      currentCategory = inner.replace(/.*-\s*/, '').trim() || 'Mutual Fund';
+      continue;
+    }
+    const cols = trimmed.split(';');
+    if (cols.length >= 6 && /^\d+$/.test(cols[0].trim())) {
+      const schemeCode = cols[0].trim();
+      const isinGrowth = cols[1]?.trim() !== '-' ? cols[1]?.trim() : null;
+      const isinDiv    = cols[2]?.trim() !== '-' ? cols[2]?.trim() : null;
+      const isin = isinGrowth || isinDiv || null;
+
+      let fullName = cols[3]?.trim();
+      if (cols.length >= 8) {
+        const plan = cols[4]?.trim();
+        const option = cols[5]?.trim();
+        if (plan && !fullName.includes(plan)) fullName += ' - ' + plan;
+        if (option && !fullName.includes(option)) fullName += ' - ' + option;
+      }
+      if (!fullName) continue;
+
+      let sym = fullName
+        .replace(/[^A-Za-z0-9 ]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 0)
+        .map(w => w[0].toUpperCase())
+        .join('')
+        .slice(0, 20);
+
+      if (!sym) sym = `MF${schemeCode}`;
+      if (seenSymbol.has(sym)) {
+        sym = `${sym}_${schemeCode.slice(-4)}`;
+      }
+      seenSymbol.add(sym);
+
+      results.push({
+        symbol: sym,
+        name: fullName,
+        isin,
+        exchange: 'AMFI',
+        assetType: 'MF',
+        sector: currentCategory,
+      });
+    }
+  }
+  return results;
+}
+
 export function detectFileType(filename, text) {
   const fn = filename.toLowerCase();
   if (fn.includes('bse')) return 'bse';
   if (fn.includes('etf')) return 'etf';
   if (fn.includes('nse')) return 'nse';
-  const h = text.slice(0, 200).toLowerCase();
+  if (fn.includes('amfi') || fn.includes('navall')) return 'amfi';
+  const h = text.slice(0, 300).toLowerCase();
   if (h.includes('security id') || h.includes('security code')) return 'bse';
   if (h.includes('underlying')) return 'etf';
+  if (h.includes('scheme code') || h.includes('isin div') || h.includes('net asset value')) return 'amfi';
   return 'nse';
 }
 
@@ -194,7 +254,17 @@ export function useAddInstrumentForm({ onAdded, toast }) {
   }
 
   async function handleSubmit() {
-    if (!form.symbol) return;
+    let sym = form.symbol.trim();
+    if (!sym && assetType === 'MF' && form.name.trim()) {
+      sym = form.name.trim()
+        .replace(/[^A-Za-z0-9 ]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 0)
+        .map(w => w[0].toUpperCase())
+        .join('')
+        .slice(0, 20);
+    }
+    if (!sym) return;
     setSaving(true);
     try {
       const res = await fetch('/api/instruments/bulk', {
@@ -202,8 +272,8 @@ export function useAddInstrumentForm({ onAdded, toast }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           instruments: [{
-            symbol:    form.symbol.toUpperCase().trim(),
-            name:      form.name || form.symbol,
+            symbol:    sym.toUpperCase().trim(),
+            name:      form.name || sym,
             isin:      form.isin || null,
             exchange,
             assetType,
@@ -213,7 +283,7 @@ export function useAddInstrumentForm({ onAdded, toast }) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      toast(data.created > 0 ? `✅ ${form.symbol} added to database` : `ℹ ${form.symbol} updated`, 'green');
+      toast(data.created > 0 ? `✅ ${sym} added to database` : `ℹ ${sym} updated`, 'green');
       setForm({ symbol: '', name: '', isin: '', sector: '' });
       setAssetType('STOCK');
       setExchange('NSE');
@@ -262,6 +332,7 @@ export function useBulkImport({ onImported, toast }) {
           type = detectFileType(f.name, text);
           instruments = type === 'bse' ? parseBSE(text)
                       : type === 'etf' ? parseETF(text)
+                      : type === 'amfi' ? parseAMFI(text)
                       : parseNSE(text);
         }
       } catch (err) {
@@ -365,14 +436,13 @@ export function useSymbolSearch({ exchange, assetType, onSelect }) {
     debounce.current = setTimeout(async () => {
       setLoading(true);
       try {
-        let url;
-        if (assetType === 'MF') {
-          url = `/api/instruments?q=${encodeURIComponent(query)}&assetType=MF&limit=12`;
-        } else {
-          const p = new URLSearchParams({ q: query, limit: '12', exchange });
-          url = `/api/instruments/search?${p}`;
-        }
-        const res = await fetch(url);
+        const p = new URLSearchParams({
+          q: query,
+          limit: '12',
+          exchange,
+          ...(assetType && { assetType }),
+        });
+        const res = await fetch(`/api/instruments/search?${p}`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         const list = data.instruments || [];

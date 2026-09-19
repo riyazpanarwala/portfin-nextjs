@@ -53,9 +53,13 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
     debounceRef.current = setTimeout(async () => {
       setSugLoading(true);
       try {
-        const res = await fetch(
-          `/api/instruments?q=${encodeURIComponent(form.symbol)}&assetType=${form.assetType}&limit=8`
-        );
+        const p = new URLSearchParams({
+          q: form.symbol,
+          limit: '8',
+          exchange: form.exchange || (form.assetType === 'MF' ? 'AMFI' : 'NSE'),
+          ...(form.assetType && { assetType: form.assetType }),
+        });
+        const res = await fetch(`/api/instruments/search?${p}`);
         if (res.ok && active && !skipSearchRef.current) {
           const { instruments } = await res.json();
           setSuggestions(instruments || []);

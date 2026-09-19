@@ -18,8 +18,8 @@ const ASSET_TYPES = ['STOCK', 'MF'];
 const exchColors = { NSE: 'var(--green2)', BSE: 'var(--orange)', AMFI: 'var(--teal)' };
 const typeColors = { STOCK: 'var(--purple)', MF: 'var(--accent2)' };
 
-const typeColor  = { bse: 'var(--orange)', nse: 'var(--green2)', etf: 'var(--accent2)' };
-const typeLabel  = { bse: 'BSE Equity', nse: 'NSE Equity', etf: 'NSE ETF' };
+const typeColor  = { bse: 'var(--orange)', nse: 'var(--green2)', etf: 'var(--accent2)', amfi: 'var(--teal)' };
+const typeLabel  = { bse: 'BSE Equity', nse: 'NSE Equity', etf: 'NSE ETF', amfi: 'AMFI Mutual Fund' };
 
 const SECTOR_SUGGESTIONS = [
   'Large Cap','Mid Cap','Small Cap','Flexi Cap','ELSS','Value',
@@ -121,7 +121,8 @@ function SymbolSearchDropdown({ exchange, assetType, onSelect, disabled }) {
             <span className={styles.dropdownHeaderText}>{suggestions.length} results for &quot;{query}&quot;</span>
             <div className={styles.dropdownHeaderBadges}>
               {suggestions.some(s => s.inDb)  && <Badge label="● In DB"    color="var(--green2)" bg="rgba(16,185,129,0.1)"  border="rgba(16,185,129,0.25)" />}
-              {suggestions.some(s => !s.inDb) && <Badge label="○ From CSV" color="var(--text3)"  bg="var(--bg3)"            border="var(--border)" />}
+              {suggestions.some(s => !s.inDb && s.exchange === 'AMFI') && <Badge label="○ From AMFI" color="var(--teal)"   bg="rgba(20,184,166,0.1)" border="rgba(20,184,166,0.25)" />}
+              {suggestions.some(s => !s.inDb && s.exchange !== 'AMFI') && <Badge label="○ From CSV"  color="var(--text3)"  bg="var(--bg3)"            border="var(--border)" />}
             </div>
           </div>
           {suggestions.map((inst, i) => {
@@ -278,15 +279,51 @@ function AddInstrumentForm({ onAdded }) {
         <div className={styles.detailFieldsBoxTitle}>
           {form.symbol ? '✏️ Review & Edit — fields auto-filled from search' : '✏️ Or enter details manually'}
         </div>
-        <div className={styles.detailRow}>
-          <FieldLabel ch="Full Name / Scheme Name" />
-          <input value={form.name} onChange={e => setF('name', e.target.value)} placeholder="e.g. Infosys Limited" />
-        </div>
         <div className={styles.detailTwoCol}>
           <div>
-            <FieldLabel ch="ISIN" hint="— optional" />
-            <input value={form.isin} onChange={e => setF('isin', e.target.value.toUpperCase())} placeholder="INE009A01021" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+            <FieldLabel
+              ch={assetType === 'MF' ? 'Symbol / Fund Code' : 'Symbol / Scrip Code'}
+              hint={assetType === 'MF' ? '— auto-fills from search or name' : '— required'}
+            />
+            <input
+              value={form.symbol}
+              onChange={e => setF('symbol', e.target.value.toUpperCase().replace(/\s+/g, ''))}
+              placeholder={assetType === 'MF' ? 'e.g. DCBFDPG' : 'e.g. INFY'}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            />
           </div>
+          <div>
+            <FieldLabel ch="ISIN" hint="— optional" />
+            <input
+              value={form.isin}
+              onChange={e => setF('isin', e.target.value.toUpperCase())}
+              placeholder="INE009A01021"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            />
+          </div>
+        </div>
+        <div className={styles.detailRow}>
+          <FieldLabel ch="Full Name / Scheme Name" />
+          <input
+            value={form.name}
+            onChange={e => {
+              const val = e.target.value;
+              setF('name', val);
+              if (assetType === 'MF' && !form.symbol && val.trim()) {
+                const derived = val
+                  .replace(/[^A-Za-z0-9 ]/g, '')
+                  .split(/\s+/)
+                  .filter(w => w.length > 0)
+                  .map(w => w[0].toUpperCase())
+                  .join('')
+                  .slice(0, 20);
+                if (derived) setF('symbol', derived);
+              }
+            }}
+            placeholder={assetType === 'MF' ? 'e.g. DSP Corporate Bond Fund - Direct Plan - Growth' : 'e.g. Infosys Limited'}
+          />
+        </div>
+        <div className={styles.detailRow}>
           <div className={styles.sectorDropdownWrapper}>
             <FieldLabel ch="Sector / Category" hint="— optional" />
             <input
@@ -294,7 +331,7 @@ function AddInstrumentForm({ onAdded }) {
               onChange={e => { setF('sector', e.target.value); setSectorOpen(true); }}
               onFocus={() => setSectorOpen(true)}
               onBlur={() => setTimeout(() => setSectorOpen(false), 160)}
-              placeholder="e.g. Banking, Large Cap"
+              placeholder={assetType === 'MF' ? 'e.g. Small Cap, Flexi Cap, Corporate Bond' : 'e.g. Banking, Large Cap'}
             />
             {sectorOpen && !form.sector && (
               <div className={styles.sectorDropdown}>
@@ -322,10 +359,18 @@ function AddInstrumentForm({ onAdded }) {
       <button
         className="btn btn-primary"
         onClick={handleSubmit}
-        disabled={saving || !form.symbol}
-        style={{ width: '100%', justifyContent: 'center', padding: '11px', fontSize: 13, opacity: (!form.symbol || saving) ? 0.5 : 1 }}
+        disabled={saving || (!form.symbol && !(assetType === 'MF' && form.name.trim()))}
+        style={{
+          width: '100%',
+          justifyContent: 'center',
+          padding: '11px',
+          fontSize: 13,
+          opacity: (!form.symbol && !(assetType === 'MF' && form.name.trim())) || saving ? 0.5 : 1,
+        }}
       >
-        {saving ? '⏳ Saving…' : `➕ Add ${form.symbol || 'Instrument'} to Database`}
+        {saving
+          ? '⏳ Saving…'
+          : `➕ Add ${form.symbol || (assetType === 'MF' && form.name.trim() ? 'Mutual Fund' : 'Instrument')} to Database`}
       </button>
     </div>
   );
@@ -357,8 +402,8 @@ function BulkImportPanel({ onImported }) {
       >
         <div className={styles.dropZoneIcon}>📄</div>
         <div className={styles.dropZoneTitle}>Drop CSV files here or click to browse</div>
-        <div className={styles.dropZoneSub}>bse_equity.csv · nse_equity.csv · ETF_list.csv</div>
-        <input ref={inputRef} type="file" accept=".csv" multiple style={{ display: 'none' }} onChange={e => readFiles(e.target.files)} />
+        <div className={styles.dropZoneSub}>bse_equity.csv · nse_equity.csv · ETF_list.csv · NAVAll.txt</div>
+        <input ref={inputRef} type="file" accept=".csv,.txt" multiple style={{ display: 'none' }} onChange={e => readFiles(e.target.files)} />
       </div>
 
       {files.length > 0 && (
