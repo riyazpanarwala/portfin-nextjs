@@ -30,6 +30,7 @@ import {
   simulateTaxHarvesting,
   generateSchedule112ACsv,
   generateSchedule112AJson,
+  generateSchedule111ACsv,
   generateHarvestingExecutionCsv,
   fmt,
   fmtCr,
@@ -177,6 +178,12 @@ export default function TaxReportView() {
     triggerDownload(jsonContent, `ITR2-Schedule-112A-FY${selectedFy}.json`, 'application/json');
   };
 
+  // 4. Official Schedule 111A (STCG) CSV Export
+  const handleExportSchedule111ACsv = () => {
+    const csvContent = generateSchedule111ACsv(report);
+    triggerDownload(csvContent, `ITR2-Schedule-111A-STCG-FY${selectedFy}.csv`);
+  };
+
   // 4. Simulator Execution Plan CSV Export
   const handleExportHarvestingPlan = () => {
     if (!simulation.orders || simulation.orders.length === 0) return;
@@ -301,6 +308,13 @@ export default function TaxReportView() {
                     <div>
                       <div style={{ fontWeight: 600 }}>Schedule 112A (JSON)</div>
                       <div style={{ fontSize: 10, color: 'var(--text3)' }}>Ready for tax portal API e-filing</div>
+                    </div>
+                  </button>
+                  <button className={styles.exportDropdownItem} onClick={handleExportSchedule111ACsv}>
+                    <FileSpreadsheet size={14} color="var(--yellow)" />
+                    <div>
+                      <div style={{ fontWeight: 600 }}>ITR-2 Schedule 111A (STCG CSV)</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>Consolidated summary + scrip-wise for CA</div>
                     </div>
                   </button>
                   <button className={styles.exportDropdownItem} onClick={handleExportAuditCsv}>

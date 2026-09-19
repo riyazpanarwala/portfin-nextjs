@@ -6,6 +6,7 @@ import {
   simulateTaxHarvesting,
   generateSchedule112ACsv,
   generateSchedule112AJson,
+  generateSchedule111ACsv,
   generateHarvestingExecutionCsv,
 } from '../../src/lib/store.js';
 
@@ -168,6 +169,46 @@ test('Schedule 112A Export: CSV and JSON formatting', () => {
   assert.equal(parsed.schedule112A[0].isin, 'INE040A01034');
   assert.equal(parsed.schedule112A[0].fullValueOfConsideration, 90000);
   assert.equal(parsed.schedule112A[0].costOfAcquisitionWithoutIndexation, 70000);
+});
+
+test('Schedule 111A Export: CSV formatting with Consolidated Summary Header and STCG trades', () => {
+  const trades = [
+    {
+      symbol: 'WIPRO',
+      isin: 'INE075A01022',
+      name: 'Wipro Limited',
+      assetType: 'STOCK',
+      exchange: 'NSE',
+      tradeType: 'BUY',
+      quantity: '100',
+      price: '400',
+      tradeDate: '2026-04-10',
+    },
+    {
+      symbol: 'WIPRO',
+      isin: 'INE075A01022',
+      name: 'Wipro Limited',
+      assetType: 'STOCK',
+      exchange: 'NSE',
+      tradeType: 'SELL',
+      quantity: '100',
+      price: '480',
+      tradeDate: '2026-06-15',
+    },
+  ];
+
+  const holdings = computeHoldings(trades);
+  const report = computeCapitalGainsReport(holdings, { fy: '2026-27' });
+
+  const csv = generateSchedule111ACsv(report);
+  assert.ok(csv.includes('# ITR-2 SCHEDULE CG — SECTION 111A'));
+  assert.ok(csv.includes('# 1. Full Value of Consideration (Gross Short-Term Sale Proceeds):,48000.00'));
+  assert.ok(csv.includes('# 2. Cost of Acquisition without indexation (FIFO Basis):,40000.00'));
+  assert.ok(csv.includes('# 5. Net Short-Term Capital Gain u/s 111A:,8000.00'));
+  assert.ok(csv.includes('INE075A01022'));
+  assert.ok(csv.includes('Wipro Limited'));
+  assert.ok(csv.includes('48000.00'));
+  assert.ok(csv.includes('8000.00'));
 });
 
 test('Smart Tax Harvesting Simulator: Recommends 0% LTCG Gain Step-Up & Loss Offsets', () => {

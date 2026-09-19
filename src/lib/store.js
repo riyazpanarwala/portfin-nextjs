@@ -1034,6 +1034,112 @@ export function generateSchedule112AJson(report) {
   }, null, 2);
 }
 
+export function generateSchedule111ACsv(report) {
+  const ay = report.fy && report.fy !== 'ALL'
+    ? `${parseInt(report.fy.slice(0, 4), 10) + 1}-${String(parseInt(report.fy.slice(5, 7), 10) + 1).padStart(2, '0')}`
+    : '2027-28';
+
+  const stcgRows = [];
+  let srNo = 1;
+  let totalProceeds = 0;
+  let totalCost = 0;
+
+  for (const s of (report.sells || [])) {
+    const stcgLots = (s.matchedLots || []).filter(m => m.taxType === 'STCG');
+    if (stcgLots.length > 0) {
+      for (const m of stcgLots) {
+        const proceeds = m.qty * s.sellPrice;
+        const cost = m.costBasis || (m.qty * m.buyPrice);
+        const gain = proceeds - cost;
+        totalProceeds += proceeds;
+        totalCost += cost;
+
+        stcgRows.push([
+          srNo++,
+          s.date,
+          m.buyDate,
+          m.holdDays,
+          s.isin || s.symbol,
+          `"${(s.name || s.symbol).replace(/"/g, '""')}"`,
+          s.assetType === 'MF' ? 'Mutual Fund' : 'Equity Share',
+          typeof m.qty === 'number' ? m.qty.toFixed(s.assetType === 'MF' ? 3 : 0) : m.qty,
+          Number(s.sellPrice || 0).toFixed(2),
+          Number(proceeds).toFixed(2),
+          Number(m.buyPrice || 0).toFixed(2),
+          Number(cost).toFixed(2),
+          '0.00',
+          Number(gain).toFixed(2),
+        ]);
+      }
+    } else if (s.taxType === 'STCG') {
+      const proceeds = s.totalProceeds || (s.qty * s.sellPrice);
+      const cost = s.totalCost || 0;
+      const gain = s.netGain || (proceeds - cost);
+      totalProceeds += proceeds;
+      totalCost += cost;
+
+      stcgRows.push([
+        srNo++,
+        s.date,
+        '',
+        '',
+        s.isin || s.symbol,
+        `"${(s.name || s.symbol).replace(/"/g, '""')}"`,
+        s.assetType === 'MF' ? 'Mutual Fund' : 'Equity Share',
+        typeof s.qty === 'number' ? s.qty.toFixed(s.assetType === 'MF' ? 3 : 0) : s.qty,
+        Number(s.sellPrice || 0).toFixed(2),
+        Number(proceeds).toFixed(2),
+        '',
+        Number(cost).toFixed(2),
+        '0.00',
+        Number(gain).toFixed(2),
+      ]);
+    }
+  }
+
+  const netStcg = totalProceeds - totalCost;
+
+  const summaryLines = [
+    '# ITR-2 SCHEDULE CG — SECTION 111A (SHORT-TERM CAPITAL GAINS TAXABLE @ 20%)',
+    `# Financial Year: ${report.fy || '2026-27'},Assessment Year: ${ay}`,
+    '# ---------------------------------------------------------------------------------',
+    '# CONSOLIDATED SECTION 111A SUMMARY (PUNCH DIRECTLY INTO ITR-2 / TAX SOFTWARE):',
+    `# 1. Full Value of Consideration (Gross Short-Term Sale Proceeds):,${totalProceeds.toFixed(2)}`,
+    `# 2. Cost of Acquisition without indexation (FIFO Basis):,${totalCost.toFixed(2)}`,
+    '# 3. Expenditure incurred wholly and exclusively in connection with transfer:,0.00',
+    `# 4. Total Deductions (Cost + Expenditure):,${totalCost.toFixed(2)}`,
+    `# 5. Net Short-Term Capital Gain u/s 111A:,${netStcg.toFixed(2)}`,
+    `# 6. STCL Set-off against STCG:,${(report.stclUsedAgainstStcg || 0).toFixed(2)}`,
+    `# 7. Net Taxable STCG (Taxable @ 20%):,${(report.netTaxableStcg || 0).toFixed(2)}`,
+    `# 8. Estimated STCG Tax @ 20% + 4% Cess:,${(report.stcgTax ? report.stcgTax * 1.04 : 0).toFixed(2)}`,
+    '# ---------------------------------------------------------------------------------',
+    '',
+  ];
+
+  const tableHeaders = [
+    'Sr. No.',
+    'Sell Date',
+    'Buy Date',
+    'Holding Days',
+    'ISIN Code',
+    'Name of the Share/Unit',
+    'Asset Type',
+    'No. of Shares/Units',
+    'Sale Price per Unit',
+    'Full Value of Consideration',
+    'Purchase Price per Unit',
+    'Cost of Acquisition',
+    'Transfer Expenditure',
+    'Net Short Term Capital Gain/Loss',
+  ];
+
+  return [
+    ...summaryLines,
+    tableHeaders.join(','),
+    ...stcgRows.map(r => r.join(',')),
+  ].join('\n');
+}
+
 export function generateHarvestingExecutionCsv(orders = []) {
   const headers = [
     'Action',
