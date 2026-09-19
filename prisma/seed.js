@@ -88,6 +88,8 @@ const MF_CATEGORY_MAP = {
   "Axis Large Cap Fund Direct Plan Growth": "INF846K01DP8",
   "Axis Small Cap Fund Direct Growth": "INF846K01K35",
   "DSP ELSS Tax Saver Fund Regular Plan Growth": "INF740K01185",
+  "DSP Nifty 50 Equal Weight Index Fund Direct Plan Growth": "INF740KA1CR7",
+  "DSP Nifty 50 Equal Weight Index Fund - Direct Plan - Growth": "INF740KA1CR7",
   "HSBC Small Cap Fund Fund Direct Growth": "INF917K01QA1",
   "Kotak Flexicap Fund Direct Growth": "INF174K01LS2",
   "Kotak Midcap Fund Direct Growth": "INF174K01LT0",
