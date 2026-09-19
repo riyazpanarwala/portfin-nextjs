@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    TaxReportView.module.css
-   Modern styling for Capital Gains & Income Tax Report
+   Modern styling for Capital Gains, Schedule 112A, and Tax Harvesting Simulator
    ───────────────────────────────────────────────────────────────────────────── */
 
 .taxRoot {
@@ -82,6 +82,55 @@
   border-color: var(--accent);
 }
 
+/* ── Top Navigation Tabs ────────────────────────────────────────────────────── */
+
+.navTabBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.navTabBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text3);
+  transition: all 0.15s ease;
+}
+
+.navTabBtn:hover {
+  color: var(--text);
+  background: var(--bg2);
+}
+
+.navTabBtnActive {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: var(--accent2);
+}
+
+.navTabBtnSimulatorActive {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: var(--green2);
+}
+
+/* ── Export Menu ───────────────────────────────────────────────────────────── */
+
+.exportMenuWrapper {
+  position: relative;
+  display: inline-block;
+}
+
 .exportBtn {
   display: inline-flex;
   align-items: center;
@@ -100,6 +149,43 @@
 .exportBtn:hover {
   background: rgba(20, 184, 166, 0.2);
   border-color: var(--teal);
+}
+
+.exportDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.exportDropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text2);
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
+  transition: all 0.15s ease;
+}
+
+.exportDropdownItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
 }
 
 /* ── KPI Grid ───────────────────────────────────────────────────────────────── */
@@ -195,6 +281,64 @@
 }
 
 .explainerContent strong {
+  color: var(--text);
+}
+
+/* ── Schedule 112A Official Summary Box ─────────────────────────────────────── */
+
+.schedule112ABox {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schedule112AHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.schedule112ATitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.schedule112AGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.schedule112ACell {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.schedule112ACellLabel {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text3);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.schedule112ACellVal {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font-mono);
   color: var(--text);
 }
 
@@ -301,31 +445,27 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .taxTable th {
-  padding: 10px 14px;
   background: var(--bg3);
-  color: var(--text3);
-  font-size: 10px;
+  padding: 10px 14px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  color: var(--text2);
+  font-size: 11px;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
   border-bottom: 1px solid var(--border);
-  white-space: nowrap;
 }
 
 .taxTable td {
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
 }
 
-.taxTable tr:last-child td {
-  border-bottom: none;
-}
-
-.taxTable tr:hover td {
+.taxTable tbody tr:hover {
   background: rgba(255, 255, 255, 0.02);
 }
 
@@ -405,4 +545,250 @@
   text-align: center;
   color: var(--text3);
   font-size: 13px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SMART TAX-HARVESTING SIMULATOR STYLES
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.simulatorRoot {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.strategyBar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.strategyCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.strategyCard:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.strategyCardActive {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3);
+}
+
+.strategyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.strategyTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.strategyDesc {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.4;
+}
+
+/* ── Live Impact Comparison Grid ───────────────────────────────────────────── */
+
+.impactGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.impactCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.impactCardHighlight {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.impactLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.impactValue {
+  font-size: 20px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+}
+
+.impactSub {
+  font-size: 11px;
+  color: var(--text3);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+/* ── Simulator Action Bar ──────────────────────────────────────────────────── */
+
+.simActionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.presetBtnGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.presetBtn {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.presetBtn:hover {
+  background: var(--bg);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Interactive Candidate Lots ────────────────────────────────────────────── */
+
+.candidateTable th {
+  background: var(--bg3);
+  padding: 8px 12px;
+  font-weight: 700;
+  color: var(--text2);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.candidateRowSelected {
+  background: rgba(16, 185, 129, 0.03);
+}
+
+.harvestPctGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.harvestPctBtn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.harvestPctBtnActive {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.sliderInput {
+  width: 70px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ── Execution Orders Sheet ─────────────────────────────────────────────────── */
+
+.ordersCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.ordersHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ordersTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actionBadgeSell {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.strategyPill {
+  font-size: 11px;
+  color: var(--text2);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

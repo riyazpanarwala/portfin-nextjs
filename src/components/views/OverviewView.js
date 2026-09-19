@@ -20,11 +20,8 @@ export default function OverviewView() {
     mfCatMap, stockSectorMap, topMF, topMFLaggards, topSt, topStLaggards, healthScore,
     donutData, combinedAllocationData, healthBars, hasSells,
     alerts, suggestedActions, recentSells,
-    harvestingData,
   } = useOverview({ stats, holdings, mfHoldings, stHoldings, currentPrices, realizedSummary, portfolioXIRR });
 
-  const [showAllHarvestingLots, setShowAllHarvestingLots] = useState(false);
-  const [harvestingCollapsed, setHarvestingCollapsed]     = useState(false);
   const [allocViewTab, setAllocViewTab]                   = useState('combined');
   const [sectorMixTab, setSectorMixTab]                   = useState('mf');
   const [mfPerfTab, setMfPerfTab]                         = useState('gainers');
@@ -46,10 +43,8 @@ export default function OverviewView() {
   }
 
   const handleActionClick = (action) => {
-    if (action.targetView === 'tax-harvest') {
-      setHarvestingCollapsed(false);
-      const el = document.getElementById('tax-harvesting-panel');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    if (action.targetView === 'tax-harvest' || action.targetView === 'tax') {
+      setActiveView('tax');
     } else if (action.targetView) {
       setActiveView(action.targetView);
     }
@@ -428,123 +423,6 @@ export default function OverviewView() {
         </div>
       )}
 
-      {/* ── Tax-Loss Harvesting Panel (Collapsible) ── */}
-      {holdings.length > 0 && (
-        <div id="tax-harvesting-panel" className={`glass ${styles.harvestingPanel}`}>
-          <div className={styles.harvestingHeader}>
-            <div className={styles.harvestingTitle}>
-              <span>📉</span> Tax-Loss Harvesting Recommendations
-            </div>
-            <div className={styles.harvestingBadges}>
-              {harvestingData.stclCandidateLoss > 0 && (
-                <span className={`${styles.harvestingBadge} ${styles.badgeSTCL}`}>
-                  STCL Offset
-                </span>
-              )}
-              {harvestingData.ltclCandidateLoss > 0 && (
-                <span className={`${styles.harvestingBadge} ${styles.badgeLTCL}`}>
-                  LTCL Offset
-                </span>
-              )}
-              <button
-                className={styles.collapseToggleBtn}
-                onClick={() => setHarvestingCollapsed(prev => !prev)}
-              >
-                {harvestingCollapsed ? 'Expand ▼' : 'Collapse ▲'}
-              </button>
-            </div>
-          </div>
-
-          {!harvestingCollapsed && (
-            <>
-              <div className={styles.harvestingMetricsGrid}>
-                <div className={styles.harvestingMetricCell}>
-                  <div className={styles.harvestingMetricLabel}>Harvestable Loss</div>
-                  <div className={`${styles.harvestingMetricValue} mono-privacy`} style={{ color: 'var(--red2)' }}>
-                    {fmtCr(harvestingData.totalHarvestableLoss)}
-                  </div>
-                  <div className={styles.harvestingMetricSub}>{harvestingData.candidateLots.length} lot(s) eligible</div>
-                </div>
-
-                <div className={styles.harvestingMetricCell}>
-                  <div className={styles.harvestingMetricLabel}>Est. Tax Savings</div>
-                  <div className={`${styles.harvestingMetricValue} mono-privacy`} style={{ color: 'var(--green2)' }}>
-                    {fmtCr(harvestingData.potentialTaxSavings)}
-                  </div>
-                  <div className={styles.harvestingMetricSub}>FY tax offset</div>
-                </div>
-
-                <div className={styles.harvestingMetricCell}>
-                  <div className={styles.harvestingMetricLabel}>STCL Loss (&lt; 1 yr)</div>
-                  <div className={`${styles.harvestingMetricValue} mono-privacy`} style={{ color: 'var(--yellow)' }}>
-                    {fmtCr(harvestingData.stclCandidateLoss)}
-                  </div>
-                  <div className={styles.harvestingMetricSub}>Offsets STCG @ 20%</div>
-                </div>
-
-                <div className={styles.harvestingMetricCell}>
-                  <div className={styles.harvestingMetricLabel}>LTCL Loss (&ge; 1 yr)</div>
-                  <div className={`${styles.harvestingMetricValue} mono-privacy`} style={{ color: 'var(--red2)' }}>
-                    {fmtCr(harvestingData.ltclCandidateLoss)}
-                  </div>
-                  <div className={styles.harvestingMetricSub}>Offsets LTCG @ 12.5%</div>
-                </div>
-              </div>
-
-              {harvestingData.candidateLots.length > 0 ? (
-                <div className={styles.harvestingLotsSection}>
-                  <div className={styles.harvestingLotsHeader}>
-                    <span className={styles.harvestingLotsLabel}>Candidate Lots to Harvest</span>
-                    {harvestingData.candidateLots.length > 3 && (
-                      <button
-                        className={styles.harvestingToggleBtn}
-                        onClick={() => setShowAllHarvestingLots(prev => !prev)}
-                      >
-                        {showAllHarvestingLots ? 'Show Top 3' : `View All (${harvestingData.candidateLots.length})`}
-                      </button>
-                    )}
-                  </div>
-
-                  <div className={styles.harvestingLotsList}>
-                    {(showAllHarvestingLots ? harvestingData.candidateLots : harvestingData.candidateLots.slice(0, 3)).map((lot, idx) => (
-                      <div key={idx} className={styles.harvestingLotRow}>
-                        <div className={styles.harvestingLotLeft}>
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span className={styles.harvestingLotSymbol}>{lot.symbol}</span>
-                              <span className={`${styles.taxChip} ${lot.taxType === 'STCL' ? styles.taxChipSTCG : styles.taxChipLTCG}`}>
-                                {lot.taxType}
-                              </span>
-                            </div>
-                            <div className={styles.harvestingLotMeta}>
-                              Bought {lot.buyDate} · {lot.qty} units @ ₹{lot.buyPrice.toFixed(2)} (CMP: ₹{lot.cmp.toFixed(2)})
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className={styles.harvestingLotRight}>
-                          <span className={`${styles.harvestingLotLoss} mono-privacy`}>-{fmtCr(lot.unrealizedLoss)}</span>
-                          {lot.estimatedSavings > 0 && (
-                            <span className={`${styles.harvestingLotSavings} mono-privacy`}>Est. Save ~{fmtCr(lot.estimatedSavings)}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className={styles.harvestingTips}>
-                    💡 <strong>Tax Tip:</strong> In India, Short-Term Capital Losses (STCL) can set off both STCG (20%) and LTCG (12.5%). Long-Term Capital Losses (LTCL) set off LTCG only. Since Indian tax law has no wash-sale rule, you can sell loss lots to harvest tax savings and immediately re-buy if you hold long-term conviction.
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.harvestingTips} style={{ marginTop: 0 }}>
-                  ✅ <strong>No Loss-Harvesting Candidates:</strong> All your active buy lots currently have positive or break-even unrealized gains.
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }

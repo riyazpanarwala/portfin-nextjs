@@ -82,6 +82,7 @@ export function computeHoldings(trades, currentPrices = {}) {
       if (actualQtySold > EPSILON) {
         sellRecords.push({
           date:        sellDate,
+          isin:        meta.isin || null,
           qty:         actualQtySold,
           sellPrice,
           realized:    matchedLots.reduce((s, m) => s + m.gain, 0),
@@ -135,6 +136,7 @@ export function computeHoldings(trades, currentPrices = {}) {
 
     holdings.push({
       symbol,
+      isin:      meta.isin     || null,
       name:      meta.name     || symbol,
       assetType: meta.assetType,
       exchange:  meta.exchange,
@@ -269,6 +271,7 @@ export function computeCapitalGainsReport(holdings, { fy = '2026-27' } = {}) {
       const fyOfTrade = getFinancialYear(s.date);
       allSells.push({
         ...s,
+        isin: s.isin || h.isin || null,
         symbol: h.symbol,
         name: h.name || h.symbol,
         assetType: h.assetType,
@@ -443,6 +446,65 @@ export function computeCapitalGainsReport(holdings, { fy = '2026-27' } = {}) {
       }] : []),
     ],
     sells: enrichedSells,
+    schedule112A: (() => {
+      const rows = [];
+      let srNo = 1;
+      for (const s of enrichedSells) {
+        const ltcgMatched = (s.matchedLots || []).filter(m => m.taxType === 'LTCG');
+        if (ltcgMatched.length > 0) {
+          for (const m of ltcgMatched) {
+            const fullValueConsideration = m.qty * s.sellPrice;
+            const costOfAcquisition = m.costBasis;
+            const gain = fullValueConsideration - costOfAcquisition;
+            rows.push({
+              srNo: srNo++,
+              sellDate: s.date,
+              isin: s.isin || s.symbol,
+              symbol: s.symbol,
+              name: s.name || s.symbol,
+              assetType: s.assetType,
+              quantity: m.qty,
+              salePrice: s.sellPrice,
+              fullValueConsideration,
+              costOfAcquisition,
+              expenditure: 0,
+              totalDeductions: costOfAcquisition,
+              balance: gain,
+              deduction54F: 0,
+              netLtcg: gain,
+              buyDate: m.buyDate,
+              buyPrice: m.buyPrice,
+              holdDays: m.holdDays,
+            });
+          }
+        } else if (s.taxType === 'LTCG') {
+          const fullValueConsideration = s.totalProceeds;
+          const costOfAcquisition = s.totalCost;
+          const gain = s.netGain;
+          rows.push({
+            srNo: srNo++,
+            sellDate: s.date,
+            isin: s.isin || s.symbol,
+            symbol: s.symbol,
+            name: s.name || s.symbol,
+            assetType: s.assetType,
+            quantity: s.qty,
+            salePrice: s.sellPrice,
+            fullValueConsideration,
+            costOfAcquisition,
+            expenditure: 0,
+            totalDeductions: costOfAcquisition,
+            balance: gain,
+            deduction54F: 0,
+            netLtcg: gain,
+            buyDate: '',
+            buyPrice: 0,
+            holdDays: 0,
+          });
+        }
+      }
+      return rows;
+    })(),
   };
 }
 
@@ -600,6 +662,410 @@ export function computeTaxHarvesting(holdings, realizedSummary = {}) {
     ltcgTaxSaved,
     candidateLots,
   };
+}
+
+// ─── Interactive Smart Tax-Harvesting Simulator Engine ─────────────────────────
+
+export function simulateTaxHarvesting(
+  holdings = [],
+  realizedReport = {},
+  lotOverrides = {},
+  strategy = 'OPTIMAL'
+) {
+  const today = new Date();
+
+  // Baseline figures from current FY realized report
+  const baseGrossStcg = realizedReport.grossStcg || 0;
+  const baseGrossStcl = realizedReport.grossStcl || 0;
+  const baseGrossLtcg = realizedReport.grossLtcg || 0;
+  const baseGrossLtcl = realizedReport.grossLtcl || 0;
+  const baseTotalTax  = realizedReport.totalTax || 0;
+  const baseExemptLtcg = realizedReport.exemptLtcg || 0;
+  const baseTaxableLtcg = realizedReport.taxableLtcg || 0;
+  const baseTaxableStcg = realizedReport.netTaxableStcg || 0;
+
+  const LTCG_LIMIT = 125000;
+  const remainingLtcgExemption = Math.max(0, LTCG_LIMIT - baseExemptLtcg);
+
+  // 1. Gather all candidate lots across active holdings
+  const allCandidateLots = [];
+
+  for (const h of holdings) {
+    if (!h.qty || h.qty <= EPSILON || !h.lots || !h.lots.length) continue;
+    const cmp = h.cmp || h.avgBuy;
+
+    for (let idx = 0; idx < h.lots.length; idx++) {
+      const lot = h.lots[idx];
+      if (lot.qty <= EPSILON) continue;
+      const lotKey = `${h.symbol}_${lot.date || 'unknown'}_${idx}`;
+      const lotDate = lot.date ? new Date(lot.date) : today;
+      const holdDays = Math.max(0, Math.round((today - lotDate) / (24 * 3600 * 1000)));
+      const isLTCG = holdDays >= 365;
+      const taxType = isLTCG ? 'LTCG' : 'STCG';
+
+      const costBasis = lot.qty * lot.price;
+      const currentValue = lot.qty * cmp;
+      const unrealizedGain = currentValue - costBasis;
+      const isGain = unrealizedGain > EPSILON;
+      const isLoss = unrealizedGain < -EPSILON;
+
+      if (!isGain && !isLoss) continue;
+
+      const gainLossPct = costBasis > 0 ? (unrealizedGain / costBasis) * 100 : 0;
+
+      allCandidateLots.push({
+        lotKey,
+        symbol: h.symbol,
+        isin: h.isin || null,
+        name: h.name || h.symbol,
+        assetType: h.assetType,
+        buyDate: lot.date,
+        buyPrice: lot.price,
+        qty: lot.qty,
+        cmp,
+        costBasis,
+        currentValue,
+        unrealizedGain,
+        isGain,
+        isLoss,
+        isLTCG,
+        taxType,
+        holdDays,
+        gainLossPct,
+      });
+    }
+  }
+
+  // Separate into Gain Candidates (LTCG only for 0% tax) and Loss Candidates (STCL & LTCL)
+  const ltcgGainCandidates = allCandidateLots
+    .filter(l => l.isGain && l.isLTCG)
+    .sort((a, b) => b.unrealizedGain - a.unrealizedGain);
+
+  const lossCandidates = allCandidateLots
+    .filter(l => l.isLoss)
+    .sort((a, b) => {
+      // Prioritize STCL (offsets 20% STCG) over LTCL (offsets 12.5% LTCG)
+      if (a.taxType !== b.taxType) {
+        return a.taxType === 'STCG' ? -1 : 1;
+      }
+      return a.unrealizedGain - b.unrealizedGain;
+    });
+
+  // Calculate default auto-selections if no user override provided
+  const hasUserOverrides = Object.keys(lotOverrides).length > 0;
+  const effectiveSelections = {};
+
+  if (hasUserOverrides) {
+    for (const lot of allCandidateLots) {
+      if (lotOverrides[lot.lotKey]) {
+        effectiveSelections[lot.lotKey] = {
+          selected: !!lotOverrides[lot.lotKey].selected,
+          harvestRatio: Math.max(0, Math.min(1, lotOverrides[lot.lotKey].harvestRatio ?? 1)),
+        };
+      } else {
+        effectiveSelections[lot.lotKey] = { selected: false, harvestRatio: 1 };
+      }
+    }
+  } else {
+    // Strategy A / OPTIMAL: Select loss lots to wipe out taxable gains
+    if (strategy === 'LOSS' || strategy === 'OPTIMAL' || strategy === 'ALL') {
+      let neededStclOffset = baseTaxableStcg;
+      let neededLtcgOffset = baseTaxableLtcg;
+
+      for (const lot of lossCandidates) {
+        const lossAbs = Math.abs(lot.unrealizedGain);
+        if (lot.taxType === 'STCG') {
+          if (neededStclOffset > 0 || neededLtcgOffset > 0) {
+            effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: 1 };
+            if (neededStclOffset > 0) {
+              neededStclOffset = Math.max(0, neededStclOffset - lossAbs);
+            } else {
+              neededLtcgOffset = Math.max(0, neededLtcgOffset - lossAbs);
+            }
+          }
+        } else {
+          if (neededLtcgOffset > 0) {
+            effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: 1 };
+            neededLtcgOffset = Math.max(0, neededLtcgOffset - lossAbs);
+          }
+        }
+      }
+    }
+
+    // Strategy B / OPTIMAL: Select LTCG winners up to remaining ₹1.25L exemption
+    if (strategy === 'GAIN' || strategy === 'OPTIMAL' || strategy === 'ALL') {
+      let capRemaining = remainingLtcgExemption;
+      for (const lot of ltcgGainCandidates) {
+        if (capRemaining > 500) {
+          if (lot.unrealizedGain <= capRemaining) {
+            effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: 1 };
+            capRemaining -= lot.unrealizedGain;
+          } else {
+            const partialRatio = Math.max(0.05, capRemaining / lot.unrealizedGain);
+            effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: Math.min(1, partialRatio) };
+            capRemaining = 0;
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Compute simulated execution impact
+  let addHarvestStcg = 0;
+  let addHarvestStcl = 0;
+  let addHarvestLtcg = 0;
+  let addHarvestLtcl = 0;
+  let totalProceeds = 0;
+
+  const orders = [];
+
+  for (const lot of allCandidateLots) {
+    const sel = effectiveSelections[lot.lotKey] || { selected: false, harvestRatio: 1 };
+    lot.isSelected = sel.selected;
+    lot.harvestRatio = sel.harvestRatio;
+    lot.qtyToSell = sel.selected ? lot.qty * sel.harvestRatio : 0;
+    lot.simulatedProceeds = lot.qtyToSell * lot.cmp;
+    lot.simulatedCost = lot.qtyToSell * lot.buyPrice;
+    lot.simulatedGain = lot.simulatedProceeds - lot.simulatedCost;
+
+    if (sel.selected && lot.qtyToSell > EPSILON) {
+      totalProceeds += lot.simulatedProceeds;
+
+      if (lot.isLTCG) {
+        if (lot.simulatedGain >= 0) addHarvestLtcg += lot.simulatedGain;
+        else                        addHarvestLtcl += Math.abs(lot.simulatedGain);
+      } else {
+        if (lot.simulatedGain >= 0) addHarvestStcg += lot.simulatedGain;
+        else                        addHarvestStcl += Math.abs(lot.simulatedGain);
+      }
+
+      orders.push({
+        lotKey: lot.lotKey,
+        symbol: lot.symbol,
+        isin: lot.isin,
+        name: lot.name,
+        assetType: lot.assetType,
+        buyDate: lot.buyDate,
+        taxType: lot.isLTCG ? 'LTCG' : 'STCG',
+        holdDays: lot.holdDays,
+        unitsToSell: lot.qtyToSell,
+        totalUnits: lot.qty,
+        cmp: lot.cmp,
+        costBasis: lot.simulatedCost,
+        estimatedProceeds: lot.simulatedProceeds,
+        gainOrLoss: lot.simulatedGain,
+        isGain: lot.simulatedGain >= 0,
+        strategyAction: lot.simulatedGain >= 0
+          ? '0% Tax Gain Step-Up (Sell & Re-enter)'
+          : lot.isLTCG
+            ? 'LTCL Loss Offset (@ 12.5% Tax Saved)'
+            : 'STCL Loss Offset (@ 20% Tax Saved)',
+      });
+    }
+  }
+
+  // 3. Rerun tax set-off on combined (realized + simulated) gains
+  const combGrossStcg = baseGrossStcg + addHarvestStcg;
+  const combGrossStcl = baseGrossStcl + addHarvestStcl;
+  const combGrossLtcg = baseGrossLtcg + addHarvestLtcg;
+  const combGrossLtcl = baseGrossLtcl + addHarvestLtcl;
+
+  const simLtclUsedAgainstLtcg = Math.min(combGrossLtcl, combGrossLtcg);
+  let simRemLtcg = combGrossLtcg - simLtclUsedAgainstLtcg;
+  const simUnabsorbedLtcl = combGrossLtcl - simLtclUsedAgainstLtcg;
+
+  const simStclUsedAgainstStcg = Math.min(combGrossStcl, combGrossStcg);
+  let simRemStcl = combGrossStcl - simStclUsedAgainstStcg;
+  const simNetTaxableStcg = combGrossStcg - simStclUsedAgainstStcg;
+
+  const simStclUsedAgainstLtcg = Math.min(simRemStcl, simRemLtcg);
+  simRemLtcg -= simStclUsedAgainstLtcg;
+  simRemStcl -= simStclUsedAgainstLtcg;
+  const simUnabsorbedStcl = simRemStcl;
+
+  const simExemptLtcg = Math.min(simRemLtcg, LTCG_LIMIT);
+  const simTaxableLtcg = Math.max(0, simRemLtcg - LTCG_LIMIT);
+
+  const simLtcgTax = simTaxableLtcg * 0.125;
+  const simStcgTax = simNetTaxableStcg * 0.20;
+  const simBaseTax = simLtcgTax + simStcgTax;
+  const simCess = simBaseTax * 0.04;
+  const simTotalTax = simBaseTax + simCess;
+
+  const immediateTaxSaved = Math.max(0, baseTotalTax - simTotalTax);
+  const harvestedTaxFreeGains = Math.max(0, simExemptLtcg - baseExemptLtcg);
+  const futureLtcgTaxShielded = harvestedTaxFreeGains * 0.125;
+  const totalFinancialBenefit = immediateTaxSaved + futureLtcgTaxShielded;
+
+  return {
+    strategy,
+    baseline: {
+      grossStcg: baseGrossStcg,
+      grossStcl: baseGrossStcl,
+      grossLtcg: baseGrossLtcg,
+      grossLtcl: baseGrossLtcl,
+      taxableStcg: baseTaxableStcg,
+      taxableLtcg: baseTaxableLtcg,
+      exemptLtcg: baseExemptLtcg,
+      remainingLtcgExemption,
+      totalTax: baseTotalTax,
+    },
+    simulated: {
+      harvestedStcg: addHarvestStcg,
+      harvestedStcl: addHarvestStcl,
+      harvestedLtcg: addHarvestLtcg,
+      harvestedLtcl: addHarvestLtcl,
+      grossStcg: combGrossStcg,
+      grossStcl: combGrossStcl,
+      grossLtcg: combGrossLtcg,
+      grossLtcl: combGrossLtcl,
+      taxableStcg: simNetTaxableStcg,
+      taxableLtcg: simTaxableLtcg,
+      exemptLtcg: simExemptLtcg,
+      totalTax: simTotalTax,
+      ltcgTax: simLtcgTax,
+      stcgTax: simStcgTax,
+      cess: simCess,
+      unabsorbedStcl: simUnabsorbedStcl,
+      unabsorbedLtcl: simUnabsorbedLtcl,
+    },
+    impact: {
+      immediateTaxSaved,
+      harvestedTaxFreeGains,
+      futureLtcgTaxShielded,
+      totalFinancialBenefit,
+      totalProceeds,
+      selectedLotsCount: orders.length,
+    },
+    candidateLots: allCandidateLots,
+    gainCandidates: ltcgGainCandidates,
+    lossCandidates,
+    orders,
+    effectiveSelections,
+  };
+}
+
+// ─── Schedule 112A & Tax Export Generators ────────────────────────────────────
+
+export function generateSchedule112ACsv(report) {
+  const headers = [
+    'Sr. No.',
+    'Whether shares/units acquired on or before 31st January 2018?',
+    'ISIN Code',
+    'Name of the Share/Unit',
+    'No. of Shares/Units',
+    'Sale-price per share/unit',
+    'Full Value of Consideration',
+    'Cost of acquisition without indexation',
+    'Cost of acquisition',
+    'Fair Market Value per share/unit as on 31st January 2018',
+    'Total Fair Market Value as on 31st January 2018',
+    'Lower of Consideration and Total Fair Market Value',
+    'Cost of acquisition (Higher of actual cost and lower of consideration/FMV)',
+    'Expenditure wholly and exclusively in connection with transfer',
+    'Total Deductions',
+    'Balance (Full Value of Consideration - Total Deductions)',
+    'Deductions under section 54F',
+    'Net Long Term Capital Gain',
+  ];
+
+  const rows = (report.schedule112A || []).map((row, idx) => [
+    idx + 1,
+    'No',
+    row.isin || row.symbol,
+    `"${(row.name || row.symbol).replace(/"/g, '""')}"`,
+    typeof row.quantity === 'number' ? row.quantity.toFixed(row.assetType === 'MF' ? 3 : 0) : row.quantity,
+    Number(row.salePrice || 0).toFixed(2),
+    Number(row.fullValueConsideration || 0).toFixed(2),
+    Number(row.costOfAcquisition || 0).toFixed(2),
+    Number(row.costOfAcquisition || 0).toFixed(2),
+    '0.00',
+    '0.00',
+    '0.00',
+    Number(row.costOfAcquisition || 0).toFixed(2),
+    '0.00',
+    Number(row.costOfAcquisition || 0).toFixed(2),
+    Number(row.netLtcg || 0).toFixed(2),
+    '0.00',
+    Number(row.netLtcg || 0).toFixed(2),
+  ]);
+
+  return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+}
+
+export function generateSchedule112AJson(report) {
+  const ay = report.fy && report.fy !== 'ALL'
+    ? `${parseInt(report.fy.slice(0, 4), 10) + 1}-${String(parseInt(report.fy.slice(5, 7), 10) + 1).padStart(2, '0')}`
+    : '2027-28';
+
+  return JSON.stringify({
+    schemaVersion: 'ITR-2/112A/2024-25',
+    financialYear: report.fy || '2026-27',
+    assessmentYear: ay,
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalTransactions: report.schedule112A?.length || 0,
+      grossLtcg: report.grossLtcg || 0,
+      exemptLtcgSec112A: report.exemptLtcg || 0,
+      taxableLtcg: report.taxableLtcg || 0,
+      ltcgTaxPayable: report.ltcgTax || 0,
+      stcgTaxPayable: report.stcgTax || 0,
+      totalTaxPayable: report.totalTax || 0,
+    },
+    schedule112A: (report.schedule112A || []).map((row, idx) => ({
+      srNo: idx + 1,
+      isin: row.isin || row.symbol,
+      shareName: row.name,
+      assetType: row.assetType,
+      sharesAcquiredPrior2018: false,
+      quantity: row.quantity,
+      salePricePerUnit: row.salePrice,
+      fullValueOfConsideration: row.fullValueConsideration,
+      costOfAcquisitionWithoutIndexation: row.costOfAcquisition,
+      transferExpenditure: 0,
+      totalDeductions: row.costOfAcquisition,
+      balance: row.netLtcg,
+      deduction54F: 0,
+      netLtcg: row.netLtcg,
+      saleDate: row.sellDate,
+      matchedBuyDate: row.buyDate,
+      holdingPeriodDays: row.holdDays,
+    })),
+  }, null, 2);
+}
+
+export function generateHarvestingExecutionCsv(orders = []) {
+  const headers = [
+    'Action',
+    'Symbol',
+    'ISIN',
+    'Security Name',
+    'Asset Type',
+    'Units to Sell',
+    'Current Market Price (CMP)',
+    'Estimated Sale Proceeds',
+    'FIFO Cost Basis',
+    'Capital Gain / Loss Triggered',
+    'Tax Term',
+    'Execution Strategy / Recommendation',
+  ];
+
+  const rows = orders.map(o => [
+    'SELL',
+    o.symbol,
+    o.isin || '',
+    `"${(o.name || o.symbol).replace(/"/g, '""')}"`,
+    o.assetType,
+    typeof o.unitsToSell === 'number' ? o.unitsToSell.toFixed(o.assetType === 'MF' ? 3 : 0) : o.unitsToSell,
+    Number(o.cmp || 0).toFixed(2),
+    Number(o.estimatedProceeds || 0).toFixed(2),
+    Number(o.costBasis || 0).toFixed(2),
+    Number(o.gainOrLoss || 0).toFixed(2),
+    o.taxType,
+    `"${(o.strategyAction || '').replace(/"/g, '""')}"`,
+  ]);
+
+  return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
 }
 
 // ─── Wealth projection ────────────────────────────────────────────────────────

@@ -111,7 +111,7 @@ export function useOverview({ stats, holdings, mfHoldings, stHoldings, currentPr
         action: 'Tax-Loss Harvest',
         detail: `Review ${harvestingData.candidateLots.length} lot(s) with ₹${Math.round(harvestingData.totalHarvestableLoss).toLocaleString('en-IN')} harvestable loss`,
         actionType: 'harvest',
-        targetView: 'tax-harvest',
+        targetView: 'tax',
       });
     }
     return actions.slice(0, 4);

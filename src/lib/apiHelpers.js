@@ -84,6 +84,7 @@ export function flattenTrade(t) {
     portfolioId:  t.portfolioId,
     instrumentId: t.instrumentId,
     symbol:       t.instrument.symbol,
+    isin:         t.instrument.isin || null,
     name:         t.instrument.name,
     assetType:    t.instrument.assetType,
     exchange:     t.instrument.exchange,
