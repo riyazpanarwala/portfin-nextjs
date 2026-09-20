@@ -278,3 +278,21 @@ Gemini AI inference runs strictly internal via Next.js Server Action (`askGemini
 - **Nifty 50 historical benchmark data** can be fetched live via the Upstox integration (`/api/nifty-history`) or fall back to pre-packaged historical closes.
 - **Benchmark CAGR figures** in Analytics are as of early 2025 and may diverge over time.
 - **AI advice** is for informational purposes only. PortFin is not a SEBI-registered investment advisor.
+
+## Income Tax Export
+
+In **Tax**, select a single financial year and choose **Export for Income Tax**. Review the preview, explicitly verify each instrument's tax eligibility, then download `portfin-tax-export-FY2026-27.json`. Existing Tax-tab calculations and Schedule exports are unchanged.
+
+This version-1 local JSON contract wraps `computeCapitalGainsReport` and retains its matched FIFO lots, dates, quantities, rounded proceeds/cost/gain, instrument identifiers, separate gross gains/losses and reconciliation counts. It contains no final tax liability, credentials, Prisma structures or account IDs. The same contract can later be served through an authenticated API; no API or database coupling was added.
+
+PortFin does not store STT conditions or equity-oriented-fund eligibility. Unverified instruments default to review. Explicit eligible-equity confirmation maps consistent short/long lots to 111A/112A; verified other short-term lots use otherSTCG; verified general LTCG uses 112 (in the otherLTCG summary). Classifications apply only to the export. Do not confirm a whole instrument if its exported lots have mixed tax treatment.
+
+Calendar-anniversary disagreements, grandfathering, capital losses, unmatched sales and possible 1,000-trade loading truncation require review. Corporate-action adjustments are consumed from existing FIFO, not recalculated; users must verify their legal cost/date treatment. FIFO groups by symbol and does not preserve broker/account-level provenance. The current UI loads one portfolio; this is not a consolidated multi-account tax ledger.
+
+The Income Tax Calculator currently accepts only FY 2026-27 and at most 100 supported gains. Other FY exports are available for reconciliation but cannot be imported there until verified rules exist. In that calculator, choose **Capital gains → Import from PortFin**, review and confirm replacement (or explicit first-import merge). Losses and unresolved classifications withhold the estimate. Final tax is calculated only by the Income Tax Calculator; verify the final return before filing.
+
+`buildIncomeTaxExport(holdings, { fy, classifications, trades })` is the pure adapter apart from its generation timestamp. Optional classifications are an explicit per-symbol user attestation (`equity`, `otherSTCG`, `112`); omission means review. Pass raw trades when available for sale-quantity completeness checks. `classifyForIncomeTax(sell, lot, decision)` is deterministic. No internal holdings or trades are serialized wholesale.
+
+Tests: `test/engine/taxExport.test.js` covers empty FY, equity categories, losses, lots/instruments, filtering, adjusted corporate-action lots, schema keys, review boundaries, privacy, and unchanged engine results. The IncomeTax repository contains a synthetic JSON fixture generated with this exporter and importer/engine integration tests.
+
+If a browser does not save downloads, use **Copy JSON** or **View JSON**, then **Paste PortFin JSON** in the calculator. This local fallback uses the same contract, validation and preview. The in-app browser did not save downloads during verification; the real portfolio round trip was verified using the visible JSON fallback.

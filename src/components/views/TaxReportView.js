@@ -37,9 +37,10 @@ import {
   colorPnl,
 } from '@/lib/store';
 import styles from './TaxReportView.module.css';
+import IncomeTaxExport from './IncomeTaxExport';
 
 export default function TaxReportView() {
-  const { holdings = [], isDiscreet } = usePortfolio();
+  const { holdings = [], trades = [], isDiscreet } = usePortfolio();
 
   // Active top-level view tab: 'REPORT' | 'SIMULATOR'
   const [activeTab, setActiveTab] = useState('REPORT');
@@ -339,6 +340,7 @@ export default function TaxReportView() {
         </div>
       </div>
 
+      {activeTab === 'REPORT' && <IncomeTaxExport key={selectedFy} holdings={holdings} trades={trades} fy={selectedFy} />}
       {/* Top Navigation Tabs */}
       <div className={styles.navTabBar}>
         <button
