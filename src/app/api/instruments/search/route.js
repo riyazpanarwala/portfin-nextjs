@@ -3,93 +3,13 @@ import { prisma } from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHelpers';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
+import { getInstrumentCatalogue } from '@/lib/instrumentCatalogue';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-// ── XLSX-based static instrument loader ────────────────────────────────────
-// Reads public/instruments_data.xlsx (NSE_Equity, BSE_Equity, NSE_ETF sheets)
-// Falls back to legacy instruments_data.json if xlsx not found.
-// Cache is invalidated when the file's mtime changes so a hot-swap takes effect
-// on the next search without restarting the server.
-
-let _cache = null;           // { data: Array, mtime: number }
-let _amfiCache = null;       // { data: Array, mtime: number }
-const XLSX_PATH = join(process.cwd(), 'public', 'instruments_data.xlsx');
-const JSON_PATH = join(process.cwd(), 'public', 'instruments_data.json');
+let _amfiCache = null;
 const AMFI_PATH = join(process.cwd(), 'public', 'amfi_data.json');
-
-// FIX (medium): replaced require('xlsx') — a CommonJS call inside an ES module
-// — with a proper dynamic import().  The old approach worked via Webpack shim
-// but was fragile and would break in edge runtime or stricter bundler configs.
-async function loadXlsx() {
-  // dynamic import returns the ES module namespace; xlsx exports default
-  const mod = await import('xlsx');
-  return mod.default ?? mod;
-}
-
-async function getStaticData() {
-  // ── Try XLSX first ──────────────────────────────────────────────────────
-  if (existsSync(XLSX_PATH)) {
-    const mtime = statSync(XLSX_PATH).mtimeMs;
-    if (_cache && _cache.mtime === mtime) return _cache.data;
-
-    try {
-      const XLSX = await loadXlsx();
-      const wb = XLSX.readFile(XLSX_PATH, { cellDates: false, sheetRows: 0 });
-
-      const SHEET_CFG = [
-        // [sheetName, exchangeOverride, sectorOverride]
-        ['NSE_Equity', 'NSE', null],
-        ['BSE_Equity', 'BSE', null],
-        ['NSE_ETF',    'NSE', 'Index ETF'],
-      ];
-
-      const instruments = [];
-      const seen = new Set();
-
-      for (const [sheetName, defaultExchange, defaultSector] of SHEET_CFG) {
-        if (!wb.SheetNames.includes(sheetName)) continue;
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' });
-
-        for (const row of rows) {
-          const symbol    = String(row['Symbol']       || '').trim().toUpperCase();
-          const name      = String(row['Company Name'] || '').trim();
-          const isin      = String(row['ISIN']         || '').trim() || null;
-          const exchange  = String(row['Exchange']     || defaultExchange).trim() || defaultExchange;
-          const assetType = String(row['AssetType']    || 'STOCK').trim();
-          const sector    = defaultSector
-            || String(row['Sector'] || '').trim()
-            || null;
-
-          if (!symbol) continue;
-          const key = `${symbol}:${exchange}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-
-          instruments.push({ s: symbol, n: name || symbol, i: isin, e: exchange, t: assetType, c: sector || '' });
-        }
-      }
-
-      _cache = { data: instruments, mtime };
-      console.log(`[instruments/search] Loaded ${instruments.length} instruments from XLSX (mtime ${mtime})`);
-      return instruments;
-    } catch (err) {
-      console.error('[instruments/search] Failed to read XLSX:', err.message);
-      // fall through to JSON fallback
-    }
-  }
-
-  // ── JSON fallback (legacy) ──────────────────────────────────────────────
-  if (_cache) return _cache.data;
-  try {
-    const raw = JSON.parse(readFileSync(JSON_PATH, 'utf-8'));
-    _cache = { data: raw, mtime: 0 };
-    return raw;
-  } catch {
-    _cache = { data: [], mtime: 0 };
-    return [];
-  }
-}
 
 async function getAmfiData() {
   if (existsSync(AMFI_PATH)) {
@@ -141,7 +61,7 @@ async function fetchYahooSector(symbol, exchange) {
  * GET /api/instruments/search?q=INFY&exchange=NSE&enrich=true
  *
  * 1. Searches DB instruments (symbol + name prefix/contains)
- * 2. Merges with XLSX static data (for stocks) or AMFI static data (for mutual funds)
+ * 2. Merges with the daily Upstox catalogue (for stocks) or AMFI static data (for mutual funds)
  * 3. If enrich=true and a single exact symbol match: hits Yahoo Finance for sector/industry
  *
  * Returns: { instruments: [...] }
@@ -187,6 +107,7 @@ export const GET = withErrorHandler('GET /api/instruments/search', async (reques
   const dbIsins = new Set(dbResults.map(r => r.isin).filter(Boolean));
 
   let staticMatches = [];
+  let catalogueStatus;
 
   if (isMF) {
     // 2a. AMFI mutual funds static data ────────────────────────────────────
@@ -241,13 +162,26 @@ export const GET = withErrorHandler('GET /api/instruments/search', async (reques
       }
     }
   } else {
-    // 2b. XLSX static data (stocks & ETFs) ──────────────────────────────────
-    const staticData = await getStaticData();
+    // 2b. Automatically refreshed Upstox catalogue (stocks & ETFs) ──────────────────────────────────
+    let staticData = [];
+    try {
+      const catalogue = await getInstrumentCatalogue();
+      staticData = catalogue.data;
+      catalogueStatus = { source: 'upstox', updatedAt: new Date(catalogue.updatedAt).toISOString(), stale: catalogue.stale };
+    } catch {
+      catalogueStatus = { source: 'upstox', unavailable: true };
+      if (!dbResults.length) {
+        return NextResponse.json(
+          { instruments: [], error: 'Instrument search is temporarily unavailable. Please retry shortly.', catalogue: catalogueStatus },
+          { status: 503 },
+        );
+      }
+    }
     staticMatches = staticData
       .filter(item => {
         if (exchange && item.e !== exchange) return false;
         if (dbKeys.has(`${item.s}:${item.e}`)) return false;
-        return item.s.includes(qUp) || item.n.toUpperCase().includes(qUp);
+        return item.s.includes(qUp) || item.n.toUpperCase().includes(qUp) || item.i.includes(qUp);
       })
       .slice(0, Math.max(0, limit - dbResults.length))
       .map(item => ({
@@ -298,5 +232,5 @@ export const GET = withErrorHandler('GET /api/instruments/search', async (reques
     }
   }
 
-  return NextResponse.json({ instruments: combined });
+  return NextResponse.json({ instruments: combined, ...(catalogueStatus && { catalogue: catalogueStatus }) });
 });

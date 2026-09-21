@@ -32,7 +32,7 @@
 - **Trade Importer** — Bulk trade importer for broker CSV exports (Zerodha, Groww, ICICI Direct, custom CSVs) with column mapping and validation
 - **Snapshot Backfiller** — Generate backfilled point-in-time portfolio snapshot history across custom date ranges for rolling returns and Portfolio vs Nifty comparison
 - **Trade Form** — Add buy/sell trades with instrument autocomplete from the DB; recent trades list with delete
-- **Instrument Manager** — Search instruments from DB + NSE/BSE/ETF CSV static data with Yahoo Finance sector enrichment; add single instruments; bulk CSV import (BSE equity, NSE equity, ETF list); instrument browser table with pagination
+- **Instrument Manager** — Search instruments from DB + automatically refreshed Upstox catalogue with Yahoo Finance sector enrichment; add single instruments; bulk CSV import (BSE equity, NSE equity, ETF list); instrument browser table with pagination
 - **Snapshot History** — Manual snapshot saving, snapshot table with full metrics, used by Portfolio vs Nifty 50 chart
 - **Live Prices** — Stocks/ETFs refreshed from Yahoo Finance (6-hour cache); MF NAVs from AMFI on demand; manual CMP override per symbol
 
@@ -93,8 +93,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run update-prices`      | Run price update script via Yahoo Finance / AMFI    |
 | `npm run update-prices-stocks` | Refresh stock & ETF prices via Yahoo Finance     |
 | `npm run update-prices-mf`   | Refresh mutual fund NAVs via AMFI                   |
-| `npm run update-instruments` | Update local instrument lookup static data          |
-| `npm run update-instruments:watch` | Watch and auto-update instrument static files  |
+| `npm run update-instruments` | Force-refresh the cached Upstox catalogue          |
 
 ---
 
@@ -102,7 +101,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 `prisma/seed.js` automates initial data population:
 
-1. **NSE Equity List** — Fetches from `archives.nseindia.com/content/equities/EQUITY_L.csv` and upserts all NSE stocks (symbol, name, ISIN)
+1. **Stock/ETF Reference Data** — Uses the daily Upstox NSE/BSE catalogue to resolve instruments in the portfolio
 2. **AMFI NAV File** — Downloads from `portal.amfiindia.com/spages/NAVAll.txt` and upserts all mutual fund schemes with live NAVs
 3. **Portfolio Trades** — Imports buy transactions from `prisma/portfolio.xlsx` including NSE stocks, ETFs, and mutual funds with exact dates and prices
 
@@ -296,3 +295,15 @@ The Income Tax Calculator currently accepts only FY 2026-27 and at most 100 supp
 Tests: `test/engine/taxExport.test.js` covers empty FY, equity categories, losses, lots/instruments, filtering, adjusted corporate-action lots, schema keys, review boundaries, privacy, and unchanged engine results. The IncomeTax repository contains a synthetic JSON fixture generated with this exporter and importer/engine integration tests.
 
 If a browser does not save downloads, use **Copy JSON** or **View JSON**, then **Paste PortFin JSON** in the calculator. This local fallback uses the same contract, validation and preview. The in-app browser did not save downloads during verification; the real portfolio round trip was verified using the visible JSON fallback.
+
+## Automatic instrument catalogue
+
+Stock and ETF autocomplete uses [Upstox's public instrument files](https://upstox.com/developer/api-documentation/instruments/); no Upstox account or access token is required. The first stock search on or after 06:30 IST refreshes both NSE and BSE, once per day. This is demand-driven: no background job runs while the app is idle. Newly listed IPO shares and ETFs become available after Upstox adds them. Upcoming IPO applications are not covered.
+
+The validated catalogue is cached in memory and saved atomically to `.cache/upstox-instruments.json`. Failed downloads retain the last successful catalogue and retry after five minutes. Existing database instruments and trades are never removed or rewritten by this refresh. A first-time outage with no cache still permits database matches; otherwise search returns a retryable 503 response.
+
+Set `INSTRUMENT_CACHE_DIR` to a writable persistent directory in production (for example a mounted volume). On ephemeral/serverless hosts, use a writable temporary directory, but the file will not survive instance replacement; use a persistent host/volume for durable fallback. Cache write failures are logged and search continues using memory.
+
+`npm run update-instruments` forces a refresh and can optionally be scheduled at 06:30 IST using the same cache directory. There is no need to maintain or deploy instrument CSV, XLSX, or JSON source files. Database seeding uses this catalogue too; it is not needed for routine refreshes.
+
+Only supported equity trading series/groups and equity/fund ISINs are included; derivatives and bond series are excluded. The feed has no explicit ETF flag, so ETF labelling uses fund ISINs plus ETF/BEES names. Other supported listed fund units remain searchable without an inferred ETF category. AMFI mutual-fund search and price fetching are unchanged.

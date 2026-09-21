@@ -5,7 +5,6 @@ Allow: /
 Disallow: /api/
 Disallow: /_next/
 Disallow: /public/
-Allow: /public/instruments_data.json
 
 # Specific rules for Googlebot
 User-agent: Googlebot

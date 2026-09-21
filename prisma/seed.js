@@ -1,13 +1,11 @@
 /**
  * PortFin Seed Script
  * --------------------
- * 1. Loads BSE equity list from local bse_equity.csv
- * 2. Loads NSE equity list from local nse_equity.csv
- * 3. Loads ETF list from local ETF_list.csv
- * 4. Loads MF NAV list from portal.amfiindia.com/spages/NAVAll.txt
- * 5. Upserts instruments into DB
- * 6. Creates default user + portfolio
- * 7. Seeds all trades from portfolio.xlsx data
+ * 1. Loads the cached daily Upstox stock/ETF catalogue
+ * 2. Loads MF NAV list from portal.amfiindia.com/spages/NAVAll.txt
+ * 3. Upserts instruments into DB
+ * 4. Creates default user + portfolio
+ * 5. Seeds all trades from portfolio.xlsx data
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -15,7 +13,7 @@ import xlsx from "xlsx";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { parse } from "csv-parse/sync";
+import { getInstrumentCatalogue } from "../src/lib/instrumentCatalogue.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,8 +39,8 @@ const SYMBOL_MAP = {
 // These will be created with exchange = 'BSE'
 const BSE_ONLY_SYMBOLS = new Set(["ENBEETRADE", "UTTAMVALUE"]);
 
-// ─── Manual fallback metadata for instruments not found in any CSV ────────────
-// Used when a symbol is missing from both NSE and BSE CSVs (e.g. delisted / OTC)
+// ─── Manual fallback metadata for instruments not found in the catalogue ────────────
+// Used when a symbol is missing from the Upstox catalogue (e.g. delisted / OTC)
 const MANUAL_INSTRUMENT_META = {
   ENBEETRADE: {
     name: "Enbee Trade & Finance Ltd",
@@ -142,103 +140,6 @@ async function fetchWithRetry(url, retries = 3) {
     }
   }
   return null;
-}
-
-// ─── Load CSV helper (latin1 safe) ────────────────────────────────────────────
-function loadCsv(filePath) {
-  const raw = fs.readFileSync(filePath);
-  // Try UTF-8 first, fall back to latin1
-  let text;
-  try {
-    text = raw.toString("utf8");
-    // If replacement chars appear, use latin1
-    if (text.includes("\uFFFD")) throw new Error("latin1");
-  } catch {
-    text = raw.toString("latin1");
-  }
-  return parse(text, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-    relax_column_count: true, // BSE CSV has 5 trailing empty commas per data row
-  });
-}
-
-// ─── Step 1: Load BSE equity list ────────────────────────────────────────────
-function loadBSEEquities() {
-  console.log("\n📂 Loading BSE equity list from bse_equity.csv...");
-  const filePath = path.join(__dirname, "bse_equity.csv");
-  if (!fs.existsSync(filePath)) {
-    console.warn("  ⚠ bse_equity.csv not found — skipping BSE load");
-    return new Map();
-  }
-  const rows = loadCsv(filePath);
-  const map = new Map();
-  for (const row of rows) {
-    const secId = (row["Security Id"] || "").trim().toUpperCase();
-    const name = (row["Security Name"] || row["Issuer Name"] || secId).trim();
-    const isin = (row["ISIN No"] || "").trim() || null;
-    if (secId) map.set(secId, { symbol: secId, name, isin, exchange: "BSE" });
-  }
-  console.log(`  ✅ Loaded ${map.size} BSE symbols`);
-  return map;
-}
-
-// ─── Step 2: Load NSE equity list ────────────────────────────────────────────
-function loadNSEEquities() {
-  console.log("\n📂 Loading NSE equity list from nse_equity.csv...");
-  const filePath = path.join(__dirname, "nse_equity.csv");
-  if (!fs.existsSync(filePath)) {
-    console.warn("  ⚠ nse_equity.csv not found — skipping NSE load");
-    return new Map();
-  }
-  const rows = loadCsv(filePath);
-  const map = new Map();
-  for (const row of rows) {
-    // Column names may have leading/trailing spaces
-    const symbol = Object.entries(row)
-      .find(([k]) => k.trim() === "SYMBOL")?.[1]
-      ?.trim()
-      ?.toUpperCase();
-    const name = Object.entries(row)
-      .find(([k]) => k.trim() === "NAME OF COMPANY")?.[1]
-      ?.trim();
-    const isin =
-      Object.entries(row)
-        .find(([k]) => k.trim() === "ISIN NUMBER")?.[1]
-        ?.trim() || null;
-    if (symbol)
-      map.set(symbol, { symbol, name: name || symbol, isin, exchange: "NSE" });
-  }
-  console.log(`  ✅ Loaded ${map.size} NSE symbols`);
-  return map;
-}
-
-// ─── Step 3: Load ETF list ────────────────────────────────────────────────────
-function loadETFList() {
-  console.log("\n📂 Loading ETF list from ETF_list.csv...");
-  const filePath = path.join(__dirname, "ETF_list.csv");
-  if (!fs.existsSync(filePath)) {
-    console.warn("  ⚠ ETF_list.csv not found — skipping ETF load");
-    return new Map();
-  }
-  const rows = loadCsv(filePath);
-  const map = new Map();
-  for (const row of rows) {
-    const symbol = (row["Symbol"] || "").trim().toUpperCase();
-    const name = (row["SecurityName"] || symbol).trim();
-    const isin = (row["ISINNumber"] || "").trim() || null;
-    if (symbol)
-      map.set(symbol, {
-        symbol,
-        name,
-        isin,
-        exchange: "NSE",
-        assetType: "STOCK",
-      });
-  }
-  console.log(`  ✅ Loaded ${map.size} ETF symbols`);
-  return map;
 }
 
 // ─── Step 4: Load AMFI MF list ───────────────────────────────────────────────
@@ -415,9 +316,11 @@ async function main() {
   );
 
   // ── Load instrument reference data ──────────────────────────────────────────
-  const bseMap = loadBSEEquities();
-  const nseMap = loadNSEEquities();
-  const etfMap = loadETFList();
+  const catalogue = await getInstrumentCatalogue();
+  const referenceMap = exchange => new Map(catalogue.data.filter(row => row.e === exchange)
+    .map(row => [row.s, { symbol: row.s, name: row.n, isin: row.i, exchange: row.e }]));
+  const bseMap = referenceMap('BSE');
+  const nseMap = referenceMap('NSE');
   const { nameMap: amfiMap, isinMap: amfiIsinMap } = await loadAMFIFunds();
 
   // ── Upsert stock/ETF instruments ────────────────────────────────────────────
@@ -428,29 +331,25 @@ async function main() {
   const stockInstrumentMap = new Map(); // canonicalSymbol → instrumentId
 
   for (const symbol of allSymbols) {
-    // Resolution priority: NSE → BSE → ETF list → manual fallback
-    const etfData = etfMap.get(symbol);
+    // Resolution priority: NSE → BSE → manual fallback
     const nseData = nseMap.get(symbol);
     const bseData = bseMap.get(symbol);
     const manualData = MANUAL_INSTRUMENT_META[symbol];
 
-    const isEtf = !!etfData;
     const isBseOnly = BSE_ONLY_SYMBOLS.has(symbol);
 
     const exchange = isBseOnly
       ? "BSE"
-      : (nseData?.exchange ?? (isEtf ? "NSE" : (bseData?.exchange ?? "NSE")));
+      : (nseData?.exchange ?? bseData?.exchange ?? "NSE");
 
     const name =
       nseData?.name ??
-      etfData?.name ??
       bseData?.name ??
       manualData?.name ??
       symbol;
 
     const isin =
       nseData?.isin ??
-      etfData?.isin ??
       bseData?.isin ??
       manualData?.isin ??
       null;
