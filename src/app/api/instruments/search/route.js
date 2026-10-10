@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHelpers';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { getInstrumentCatalogue } from '@/lib/instrumentCatalogue';
+import { getInstrumentCatalogue, matchesInstrumentQuery } from '@/lib/instrumentCatalogue';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -181,7 +181,7 @@ export const GET = withErrorHandler('GET /api/instruments/search', async (reques
       .filter(item => {
         if (exchange && item.e !== exchange) return false;
         if (dbKeys.has(`${item.s}:${item.e}`)) return false;
-        return item.s.includes(qUp) || item.n.toUpperCase().includes(qUp) || item.i.includes(qUp);
+        return matchesInstrumentQuery(item, qUp);
       })
       .slice(0, Math.max(0, limit - dbResults.length))
       .map(item => ({

@@ -30,7 +30,7 @@ export function TradeForm() {
         <div className={`glass ${styles.formPanel}`}>
           <div className={styles.formTitle}>Record Trade</div>
           <div className={styles.formSub}>
-            Add a buy or sell transaction · Instrument is auto-matched from NSE / AMFI database
+            Add a buy or sell transaction · Search NSE / BSE stocks or AMFI funds
           </div>
 
           {/* Asset type + Trade type */}
@@ -53,7 +53,7 @@ export function TradeForm() {
           </div>
 
           {/* Symbol with autocomplete */}
-          <Field label={form.assetType === 'MF' ? 'Fund Name' : 'NSE Symbol'}>
+          <Field label={form.assetType === 'MF' ? 'Fund Name' : 'Stock Symbol / Company Name'}>
             <div className={styles.symbolWrapper}>
               <input
                 value={form.symbol}
@@ -85,7 +85,7 @@ export function TradeForm() {
               )}
             </div>
             {form.name && form.name !== form.symbol && (
-              <div className={styles.fieldNote}>{form.name}</div>
+              <div className={styles.fieldNote}>{form.name} · {form.exchange}</div>
             )}
           </Field>
 
