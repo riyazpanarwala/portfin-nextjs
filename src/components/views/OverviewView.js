@@ -389,7 +389,7 @@ export default function OverviewView() {
               { label: 'Total Realized', value: fmtCr(realizedSummary.totalRealized), color: colorPnl(realizedSummary.totalRealized) },
               { label: 'LTCG Gain', value: fmtCr(realizedSummary.ltcgGain), color: 'var(--green2)', sub: '12.5% tax rate' },
               { label: 'STCG Gain', value: fmtCr(realizedSummary.stcgGain), color: 'var(--yellow)', sub: '20% tax rate' },
-              { label: 'Est. Tax Liability', value: fmtCr(realizedSummary.totalTax), color: 'var(--red2)', sub: 'FY estimate' },
+              { label: 'Est. Tax Liability', value: realizedSummary.taxEstimateAvailable ? fmtCr(realizedSummary.totalTax) : 'Review required', color: 'var(--red2)', sub: `FY ${realizedSummary.fy} estimate` },
             ].map((m, i) => (
               <div key={i} className={styles.realizedMetricCell}>
                 <div className={styles.realizedMetricLabel}>{m.label}</div>

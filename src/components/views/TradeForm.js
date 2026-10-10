@@ -129,6 +129,9 @@ export function TradeForm() {
               <input type="date" value={form.tradeDate} onChange={e => setField('tradeDate', e.target.value)} />
             </Field>
           </div>
+          <Field label="Verified tax-deductible charges (₹, exclude STT; blank means unverified)">
+            <input type="number" min="0" step="any" value={form.taxBrokerage} onChange={e => setField('taxBrokerage', e.target.value)} placeholder="Enter the deductible part of total charges" />
+          </Field>
 
           {txValue != null && (
             <div className={styles.txPreview}>

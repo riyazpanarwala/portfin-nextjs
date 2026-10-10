@@ -44,7 +44,6 @@ export default function IncomeTaxExport({ holdings, fy, trades }) {
         <p>Transactions / gains: {data.reconciliation.transactionCount} / {data.gains.length}. Review required: {data.reconciliation.reviewCount}.</p>
         <ul>{[...new Set([...data.warnings, ...data.gains.filter(g => g.reason).map(g => g.reason)])].map(w => <li key={w}>{w}</li>)}</ul>
         {data.gains.some(g => g.gain < 0) && <p>Capital losses require separate set-off review. The calculator will withhold the estimate.</p>}
-        {trades.length >= 1000 && <p role="alert">The trade loading limit was reached. This export will require completeness review.</p>}
         <a className={styles.exportBtn} ref={downloadLink} download={`portfin-tax-export-FY${fy}.json`}>Download JSON</a>{' '}
         <button className={styles.exportBtn} type="button" onClick={async () => {
           try { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); setCopyNotice('Copied. In Income Tax Calculator choose Paste PortFin JSON, then review the preview.'); }

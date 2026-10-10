@@ -6,7 +6,8 @@
  * that appeared in every route file.
  */
 
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server.js';
+import { requireSession, requireAdmin } from './auth.js';
 
 /**
  * withErrorHandler
@@ -23,13 +24,21 @@ import { NextResponse } from 'next/server';
  * @param {Function} handler  — async (request, context) => NextResponse
  * @returns {Function}
  */
-export function withErrorHandler(label, handler) {
+export function withErrorHandler(label, handler, { public: isPublic = false, admin = false, authenticate = requireSession } = {}) {
   return async function (request, context) {
     try {
-      return await handler(request, context);
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+        const origin = request.headers.get('origin');
+        if (request.headers.get('sec-fetch-site') === 'cross-site' || (origin && origin !== new URL(request.url).origin)) return NextResponse.json({ error: 'Cross-origin writes are not allowed.' }, { status: 403 });
+      }
+      const session = isPublic ? null : await authenticate(request);
+      if (admin) requireAdmin(session);
+      const response = await handler(request, { ...context, session });
+      response.headers.set('Cache-Control', 'private, no-store');
+      return response;
     } catch (e) {
       console.error(`${label}:`, e);
-      return NextResponse.json({ error: e.message }, { status: 500 });
+      return NextResponse.json({ error: e.status ? e.message : 'Unable to complete this request.' }, { status: e.status || 500 });
     }
   };
 }
@@ -89,6 +98,8 @@ export function flattenTrade(t) {
     assetType:    t.instrument.assetType,
     exchange:     t.instrument.exchange,
     sector:       t.instrument.sector || null,
+    taxCategory:  t.instrument.taxCategory || 'UNKNOWN',
+    taxBrokerage: t.taxBrokerage?.toString() ?? null,
     tradeType:    t.tradeType,
     quantity:     t.quantity.toString(),
     price:        t.price.toString(),

@@ -80,7 +80,7 @@ test('raw trade reconciliation catches fully omitted sells and loading truncatio
   const missing = buildIncomeTaxExport([], { fy: '2026-27', trades: [trade('SELL', '2026-07-01', 200)] });
   assert.ok(missing.warnings.some(w => w.includes('Sale quantities')));
   const capped = buildIncomeTaxExport([], { fy: '2026-27', trades: Array.from({ length: 1000 }, () => trade('BUY', '2026-04-01', 100)) });
-  assert.ok(capped.warnings.some(w => w.includes('API limit')));
+  assert.ok(!capped.warnings.some(w => w.includes('API limit')));
 });
 
 test('fractional FIFO values are rounded only in the export', () => {

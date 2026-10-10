@@ -60,7 +60,7 @@ test('Tax Engine: computeCapitalGainsReport computes Budget 2024 LTCG (12.5%, �
     },
   ];
 
-  const holdings = computeHoldings(trades);
+  const holdings = computeHoldings(trades.map(t => ({ ...t, taxCategory: "EQUITY_ELIGIBLE" })));
   const report = computeCapitalGainsReport(holdings, { fy: '2026-27' });
 
   // LTCG: ₹1,50,000
@@ -106,7 +106,7 @@ test('Tax Engine: Loss Set-off Rules (LTCL offsets LTCG, STCL offsets STCG then 
     { symbol: 'D', name: 'D', assetType: 'STOCK', exchange: 'NSE', tradeType: 'SELL', quantity: '100', price: '100', tradeDate: '2026-05-01' },
   ];
 
-  const holdings = computeHoldings(trades);
+  const holdings = computeHoldings(trades.map(t => ({ ...t, taxCategory: "EQUITY_ELIGIBLE" })));
   const report = computeCapitalGainsReport(holdings, { fy: '2026-27' });
 
   // Gross:
@@ -149,7 +149,7 @@ test('Schedule 112A Export: CSV and JSON formatting', () => {
     },
   ];
 
-  const holdings = computeHoldings(trades);
+  const holdings = computeHoldings(trades.map(t => ({ ...t, taxCategory: "EQUITY_ELIGIBLE" })));
   const report = computeCapitalGainsReport(holdings, { fy: '2026-27' });
 
   // CSV test
@@ -197,7 +197,7 @@ test('Schedule 111A Export: CSV formatting with Consolidated Summary Header and 
     },
   ];
 
-  const holdings = computeHoldings(trades);
+  const holdings = computeHoldings(trades.map(t => ({ ...t, taxCategory: "EQUITY_ELIGIBLE" })));
   const report = computeCapitalGainsReport(holdings, { fy: '2026-27' });
 
   const csv = generateSchedule111ACsv(report);
@@ -211,7 +211,8 @@ test('Schedule 111A Export: CSV formatting with Consolidated Summary Header and 
   assert.ok(csv.includes('8000.00'));
 });
 
-test('Smart Tax Harvesting Simulator: Recommends 0% LTCG Gain Step-Up & Loss Offsets', () => {
+test('Smart Tax Harvesting Simulator: Recommends 0% LTCG Gain Step-Up & Loss Offsets', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T06:00:00Z') });
   // Scenario:
   // User has realized ₹20,000 STCG in current FY (tax liability = ₹4,000 + cess = ₹4,160)
   // User holds open positions:
@@ -234,7 +235,7 @@ test('Smart Tax Harvesting Simulator: Recommends 0% LTCG Gain Step-Up & Loss Off
     WINNER: 1000, // Gain = 100 * (1000 - 500) = +50,000 (LTCG)
   };
 
-  const holdings = computeHoldings(trades, currentPrices);
+  const holdings = computeHoldings(trades.map(t => ({ ...t, taxCategory: "EQUITY_ELIGIBLE" })), currentPrices);
   const realizedReport = computeCapitalGainsReport(holdings, { fy: '2026-27' });
 
   // Baseline tax

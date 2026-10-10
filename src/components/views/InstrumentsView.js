@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   useInstrumentTable,
   useAddInstrumentForm,
@@ -325,6 +326,13 @@ function AddInstrumentForm({ onAdded }) {
         </div>
         <div className={styles.detailRow}>
           <div className={styles.sectorDropdownWrapper}>
+            <label>Tax eligibility (verify equity and STT conditions)
+              <select value={form.taxCategory || 'UNKNOWN'} onChange={e => setF('taxCategory', e.target.value)}>
+                <option value="UNKNOWN">Unverified — withhold estimate</option>
+                <option value="EQUITY_ELIGIBLE">Verified eligible equity (111A / 112A)</option>
+                <option value="OTHER">Other treatment — adviser review</option>
+              </select>
+            </label>
             <FieldLabel ch="Sector / Category" hint="— optional" />
             <input
               value={form.sector}
@@ -500,6 +508,7 @@ function DataSourcesHelp() {
 // ── Instrument Browser Table ──────────────────────────────────────────────────
 
 function InstrumentTable({ refresh }) {
+  const { user } = useAuth();
   const { toast } = usePortfolio();
   const {
     instruments, loading, query, setQuery,
@@ -538,7 +547,7 @@ function InstrumentTable({ refresh }) {
                   {inst.price ? `₹${parseFloat(inst.price).toFixed(2)}` : '—'}
                 </td>
                 <td>
-                  <button className={styles.deleteRowBtn} onClick={() => handleDelete(inst, toast)} disabled={deleting === inst.id}>
+                  <button className={styles.deleteRowBtn} onClick={() => handleDelete(inst, toast)} disabled={!user?.isAdmin || deleting === inst.id}>
                     {deleting === inst.id ? '…' : '✕'}
                   </button>
                 </td>
@@ -562,6 +571,7 @@ function InstrumentTable({ refresh }) {
 // ── Main View ─────────────────────────────────────────────────────────────────
 
 export default function InstrumentsView() {
+  const { user } = useAuth();
   const [tableRefresh, setTableRefresh] = useState(0);
   const refresh = () => setTableRefresh(n => n + 1);
 
@@ -583,13 +593,14 @@ export default function InstrumentsView() {
         ))}
       </div>
 
-      <div className={styles.formLayout}>
+      {!user?.isAdmin && <p>Catalogue changes require an administrator.</p>}
+      {user?.isAdmin && <div className={styles.formLayout}>
         <AddInstrumentForm onAdded={refresh} />
         <div className={styles.formRightCol}>
           <BulkImportPanel onImported={refresh} />
           <DataSourcesHelp />
         </div>
-      </div>
+      </div>}
 
       <div className={styles.browserSection}>
         <div className={styles.browserTitle}>🔍 Instrument Browser</div>

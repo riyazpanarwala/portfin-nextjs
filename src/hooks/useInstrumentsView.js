@@ -230,7 +230,7 @@ export function useInstrumentTable({ refresh }) {
 export function useAddInstrumentForm({ onAdded, toast }) {
   const [assetType, setAssetType]   = useState('STOCK');
   const [exchange, setExchange]     = useState('NSE');
-  const [form, setForm]             = useState({ symbol: '', name: '', isin: '', sector: '' });
+  const [form, setForm]             = useState({ symbol: '', name: '', isin: '', sector: '', taxCategory: 'UNKNOWN' });
   const [saving, setSaving]         = useState(false);
   const [sectorOpen, setSectorOpen] = useState(false);
 
@@ -239,17 +239,18 @@ export function useAddInstrumentForm({ onAdded, toast }) {
   function handleAssetTypeChange(at) {
     setAssetType(at);
     setExchange(at === 'MF' ? 'AMFI' : 'NSE');
-    setForm({ symbol: '', name: '', isin: '', sector: '' });
+    setForm({ symbol: '', name: '', isin: '', sector: '', taxCategory: 'UNKNOWN' });
   }
 
   function handleSelect(inst) {
-    if (!inst) { setForm({ symbol: '', name: '', isin: '', sector: '' }); return; }
+    if (!inst) { setForm({ symbol: '', name: '', isin: '', sector: '', taxCategory: 'UNKNOWN' }); return; }
     setExchange(inst.exchange || exchange);
     setForm({
       symbol: inst.symbol   || '',
       name:   inst.name     || '',
       isin:   inst.isin     || '',
       sector: inst.sector   || inst.industry || '',
+      taxCategory: inst.taxCategory || 'UNKNOWN',
     });
   }
 
@@ -278,13 +279,14 @@ export function useAddInstrumentForm({ onAdded, toast }) {
             exchange,
             assetType,
             sector:    form.sector || null,
+            taxCategory: form.taxCategory,
           }],
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       toast(data.created > 0 ? `✅ ${sym} added to database` : `ℹ ${sym} updated`, 'green');
-      setForm({ symbol: '', name: '', isin: '', sector: '' });
+      setForm({ symbol: '', name: '', isin: '', sector: '', taxCategory: 'UNKNOWN' });
       setAssetType('STOCK');
       setExchange('NSE');
       onAdded?.();

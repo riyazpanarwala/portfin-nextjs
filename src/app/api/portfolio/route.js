@@ -4,10 +4,8 @@ import { withErrorHandler, badRequest } from '@/lib/apiHelpers';
 
 export const dynamic = 'force-dynamic';
 
-export const GET = withErrorHandler('GET /api/portfolio', async (request) => {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId');
-  if (!userId) return badRequest('userId required');
+export const GET = withErrorHandler('GET /api/portfolio', async (request, { session }) => {
+  const userId = session.userId;
 
   const portfolios = await prisma.portfolio.findMany({
     where: { userId },
@@ -21,21 +19,10 @@ export const GET = withErrorHandler('GET /api/portfolio', async (request) => {
   return NextResponse.json({ portfolios });
 });
 
-export const POST = withErrorHandler('POST /api/portfolio', async (request) => {
-  const { userId, name } = await request.json();
-  if (!userId) return badRequest('userId required');
-
-  // Upsert user — intentionally never overwrite passwordHash or displayName
-  // if the user already exists (those are managed via auth flow).
-  await prisma.user.upsert({
-    where:  { id: userId },
-    update: {},   // no-op update keeps existing email/passwordHash/displayName intact
-    create: {
-      id:          userId,
-      email:       `${userId}@portfin.app`,
-      displayName: 'Portfolio Owner',
-    },
-  });
+export const POST = withErrorHandler('POST /api/portfolio', async (request, { session }) => {
+  const { name } = await request.json();
+  const userId = session.userId;
+  if (name != null && (typeof name !== 'string' || name.length > 100)) return badRequest('Invalid portfolio name');
 
   const portfolio = await prisma.portfolio.create({
     data: { userId, name: name || 'My Portfolio' },

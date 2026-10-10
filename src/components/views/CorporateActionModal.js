@@ -1,11 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { fmt } from '@/lib/store';
+import { usePortfolio } from '@/context/PortfolioContext';
+
+const subscribe = () => () => {};
 
 export default function CorporateActionModal({ isOpen, onClose, holdings = [], onSuccess }) {
-  const [symbol, setSymbol] = useState('');
+  const [selectedInstrument, setSelectedInstrument] = useState('');
+  const instrumentId = selectedInstrument || holdings[0]?.instrumentId || '';
+  const { portfolioId } = usePortfolio();
   const [actionType, setActionType] = useState('SPLIT');
   const [num, setNum] = useState(5);
   const [den, setDen] = useState(1);
@@ -14,22 +19,12 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
   const [previewData, setPreviewData] = useState(null);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (holdings.length > 0 && !symbol) {
-      setSymbol(holdings[0].symbol);
-    }
-  }, [holdings, symbol]);
+  const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
   if (!isOpen || !mounted) return null;
 
   const handlePreview = async () => {
-    if (!symbol) return setError('Please select a stock symbol.');
+    if (!instrumentId || !exDate) return setError('Select a stock and its ex-date.');
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
@@ -40,11 +35,11 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          symbol,
+          portfolioId, instrumentId,
           actionType,
           ratioNumerator: num,
           ratioDenominator: den,
-          exDate: exDate || undefined,
+          exDate,
           preview: true,
         }),
       });
@@ -60,7 +55,7 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
   };
 
   const handleApply = async () => {
-    if (!symbol) return setError('Please select a stock symbol.');
+    if (!instrumentId || !exDate) return setError('Select a stock and its ex-date.');
     setLoading(true);
     setError(null);
 
@@ -69,11 +64,11 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          symbol,
+          portfolioId, instrumentId,
           actionType,
           ratioNumerator: num,
           ratioDenominator: den,
-          exDate: exDate || undefined,
+          exDate, expectedRevision: previewData?.revision,
           preview: false,
         }),
       });
@@ -160,9 +155,9 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
               STOCK SYMBOL
             </label>
             <select
-              value={symbol}
+              value={instrumentId}
               onChange={(e) => {
-                setSymbol(e.target.value);
+                setSelectedInstrument(e.target.value);
                 setPreviewData(null);
               }}
               style={{
@@ -176,7 +171,7 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
               }}
             >
               {holdings.map((h) => (
-                <option key={h.symbol} value={h.symbol}>
+                <option key={h.instrumentId} value={h.instrumentId}>
                   {h.symbol} ({h.name})
                 </option>
               ))}
@@ -220,7 +215,7 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
                 type="number"
                 min="1"
                 value={num}
-                onChange={(e) => setNum(e.target.value)}
+                onChange={(e) => { setNum(e.target.value); setPreviewData(null); }}
                 style={{ width: '100%', padding: '8px', fontSize: 12, borderRadius: 6, background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)' }}
               />
               <span style={{ fontWeight: 700, color: 'var(--text-muted)' }}>:</span>
@@ -228,7 +223,7 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
                 type="number"
                 min="1"
                 value={den}
-                onChange={(e) => setDen(e.target.value)}
+                onChange={(e) => { setDen(e.target.value); setPreviewData(null); }}
                 style={{ width: '100%', padding: '8px', fontSize: 12, borderRadius: 6, background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)' }}
               />
             </div>
@@ -237,13 +232,13 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
           {/* Ex-Date Filter */}
           <div>
             <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>
-              EX-DATE (Optional)
+              EX-DATE (Required)
             </label>
             <input
               type="date"
               value={exDate}
-              onChange={(e) => setExDate(e.target.value)}
-              placeholder="All trades if empty"
+              onChange={(e) => { setExDate(e.target.value); setPreviewData(null); }}
+              required
               style={{ width: '100%', padding: '8px', fontSize: 12, borderRadius: 6, background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)' }}
             />
           </div>

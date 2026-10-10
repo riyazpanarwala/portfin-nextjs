@@ -5,9 +5,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Manages authentication state for PortFin.
  *
- * Session persistence:
- *   Stores { id, email, displayName } in localStorage under 'portfin:session:v1'.
- *   On mount, restores the session so the user stays logged in across reloads.
+ * Restores identity only from the server's HttpOnly session cookie.
  */
 
 import {
@@ -17,8 +15,7 @@ import {
   useEffect,
   useCallback,
 } from "react";
-
-const SESSION_KEY = "portfin:session:v1";
+import { readClientSession } from '@/lib/clientSession';
 
 const AuthCtx = createContext(null);
 
@@ -26,33 +23,25 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // { id, email, displayName } | null
   const [loading, setLoading] = useState(true); // true while restoring session
   const [error, setError] = useState(null); // login error message
+  const [sessionError, setSessionError] = useState(null);
+  const [probeVersion, setProbeVersion] = useState(0);
+  const retrySession = useCallback(() => {
+    setLoading(true);
+    setSessionError(null);
+    setProbeVersion(version => version + 1);
+  }, []);
 
   // ── Restore session on mount ──────────────────────────────────────────────
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      try {
-        const raw = localStorage.getItem(SESSION_KEY);
-
-        if (raw) {
-          const parsed = JSON.parse(raw);
-
-          if (parsed?.id && parsed?.email) {
-            setUser(parsed);
-          } else {
-            localStorage.removeItem(SESSION_KEY);
-          }
-        }
-      } catch {
-        localStorage.removeItem(SESSION_KEY);
-      } finally {
-        setLoading(false);
-      }
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, []);
+    const controller = new AbortController();
+    // Storage cleanup must not prevent cookie-based session verification.
+    try { localStorage.removeItem('portfin:session:v1'); } catch { /* Storage may be disabled. */ }
+    readClientSession({ signal: controller.signal })
+      .then(restored => { if (!controller.signal.aborted) setUser(restored); })
+      .catch(() => { if (!controller.signal.aborted) setSessionError('Unable to verify your session. Please retry.'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [probeVersion]);
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(async (email, password) => {
@@ -80,7 +69,6 @@ export function AuthProvider({ children }) {
       const { user: loggedInUser } = data;
 
       setUser(loggedInUser);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(loggedInUser));
 
       return true;
     } catch {
@@ -90,10 +78,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   // ── Logout ────────────────────────────────────────────────────────────────
-  const logout = useCallback(() => {
-    setUser(null);
-    setError(null);
-    localStorage.removeItem(SESSION_KEY);
+  const logout = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!res.ok) throw new Error('Sign out failed. Please retry.');
+      setUser(null);
+      setError(null);
+    } catch (err) { setError(err.message); }
   }, []);
 
   return (
@@ -102,6 +93,8 @@ export function AuthProvider({ children }) {
         user,
         loading,
         error,
+        sessionError,
+        retrySession,
         login,
         logout,
         setError,

@@ -35,7 +35,7 @@ export const GET = withErrorHandler('GET /api/instruments', async (request) => {
     skip:   offset,   // FIX: was missing — caused every page to show the same results
     select: {
       id: true, symbol: true, name: true, isin: true,
-      assetType: true, exchange: true, sector: true,
+      assetType: true, exchange: true, sector: true, taxCategory: true,
       price: true, priceUpdatedAt: true,
     },
   });

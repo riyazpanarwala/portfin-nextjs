@@ -29,7 +29,6 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
   const report = computeCapitalGainsReport(holdings, { fy });
   const warnings = [];
   if (trades) {
-    if (trades.length >= 1000) warnings.push('The loaded portfolio reached the trade API limit. Confirm the complete trade history before relying on an estimate.');
     const start = `${fy.slice(0, 4)}-04-01`;
     const end = `${Number(fy.slice(0, 4)) + 1}-03-31`;
     const expected = new Map();
@@ -48,7 +47,8 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
   for (const [saleIndex, sell] of report.sells.entries()) {
     if (!sell.matchedLots?.length) warnings.push(`Missing FIFO lots for ${sell.symbol} on ${sell.date}.`);
     for (const [lotIndex, lot] of (sell.matchedLots || []).entries()) {
-      const classification = classifyForIncomeTax(sell, lot, classifications[sell.symbol]);
+      let classification = classifyForIncomeTax(sell, lot, classifications[sell.symbol]);
+      if (lot.feesNeedReview) classification = { kind: 'review', asset: 'other', confirmed: false, reason: 'Deductible transaction fees require review; STT cannot be inferred from total fees.' };
       const numbers = [lot.qty, lot.costBasis, lot.gain, lot.holdDays, sell.sellPrice];
       if (numbers.some(n => !Number.isFinite(n))) throw new Error('Non-finite FIFO values require correction before export.');
       gains.push({
@@ -57,8 +57,9 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
         ...classification,
         instrument: { symbol: sell.symbol, name: sell.name, isin: sell.isin || '', exchange: sell.exchange || '' },
         acquired: lot.buyDate, sold: sell.date, quantity: lot.qty,
-        saleProceeds: money(lot.qty * sell.sellPrice), costBasis: money(lot.costBasis),
-        gain: money(lot.gain), holdingDays: lot.holdDays, source: 'fifo',
+        saleProceeds: money(lot.qty * sell.sellPrice), costBasis: money(lot.taxCostBasis ?? lot.costBasis),
+        transferExpenditure: money(lot.expenditure || 0),
+        gain: money(lot.taxGain ?? lot.gain), holdingDays: lot.holdDays, source: 'fifo',
       });
     }
   }

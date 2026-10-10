@@ -8,6 +8,7 @@ import {
   useEffect,
   useCallback,
   useTransition,
+  useRef,
 } from 'react';
 import {
   computeHoldings,
@@ -18,6 +19,7 @@ import {
   computePortfolioXIRR,
 } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
+import { loadTradeHistory } from '@/lib/loadTradeHistory';
 
 const PortfolioCtx = createContext(null);
 const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v1';
@@ -66,6 +68,8 @@ export function PortfolioProvider({ children }) {
   const userId = user?.id ?? null;
 
   const [trades, setTrades]               = useState([]);
+  const [corporateActions, setCorporateActions] = useState([]);
+  const loadController = useRef(null);
   const [portfolioId, setPortfolioId]     = useState(null);
   const [currentPrices, setCurrentPrices] = useState({});
   const [priceMeta, setPriceMeta]         = useState({});
@@ -121,6 +125,7 @@ export function PortfolioProvider({ children }) {
     if (!userId) {
       const timerId = setTimeout(() => {
         setTrades([]);
+        setCorporateActions([]);
         setPortfolioId(null);
         setCurrentPrices({});
         setPriceMeta({});
@@ -136,12 +141,15 @@ export function PortfolioProvider({ children }) {
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!userId) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
 
     try {
       setLoading(true);
       setError(null);
 
-      let pfRes = await fetch(`/api/portfolio?userId=${userId}`);
+      let pfRes = await fetch('/api/portfolio', { signal: controller.signal });
       if (!pfRes.ok) throw new Error(await pfRes.text());
       let pfData = await pfRes.json();
 
@@ -151,39 +159,33 @@ export function PortfolioProvider({ children }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId }),
+          signal: controller.signal,
         });
         if (!cr.ok) throw new Error(await cr.text());
         pid = (await cr.json()).portfolio.id;
       }
+      const { trades: rawTrades, corporateActions: actions } = await loadTradeHistory(pid, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setPortfolioId(pid);
-
-      const tRes = await fetch(`/api/trades?portfolioId=${pid}`);
-      if (!tRes.ok) throw new Error(await tRes.text());
-      const { trades: rawTrades } = await tRes.json();
       setTrades(rawTrades || []);
+      setCorporateActions(actions);
 
-      const symbols = [...new Set((rawTrades || []).map(t => t.symbol))];
-      if (symbols.length > 0) {
-        const prRes = await fetch('/api/prices', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols, cacheOnly: true }),
-        });
-        if (prRes.ok) {
-          const priceData = await prRes.json();
+      const instrumentIds = [...new Set((rawTrades || []).map(t => t.instrumentId))];
+      setCurrentPrices({});
+      setPriceMeta({});
+      if (instrumentIds.length > 0) {
+        const priceData = await fetchPriceBatches(instrumentIds, { cacheOnly: true }, controller.signal)
+          .catch(err => { if (err.name !== 'AbortError') console.warn('[prices]', err.message); return null; });
+        if (priceData) {
+          if (controller.signal.aborted) return;
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
 
-          const missing = symbols.filter(s => !priceData.prices?.[s]);
+          const missing = instrumentIds.filter(id => !priceData.prices?.[id] || priceData.meta?.[id]?.stale);
           if (missing.length > 0) {
-            fetch('/api/prices', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ symbols: missing, force: false }),
-            })
-              .then(r => r.ok ? r.json() : null)
+            fetchPriceBatches(missing, { force: false }, controller.signal)
               .then(data => {
-                if (data?.prices) {
+                if (data?.prices && !controller.signal.aborted) {
                   setCurrentPrices(prev => {
                     const changed = Object.keys(data.prices).some(
                       k => prev[k] !== data.prices[k]
@@ -198,9 +200,9 @@ export function PortfolioProvider({ children }) {
         }
       }
     } catch (err) {
-      setError(err.message);
+      if (!controller.signal.aborted) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [userId]);
 
@@ -209,13 +211,13 @@ export function PortfolioProvider({ children }) {
     const timeoutId = setTimeout(() => {
       loadData();
     }, 0);
-    return () => clearTimeout(timeoutId);
+    return () => { clearTimeout(timeoutId); loadController.current?.abort(); };
   }, [loadData, userId]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const holdings = useMemo(
-    () => computeHoldings(trades, currentPrices),
-    [trades, currentPrices],
+    () => computeHoldings(trades, currentPrices, { corporateActions }).map(h => ({ ...h, priceStale: !priceMeta[h.instrumentId || h.symbol]?.asOf || !!priceMeta[h.instrumentId || h.symbol]?.stale })),
+    [trades, currentPrices, corporateActions, priceMeta],
   );
 
   const stats = useMemo(
@@ -328,21 +330,24 @@ export function PortfolioProvider({ children }) {
         [...prev, newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)),
       );
 
-      if (!currentPrices[newTrade.symbol]) {
+      if (!currentPrices[newTrade.instrumentId]) {
         const pr = await fetch('/api/prices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols: [newTrade.symbol], cacheOnly: true }),
-        });
-        if (pr.ok) {
-          const prData = await pr.json();
+          body: JSON.stringify({ instrumentIds: [newTrade.instrumentId], cacheOnly: true }),
+        }).catch(() => null);
+        if (pr?.ok) {
+          const prData = await pr.json().catch(() => null);
+          if (!prData) return newTrade;
           mergePrices(prData.prices);
           mergeMeta(prData.meta);
         }
       }
       toast('Trade recorded ✓', 'green');
+      return newTrade;
     } catch (err) {
       toast(err.message, 'red');
+      throw err;
     }
   }
 
@@ -379,7 +384,7 @@ export function PortfolioProvider({ children }) {
           stockCount:        stats.stockCount,
         }),
       });
-      if (!res.ok) throw new Error('Snapshot failed');
+      if (!res.ok) throw new Error((await res.json()).error || 'Snapshot failed');
       const data = await res.json();
 
       if (data.duplicateMinute) {
@@ -394,47 +399,46 @@ export function PortfolioProvider({ children }) {
     }
   }
 
-  // ── Update single symbol price ────────────────────────────────────────────
-  async function updatePrice(symbol, price) {
+  // ── Update single instrument price ────────────────────────────────────────
+  async function updatePrice(instrumentId, symbol, price) {
     try {
       const res = await fetch('/api/prices', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, price }),
+        body: JSON.stringify({ instrumentId, price }),
       });
       if (!res.ok) throw new Error('Price update failed');
-      mergePrices({ [symbol]: parseFloat(price) });
       const data = await res.json();
+      mergePrices(data.prices);
       mergeMeta(data.meta);
       toast(`${symbol} price updated ✓`, 'green');
     } catch (err) {
       toast(err.message, 'red');
+      throw err;
     }
   }
 
   // ── Refresh prices ────────────────────────────────────────────────────────
   async function refreshPrices(assetTypeFilter = null) {
-    const activeSymbols = [...new Set(
-      holdings
+    const activeInstruments = holdings
         .filter(h =>
           h.qty > ACTIVE_QTY_EPSILON &&
           (!assetTypeFilter || h.assetType === assetTypeFilter)
         )
-        .map(h => h.symbol)
-    )];
+        .map(h => ({ instrumentId: h.instrumentId, symbol: h.symbol }));
 
     const label = assetTypeFilter === 'MF'    ? 'MF NAVs'
                 : assetTypeFilter === 'STOCK' ? 'stock prices'
                 : 'all prices';
 
-    if (!activeSymbols.length) {
+    if (!activeInstruments.length) {
       toast(`No active ${label} to refresh`, 'blue');
       return;
     }
 
     const CHUNK      = 20;
     const STAGGER_MS = 300;
-    const total      = activeSymbols.length;
+    const total      = activeInstruments.length;
 
     setPriceRefreshState({
       active:    true,
@@ -454,12 +458,12 @@ export function PortfolioProvider({ children }) {
     let failedCount  = 0;
     let processed    = 0;
 
-    for (let i = 0; i < activeSymbols.length; i += CHUNK) {
-      const chunk = activeSymbols.slice(i, i + CHUNK);
+    for (let i = 0; i < activeInstruments.length; i += CHUNK) {
+      const chunk = activeInstruments.slice(i, i + CHUNK);
 
       setPriceRefreshState(prev => ({
         ...prev,
-        current:  chunk[0],
+        current:  chunk[0].symbol,
         progress: Math.round((processed / total) * 100),
       }));
 
@@ -467,13 +471,14 @@ export function PortfolioProvider({ children }) {
         const res = await fetch('/api/prices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols: chunk, force: true }),
+          body: JSON.stringify({ instrumentIds: chunk.map(h => h.instrumentId), force: true }),
         });
         if (res.ok) {
           const priceData = await res.json();
           Object.assign(allPrices, priceData.prices  || {});
           Object.assign(allMeta,   priceData.meta    || {});
-          updatedCount += Object.keys(priceData.prices || {}).length;
+          updatedCount += chunk.filter(h => ['yahoo', 'amfi'].includes(priceData.meta?.[h.instrumentId]?.source) && !priceData.meta?.[h.instrumentId]?.stale).length;
+          failedCount += chunk.filter(h => !['yahoo', 'amfi'].includes(priceData.meta?.[h.instrumentId]?.source) || priceData.meta?.[h.instrumentId]?.stale).length;
         } else {
           failedCount += chunk.length;
         }
@@ -489,7 +494,7 @@ export function PortfolioProvider({ children }) {
         failed:   failedCount,
       }));
 
-      if (i + CHUNK < activeSymbols.length) {
+      if (i + CHUNK < activeInstruments.length) {
         await new Promise(r => setTimeout(r, STAGGER_MS));
       }
     }
@@ -534,13 +539,13 @@ export function PortfolioProvider({ children }) {
 
   return (
     <PortfolioCtx.Provider value={{
-      trades, holdings, stats, mfHoldings, stHoldings,
+      trades, corporateActions, holdings, stats, mfHoldings, stHoldings,
       monthlyFlow, taxData, currentPrices, priceMeta,
       realizedSummary, portfolioXIRR, portfolioBeta,
       portfolioId, loading, error,
       activeView, setActiveView,
       isDiscreet, toggleDiscreet,
-      addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,
+      addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice, mergePrices, mergeMeta,
       priceRefreshState,
       refreshData: loadData, toasts, toast,
     }}>
@@ -553,4 +558,15 @@ export function usePortfolio() {
   const ctx = useContext(PortfolioCtx);
   if (!ctx) throw new Error('usePortfolio must be used within PortfolioProvider');
   return ctx;
+}
+
+async function fetchPriceBatches(instrumentIds, options, signal) {
+  const result = { prices: {}, meta: {} };
+  for (let offset = 0; offset < instrumentIds.length; offset += 100) {
+    const response = await fetch("/api/prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instrumentIds: instrumentIds.slice(offset, offset + 100), ...options }), signal });
+    if (!response.ok) throw new Error("Price loading failed");
+    const data = await response.json();
+    Object.assign(result.prices, data.prices); Object.assign(result.meta, data.meta);
+  }
+  return result;
 }
