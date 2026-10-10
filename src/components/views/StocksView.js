@@ -314,7 +314,7 @@ export default function StocksView() {
                   </div>
                 ) : (
                   <div onClick={e => e.stopPropagation()}>
-                    <PriceCell symbol={h.symbol} cmp={h.cmp} />
+                    <PriceCell instrumentId={h.instrumentId} symbol={h.symbol} cmp={h.cmp} />
                   </div>
                 )}
 
@@ -322,7 +322,7 @@ export default function StocksView() {
 
                 {/* Refresh btn — hidden for exited rows */}
                 <div className={styles.refreshCell} onClick={e => e.stopPropagation()}>
-                  {!isExited && <RefreshPriceButton symbol={h.symbol} assetType="STOCK" />}
+                  {!isExited && <RefreshPriceButton instrumentId={h.instrumentId} symbol={h.symbol} assetType="STOCK" />}
                 </div>
               </div>
 

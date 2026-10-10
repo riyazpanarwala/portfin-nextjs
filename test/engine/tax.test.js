@@ -211,7 +211,8 @@ test('Schedule 111A Export: CSV formatting with Consolidated Summary Header and 
   assert.ok(csv.includes('8000.00'));
 });
 
-test('Smart Tax Harvesting Simulator: Recommends 0% LTCG Gain Step-Up & Loss Offsets', () => {
+test('Smart Tax Harvesting Simulator: Recommends 0% LTCG Gain Step-Up & Loss Offsets', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T06:00:00Z') });
   // Scenario:
   // User has realized ₹20,000 STCG in current FY (tax liability = ₹4,000 + cess = ₹4,160)
   // User holds open positions:

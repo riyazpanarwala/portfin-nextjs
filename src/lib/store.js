@@ -121,7 +121,7 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
     if (qty <= EPSILON && realizedGain === 0 && sellRecords.length === 0 && unmatchedSellQty <= EPSILON) continue;
 
     const avgBuy         = qty > EPSILON ? invested / qty : 0;
-    const suppliedPrice = currentPrices[meta.instrumentId] ?? currentPrices[symbol];
+    const suppliedPrice = meta.instrumentId ? currentPrices[meta.instrumentId] : currentPrices[symbol];
     const priceAvailable = suppliedPrice != null && Number.isFinite(Number(suppliedPrice)) && Number(suppliedPrice) > 0;
     const cmp            = priceAvailable ? Number(suppliedPrice) : avgBuy;
     const marketValue    = qty * cmp;

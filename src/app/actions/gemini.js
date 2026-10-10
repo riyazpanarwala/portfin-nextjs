@@ -103,9 +103,9 @@ export async function askGeminiAction({ prompt, options = {} } = {}) {
     // Retain full details in server log, but return bounded message and code to browser
     console.error("[askGeminiAction] Server Error:", error?.message || error);
 
-    const code = error?.code || "AI_REQUEST_FAILED";
+    const code = error?.status === 401 ? 'UNAUTHENTICATED' : (error?.code || "AI_REQUEST_FAILED");
     const userMessage =
-      code === "RATE_LIMIT_EXCEEDED"
+      code === 'UNAUTHENTICATED' ? 'Please sign in to use the AI advisor.' : code === "RATE_LIMIT_EXCEEDED"
         ? "Rate limit exceeded. Please try again later."
         : "Failed to process AI request. Please try again later.";
 

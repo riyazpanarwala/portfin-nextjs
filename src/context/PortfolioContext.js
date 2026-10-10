@@ -170,17 +170,18 @@ export function PortfolioProvider({ children }) {
       setTrades(rawTrades || []);
       setCorporateActions(actions);
 
-      const symbols = [...new Set((rawTrades || []).map(t => t.symbol))];
-      if (symbols.length > 0) {
-        const priceData = await fetchPriceBatches(symbols, { cacheOnly: true }, controller.signal);
+      const instrumentIds = [...new Set((rawTrades || []).map(t => t.instrumentId))];
+      setCurrentPrices({});
+      setPriceMeta({});
+      if (instrumentIds.length > 0) {
+        const priceData = await fetchPriceBatches(instrumentIds, { cacheOnly: true }, controller.signal)
+          .catch(err => { if (err.name !== 'AbortError') console.warn('[prices]', err.message); return null; });
         if (priceData) {
-
-
           if (controller.signal.aborted) return;
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
 
-          const missing = symbols.filter(s => !priceData.prices?.[s] || priceData.meta?.[s]?.stale);
+          const missing = instrumentIds.filter(id => !priceData.prices?.[id] || priceData.meta?.[id]?.stale);
           if (missing.length > 0) {
             fetchPriceBatches(missing, { force: false }, controller.signal)
               .then(data => {
@@ -329,11 +330,11 @@ export function PortfolioProvider({ children }) {
         [...prev, newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)),
       );
 
-      if (!currentPrices[newTrade.symbol]) {
+      if (!currentPrices[newTrade.instrumentId]) {
         const pr = await fetch('/api/prices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols: [newTrade.symbol], cacheOnly: true }),
+          body: JSON.stringify({ instrumentIds: [newTrade.instrumentId], cacheOnly: true }),
         }).catch(() => null);
         if (pr?.ok) {
           const prData = await pr.json().catch(() => null);
@@ -398,13 +399,13 @@ export function PortfolioProvider({ children }) {
     }
   }
 
-  // ── Update single symbol price ────────────────────────────────────────────
-  async function updatePrice(symbol, price) {
+  // ── Update single instrument price ────────────────────────────────────────
+  async function updatePrice(instrumentId, symbol, price) {
     try {
       const res = await fetch('/api/prices', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol, price }),
+        body: JSON.stringify({ instrumentId, price }),
       });
       if (!res.ok) throw new Error('Price update failed');
       const data = await res.json();
@@ -413,32 +414,31 @@ export function PortfolioProvider({ children }) {
       toast(`${symbol} price updated ✓`, 'green');
     } catch (err) {
       toast(err.message, 'red');
+      throw err;
     }
   }
 
   // ── Refresh prices ────────────────────────────────────────────────────────
   async function refreshPrices(assetTypeFilter = null) {
-    const activeSymbols = [...new Set(
-      holdings
+    const activeInstruments = holdings
         .filter(h =>
           h.qty > ACTIVE_QTY_EPSILON &&
           (!assetTypeFilter || h.assetType === assetTypeFilter)
         )
-        .map(h => h.symbol)
-    )];
+        .map(h => ({ instrumentId: h.instrumentId, symbol: h.symbol }));
 
     const label = assetTypeFilter === 'MF'    ? 'MF NAVs'
                 : assetTypeFilter === 'STOCK' ? 'stock prices'
                 : 'all prices';
 
-    if (!activeSymbols.length) {
+    if (!activeInstruments.length) {
       toast(`No active ${label} to refresh`, 'blue');
       return;
     }
 
     const CHUNK      = 20;
     const STAGGER_MS = 300;
-    const total      = activeSymbols.length;
+    const total      = activeInstruments.length;
 
     setPriceRefreshState({
       active:    true,
@@ -458,12 +458,12 @@ export function PortfolioProvider({ children }) {
     let failedCount  = 0;
     let processed    = 0;
 
-    for (let i = 0; i < activeSymbols.length; i += CHUNK) {
-      const chunk = activeSymbols.slice(i, i + CHUNK);
+    for (let i = 0; i < activeInstruments.length; i += CHUNK) {
+      const chunk = activeInstruments.slice(i, i + CHUNK);
 
       setPriceRefreshState(prev => ({
         ...prev,
-        current:  chunk[0],
+        current:  chunk[0].symbol,
         progress: Math.round((processed / total) * 100),
       }));
 
@@ -471,14 +471,14 @@ export function PortfolioProvider({ children }) {
         const res = await fetch('/api/prices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols: chunk, force: true }),
+          body: JSON.stringify({ instrumentIds: chunk.map(h => h.instrumentId), force: true }),
         });
         if (res.ok) {
           const priceData = await res.json();
           Object.assign(allPrices, priceData.prices  || {});
           Object.assign(allMeta,   priceData.meta    || {});
-          updatedCount += chunk.filter(symbol => ['yahoo', 'amfi'].includes(priceData.meta?.[symbol]?.source) && !priceData.meta?.[symbol]?.stale).length;
-          failedCount += chunk.filter(symbol => !['yahoo', 'amfi'].includes(priceData.meta?.[symbol]?.source) || priceData.meta?.[symbol]?.stale).length;
+          updatedCount += chunk.filter(h => ['yahoo', 'amfi'].includes(priceData.meta?.[h.instrumentId]?.source) && !priceData.meta?.[h.instrumentId]?.stale).length;
+          failedCount += chunk.filter(h => !['yahoo', 'amfi'].includes(priceData.meta?.[h.instrumentId]?.source) || priceData.meta?.[h.instrumentId]?.stale).length;
         } else {
           failedCount += chunk.length;
         }
@@ -494,7 +494,7 @@ export function PortfolioProvider({ children }) {
         failed:   failedCount,
       }));
 
-      if (i + CHUNK < activeSymbols.length) {
+      if (i + CHUNK < activeInstruments.length) {
         await new Promise(r => setTimeout(r, STAGGER_MS));
       }
     }
@@ -545,7 +545,7 @@ export function PortfolioProvider({ children }) {
       portfolioId, loading, error,
       activeView, setActiveView,
       isDiscreet, toggleDiscreet,
-      addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice,
+      addTrade, deleteTrade, saveSnapshot, refreshPrices, updatePrice, mergePrices, mergeMeta,
       priceRefreshState,
       refreshData: loadData, toasts, toast,
     }}>
@@ -560,10 +560,10 @@ export function usePortfolio() {
   return ctx;
 }
 
-async function fetchPriceBatches(symbols, options, signal) {
+async function fetchPriceBatches(instrumentIds, options, signal) {
   const result = { prices: {}, meta: {} };
-  for (let offset = 0; offset < symbols.length; offset += 100) {
-    const response = await fetch("/api/prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbols: symbols.slice(offset, offset + 100), ...options }), signal });
+  for (let offset = 0; offset < instrumentIds.length; offset += 100) {
+    const response = await fetch("/api/prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instrumentIds: instrumentIds.slice(offset, offset + 100), ...options }), signal });
     if (!response.ok) throw new Error("Price loading failed");
     const data = await response.json();
     Object.assign(result.prices, data.prices); Object.assign(result.meta, data.meta);

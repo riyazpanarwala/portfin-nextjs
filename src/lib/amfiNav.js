@@ -14,9 +14,12 @@ export function parseAmfiNav(text) {
     const rawNav = fields[navIndex]?.trim();
     if (!/^\d+(\.\d+)?$/.test(rawNav || '')) continue;
     const price = Number(rawNav);
-    const timestamp = Date.parse(fields[dateIndex]?.trim());
-    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(timestamp)) continue;
-    const asOf = new Date(timestamp).toISOString().slice(0, 10);
+    const match = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/.exec(fields[dateIndex]?.trim() || '');
+    const month = match ? ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(match[2].toLowerCase()) : -1;
+    if (!Number.isFinite(price) || price <= 0 || month < 0) continue;
+    const date = new Date(Date.UTC(Number(match[3]), month, Number(match[1])));
+    if (date.getUTCFullYear() !== Number(match[3]) || date.getUTCMonth() !== month || date.getUTCDate() !== Number(match[1])) continue;
+    const asOf = date.toISOString().slice(0, 10);
     for (const index of isinIndexes) {
       const isin = fields[index]?.trim().toUpperCase();
       if (!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin || '')) continue;

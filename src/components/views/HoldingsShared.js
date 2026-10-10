@@ -6,6 +6,7 @@ import { colorPnl, fmtCr, fmt, sectorColor } from '@/lib/store';
 import { xirr, holdingXIRR, lotXIRR } from '@/lib/xirr';
 import { HoldingPerformanceChart } from '@/components/charts/Charts';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { useAuth } from '@/context/AuthContext';
 import { EmptyState } from '@/components/ui/SharedUI';
 import styles from './HoldingsShared.module.css';
 
@@ -351,8 +352,8 @@ export function TD({ ch, right, mono, color, bold, small, className = '' }) {
 }
 
 // ── RefreshPriceButton ────────────────────────────────────────────────────────
-export function RefreshPriceButton({ symbol, assetType, onRefreshed }) {
-  const { updatePrice, toast } = usePortfolio();
+export function RefreshPriceButton({ instrumentId, symbol, assetType, onRefreshed }) {
+  const { mergePrices, mergeMeta, toast } = usePortfolio();
   const [loading, setLoading] = useState(false);
 
   async function handleRefresh(e) {
@@ -362,16 +363,15 @@ export function RefreshPriceButton({ symbol, assetType, onRefreshed }) {
       const res = await fetch('/api/prices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols: [symbol], force: true }),
+        body: JSON.stringify({ instrumentIds: [instrumentId], force: true }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const newPrice =
-        data.prices?.[symbol] ??
-        data.prices?.[symbol.toUpperCase()] ??
-        null;
-      if (newPrice && newPrice > 0) {
-        await updatePrice(symbol, newPrice);
+      mergePrices(data.prices);
+      mergeMeta(data.meta);
+      const newPrice = data.prices?.[instrumentId];
+      const record = data.meta?.[instrumentId];
+      if (newPrice > 0 && ['yahoo', 'amfi'].includes(record?.source) && !record.stale) {
         onRefreshed && onRefreshed(newPrice);
       } else {
         toast(`No live price found for ${symbol}`, 'blue');
@@ -420,7 +420,8 @@ export function RefreshPriceButton({ symbol, assetType, onRefreshed }) {
 }
 
 // ── Inline CMP price editor ───────────────────────────────────────────────────
-export function PriceCell({ symbol, cmp, onSaved }) {
+export function PriceCell({ instrumentId, symbol, cmp, onSaved }) {
+  const { user } = useAuth();
   const { updatePrice } = usePortfolio();
   const [editing, setEditing] = useState(false);
   const [val, setVal]         = useState('');
@@ -443,8 +444,10 @@ export function PriceCell({ symbol, cmp, onSaved }) {
     savingRef.current = true;
     setSaving(true);
     try {
-      await updatePrice(symbol, price);
+      await updatePrice(instrumentId, symbol, price);
       onSaved?.(price);
+    } catch {
+      // updatePrice has already displayed the server error.
     } finally {
       setSaving(false);
       setEditing(false);
@@ -488,9 +491,9 @@ export function PriceCell({ symbol, cmp, onSaved }) {
   return (
     <div className={styles.priceCellWrapper}>
       <span className={styles.priceCellValue}>₹{fmt(cmp, 2)}</span>
-      <button onClick={startEdit} title={`Edit CMP for ${symbol}`} className={styles.priceCellEditBtn}>
+      {user?.isAdmin && <button onClick={startEdit} title={`Edit CMP for ${symbol}`} className={styles.priceCellEditBtn}>
         ✎
-      </button>
+      </button>}
     </div>
   );
 }

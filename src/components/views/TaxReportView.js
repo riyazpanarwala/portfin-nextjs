@@ -479,16 +479,16 @@ export default function TaxReportView() {
 
             {/* Total Tax Payable */}
             <div className={styles.kpiCard} style={{
-              borderColor: report.totalTax === 0 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.4)',
-              background: report.totalTax === 0 ? 'rgba(16, 185, 129, 0.04)' : 'rgba(239, 68, 68, 0.04)',
+              borderColor: !report.taxEstimateAvailable ? 'var(--border)' : report.totalTax === 0 ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.4)',
+              background: !report.taxEstimateAvailable ? 'var(--bg3)' : report.totalTax === 0 ? 'rgba(16, 185, 129, 0.04)' : 'rgba(239, 68, 68, 0.04)',
             }}>
               <div className={styles.kpiLabel}>
                 <span>Estimated Tax Payable</span>
-                <ShieldCheck size={15} color={report.totalTax === 0 ? 'var(--green2)' : 'var(--red2)'} />
+                <ShieldCheck size={15} color={!report.taxEstimateAvailable ? 'var(--yellow)' : report.totalTax === 0 ? 'var(--green2)' : 'var(--red2)'} />
               </div>
               <div
                 className={`${styles.kpiValue} mono-privacy`}
-                style={{ color: report.totalTax === 0 ? 'var(--green2)' : 'var(--red2)' }}
+                style={{ color: !report.taxEstimateAvailable ? 'var(--yellow)' : report.totalTax === 0 ? 'var(--green2)' : 'var(--red2)' }}
               >
                 {!report.taxEstimateAvailable ? "Review required" : report.totalTax === 0 ? '₹0.00' : fmtCr(report.totalTax)}
               </div>
@@ -503,7 +503,9 @@ export default function TaxReportView() {
                 </div>
                 <div className={styles.kpiSubRow}>
                   <span>Status:</span>
-                  {report.totalTax === 0 ? (
+                  {!report.taxEstimateAvailable ? (
+                    <span style={{ color: 'var(--yellow)', fontWeight: 700 }}>REVIEW REQUIRED</span>
+                  ) : report.totalTax === 0 ? (
                     <span className={styles.taxZeroBadge}>ZERO LIABILITY</span>
                   ) : (
                     <span style={{ color: 'var(--red2)', fontWeight: 700 }}>TAX DUE</span>
@@ -579,6 +581,8 @@ export default function TaxReportView() {
               <strong>Tax Analysis for FY {selectedFy}:</strong>{' '}
               {report.sells.length === 0 ? (
                 'No sell trades or mutual fund redemptions found for this financial year.'
+              ) : !report.taxEstimateAvailable ? (
+                'Tax estimate withheld until the listed review items are resolved.'
               ) : report.totalTax === 0 ? (
                 <>
                   Your net taxable capital gains liability is <strong>₹0.00</strong>. Your net LTCG of{' '}

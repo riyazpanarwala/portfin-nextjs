@@ -5,7 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 const INITIAL_FORM = {
   symbol: '', name: '', assetType: 'STOCK', exchange: 'NSE',
   tradeType: 'BUY', quantity: '', price: '', brokerage: '', taxBrokerage: '',
-  tradeDate: new Date().toISOString().slice(0, 10), sector: '',
+  tradeDate: new Date().toISOString().slice(0, 10), sector: '', isin: undefined,
 };
 
 export function useTradeForm({ addTrade, deleteTrade, trades }) {
@@ -23,7 +23,7 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
     if (k === 'symbol') {
       skipSearchRef.current = false;
     }
-    setForm(f => ({ ...f, [k]: v }));
+    setForm(f => ({ ...f, [k]: v, ...(k === 'symbol' ? { isin: undefined } : {}) }));
   }
 
   function handleAssetTypeChange(at) {
@@ -108,7 +108,7 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
     setSuccess(true);
     setTimeout(() => {
       setSuccess(false);
-      setForm(f => ({ ...f, symbol: '', name: '', quantity: '', price: '', brokerage: '', taxBrokerage: '', sector: '' }));
+      setForm(f => ({ ...f, symbol: '', name: '', isin: undefined, quantity: '', price: '', brokerage: '', taxBrokerage: '', sector: '' }));
     }, 1800);
     } catch { setSuccess(false); }
     finally { setSubmitting(false); }

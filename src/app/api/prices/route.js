@@ -9,10 +9,10 @@ import { dayKey } from '@/lib/financialRules';
 export const dynamic = 'force-dynamic';
 
 export const POST = withErrorHandler('POST /api/prices', async request => {
-  const { symbols, force = false, cacheOnly = false } = await request.json();
-  if (!Array.isArray(symbols) || symbols.length > 100 || symbols.some(s => typeof s !== 'string' || s.length > 40)) return badRequest('Provide up to 100 symbols');
-  if (!symbols.length) return NextResponse.json({ prices: {}, meta: {} });
-  const instruments = await prisma.instrument.findMany({ where: { symbol: { in: symbols.map(s => s.toUpperCase()) } } });
+  const { instrumentIds, force = false, cacheOnly = false } = await request.json();
+  if (!Array.isArray(instrumentIds) || instrumentIds.length > 100 || instrumentIds.some(id => typeof id !== 'string' || !id || id.length > 64)) return badRequest('Provide up to 100 instrument IDs');
+  if (!instrumentIds.length) return NextResponse.json({ prices: {}, meta: {} });
+  const instruments = await prisma.instrument.findMany({ where: { id: { in: [...new Set(instrumentIds)] } } });
   return NextResponse.json(await collectInstrumentPrices(instruments, { force, cacheOnly }));
 });
 

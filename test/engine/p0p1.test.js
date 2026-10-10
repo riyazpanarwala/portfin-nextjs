@@ -118,7 +118,8 @@ test('trade loading fetches more than 1000 rows and rejects mixed revisions or d
   let page = 0;
   await assert.rejects(loadTradeHistory('p', { fetcher: async () => ({ ok: true, json: async () => ({ trades: [{ id: 'a' }], total: 2, revision: page++, hasMore: page === 1 }) }) }), /changed/);
 });
-test('tax eligibility and grandfathering block exports; exact anniversary is short term and annual totals exclude prior years', () => {
+test('tax eligibility and grandfathering block exports; exact anniversary is short term and annual totals exclude prior years', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T06:00:00Z') });
   const rows = [trade('b', 'BUY', '2024-05-01', 10, 100), trade('s', 'SELL', '2025-05-01', 2, 200), trade('s2', 'SELL', '2026-05-02', 2, 300)];
   const h = computeHoldings(rows, { 'stock-a': 300 }, { asOf: at });
   assert.equal(h[0].sells[0].matchedLots[0].taxType, 'STCG');
@@ -128,7 +129,8 @@ test('tax eligibility and grandfathering block exports; exact anniversary is sho
   assert.equal(computeCapitalGainsReport(h, { fy: 'ALL' }).totalTax, null);
   assert.equal(computeRealizedSummary(h).totalRealized, 600);
 });
-test('harvesting a newer losing lot consumes the older FIFO winner and reports the actual gain', () => {
+test('harvesting a newer losing lot consumes the older FIFO winner and reports the actual gain', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-10T06:00:00Z') });
   const rows = [trade('old', 'BUY', '2024-01-01', 10, 100), trade('new', 'BUY', '2026-01-01', 10, 300)];
   const h = computeHoldings(rows, { 'stock-a': 200 }, { asOf: at });
   const report = computeCapitalGainsReport(h, { fy: '2026-27' });

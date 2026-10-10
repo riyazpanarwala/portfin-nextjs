@@ -15,6 +15,7 @@ import {
   useEffect,
   useCallback,
 } from "react";
+import { readClientSession } from '@/lib/clientSession';
 
 const AuthCtx = createContext(null);
 
@@ -22,18 +23,25 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // { id, email, displayName } | null
   const [loading, setLoading] = useState(true); // true while restoring session
   const [error, setError] = useState(null); // login error message
+  const [sessionError, setSessionError] = useState(null);
+  const [probeVersion, setProbeVersion] = useState(0);
+  const retrySession = useCallback(() => {
+    setLoading(true);
+    setSessionError(null);
+    setProbeVersion(version => version + 1);
+  }, []);
 
   // ── Restore session on mount ──────────────────────────────────────────────
   useEffect(() => {
     const controller = new AbortController();
-    localStorage.removeItem('portfin:session:v1');
-    fetch('/api/auth/session', { cache: 'no-store', signal: controller.signal })
-      .then(async res => res.ok ? (await res.json()).user : null)
+    // Storage cleanup must not prevent cookie-based session verification.
+    try { localStorage.removeItem('portfin:session:v1'); } catch { /* Storage may be disabled. */ }
+    readClientSession({ signal: controller.signal })
       .then(restored => { if (!controller.signal.aborted) setUser(restored); })
-      .catch(() => {})
+      .catch(() => { if (!controller.signal.aborted) setSessionError('Unable to verify your session. Please retry.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, []);
+  }, [probeVersion]);
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(async (email, password) => {
@@ -85,6 +93,8 @@ export function AuthProvider({ children }) {
         user,
         loading,
         error,
+        sessionError,
+        retrySession,
         login,
         logout,
         setError,

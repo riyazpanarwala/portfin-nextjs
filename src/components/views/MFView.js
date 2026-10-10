@@ -220,7 +220,7 @@ export default function MFView() {
                   </div>
                 ) : (
                   <div onClick={e => e.stopPropagation()}>
-                    <PriceCell symbol={h.symbol} cmp={h.cmp} />
+                    <PriceCell instrumentId={h.instrumentId} symbol={h.symbol} cmp={h.cmp} />
                   </div>
                 )}
 
@@ -228,7 +228,7 @@ export default function MFView() {
 
                 {/* Refresh btn — hidden for exited rows */}
                 <div className={styles.refreshCell} onClick={e => e.stopPropagation()}>
-                  {!isExited && <RefreshPriceButton symbol={h.symbol} assetType="MF" />}
+                  {!isExited && <RefreshPriceButton instrumentId={h.instrumentId} symbol={h.symbol} assetType="MF" />}
                 </div>
               </div>
 
