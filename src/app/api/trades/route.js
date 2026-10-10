@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withErrorHandler, badRequest, flattenTrade } from '@/lib/apiHelpers';
 import { requireOwnedPortfolio, HttpError } from '@/lib/auth';
-import { tradeOrder, dateOnly, decimalInput, lockPortfolio, reviseLedger } from '@/lib/ledger';
+import { tradeOrder, dateOnly, decimalInput, lockPortfolio } from '@/lib/ledger';
+import { saveTradeOnce, validateSubmissionKey } from '@/lib/tradeSubmission';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,7 @@ export const GET = withErrorHandler('GET /api/trades', async (request, { session
 });
 
 export const POST = withErrorHandler('POST /api/trades', async (request, { session }) => {
+  const key = validateSubmissionKey(request.headers.get('Idempotency-Key'));
   const body = await request.json();
   const { portfolioId, symbol, assetType, tradeType, name, sector, isin } = body;
   await requireOwnedPortfolio(portfolioId, session);
@@ -44,16 +46,6 @@ export const POST = withErrorHandler('POST /api/trades', async (request, { sessi
   if (isin && (typeof isin !== 'string' || !/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin))) return badRequest('Invalid ISIN');
   if (name != null && (typeof name !== 'string' || name.length > 250)) return badRequest('Invalid name');
   if (sector != null && (typeof sector !== 'string' || sector.length > 100)) return badRequest('Invalid sector');
-  const trade = await prisma.$transaction(async db => {
-    await lockPortfolio(db, portfolioId, session.userId);
-    const instrument = await db.instrument.upsert({
-      where: { symbol_exchange: { symbol: symbol.toUpperCase(), exchange } }, update: {},
-      create: { symbol: symbol.toUpperCase(), name: name || symbol.toUpperCase(), exchange, assetType, sector: sector || null, isin: isin || null },
-    });
-    if (instrument.assetType !== assetType) throw new HttpError(400, 'Instrument asset type mismatch');
-    const saved = await db.trade.create({ data: { portfolioId, instrumentId: instrument.id, tradeType, quantity, price, brokerage, taxBrokerage, tradeDate: new Date(tradeDate) }, include: { instrument: true } });
-    await reviseLedger(db, portfolioId, tradeDate);
-    return saved;
-  });
-  return NextResponse.json({ trade: flattenTrade(trade) }, { status: 201 });
+  const { trade, replayed } = await saveTradeOnce(prisma, session, { portfolioId, symbol, exchange, assetType, name, sector, isin, tradeType, quantity, price, brokerage, taxBrokerage, tradeDate }, key);
+  return NextResponse.json({ trade: flattenTrade(trade), replayed }, { status: replayed ? 200 : 201 });
 });

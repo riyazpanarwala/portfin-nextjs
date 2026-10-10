@@ -19,6 +19,7 @@
     "update-prices-mf": "node prisma/updatePrices.js --mf",
     "update-instruments": "node scripts/refreshInstruments.js",
     "test": "node --test test/engine/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js",
     "test:gemini": "node --env-file=.env scripts/testGemini.mjs"
   },
   "prisma": {

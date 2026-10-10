@@ -29,6 +29,7 @@ model Portfolio {
   trades    Trade[]
   snapshots Snapshot[]
   corporateActions CorporateAction[]
+  tradeSubmissions TradeSubmission[]
   revision Int @default(0)
 
   @@map("portfolios")
@@ -73,6 +74,7 @@ model Trade {
 
   portfolio  Portfolio  @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   instrument Instrument @relation(fields: [instrumentId], references: [id])
+  submissions TradeSubmission[]
 
   @@index([portfolioId])
   @@index([portfolioId, instrumentId])
@@ -106,6 +108,27 @@ model Snapshot {
   @@unique([portfolioId, snapshotAt])
   @@index([portfolioId, snapshotAt(sort: Desc)])
   @@map("snapshots")
+}
+
+model TradeSubmission {
+  portfolioId String @map("portfolio_id")
+  key String
+  requestHash String @map("request_hash")
+  tradeId String? @map("trade_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  trade Trade? @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  @@id([portfolioId, key])
+  @@index([tradeId])
+  @@map("trade_submissions")
+}
+
+model LoginRateLimit {
+  key String @id
+  attempts Int
+  expiresAt DateTime @map("expires_at")
+  @@index([expiresAt])
+  @@map("login_rate_limits")
 }
 
 model Session {

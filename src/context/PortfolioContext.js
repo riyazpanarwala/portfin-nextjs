@@ -317,17 +317,17 @@ export function PortfolioProvider({ children }) {
   }
 
   // ── Add trade ─────────────────────────────────────────────────────────────
-  async function addTrade(trade) {
+  async function addTrade(trade, { idempotencyKey = crypto.randomUUID() } = {}) {
     try {
       const res = await fetch('/api/trades', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify({ ...trade, portfolioId }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       const { trade: newTrade } = await res.json();
       setTrades(prev =>
-        [...prev, newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)),
+        [...prev.filter(t => t.id !== newTrade.id), newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)),
       );
 
       if (!currentPrices[newTrade.instrumentId]) {

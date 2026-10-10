@@ -73,11 +73,11 @@ async function main() {
     }, { isolationLevel: 'RepeatableRead', timeout: 60000 });
     console.log('Application row counts:', counts);
     if (mode === 'verify') {
-      const security = await db.$queryRawUnsafe("SELECT c.relname, c.relrowsecurity, r.rolname AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_roles r ON r.oid=c.relowner WHERE n.nspname='public' AND c.relname IN ('sessions','corporate_actions')");
+      const security = await db.$queryRawUnsafe("SELECT c.relname, c.relrowsecurity, r.rolname AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_roles r ON r.oid=c.relowner WHERE n.nspname='public' AND c.relname IN ('sessions','corporate_actions','trade_submissions','login_rate_limits')");
       console.log('Server-table security:', security);
       const sessions = await db.session.count();
       const actions = await db.corporateAction.count();
-      console.log('New model access:', { sessions, corporateActions: actions });
+      console.log('New model access:', { sessions, corporateActions: actions, tradeSubmissions: await db.tradeSubmission.count(), loginRateLimits: await db.loginRateLimit.count() });
     }
   } finally { await db.$disconnect(); }
 }
