@@ -8,6 +8,17 @@ const RETRY_DELAY = 5 * 60_000;
 const NSE_SERIES = new Set(['EQ', 'BE', 'BZ', 'SM', 'ST', 'SZ']);
 const BSE_GROUPS = new Set(['A', 'B', 'E', 'M', 'MS', 'MT', 'P', 'T', 'TS', 'X', 'XT', 'Z', 'ZP']);
 
+export function matchesInstrumentQuery(item, query) {
+  const q = query.trim().toUpperCase();
+  if (!q) return false;
+  if (item.s.includes(q) || item.n.toUpperCase().includes(q) || item.i.includes(q)) return true;
+  // Broker symbols can differ from exchange symbols (ENBEETRADE vs ENBETRD).
+  // Match joined company words too, without changing the catalogue's symbol.
+  const compactQuery = q.replace(/[^A-Z0-9]/g, '');
+  const compactName = item.n.toUpperCase().replace(/&AMP;/g, '&').replace(/[^A-Z0-9]/g, '');
+  return compactQuery.length >= 3 && compactName.includes(compactQuery);
+}
+
 // Refresh boundary: 06:30 IST = 01:00 UTC, allowing time after the BOD publication.
 export function catalogueDay(time) {
   return Math.floor((time - 3_600_000) / DAY);

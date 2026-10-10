@@ -4,7 +4,17 @@ import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { catalogueDay, createInstrumentCatalogue, downloadCatalogue, normalizeInstruments } from '../../src/lib/instrumentCatalogue.js';
+import { catalogueDay, createInstrumentCatalogue, downloadCatalogue, normalizeInstruments, matchesInstrumentQuery } from '../../src/lib/instrumentCatalogue.js';
+
+test('finds Enbee by broker symbol, exchange symbol, company name and ISIN', () => {
+  const enbee = { s: 'ENBETRD', n: 'Enbee Trade &amp; Finance Ltd', i: 'INE993I01029', e: 'BSE' };
+  for (const query of ['ENBEETRADE', ' enbeetrade ', 'ENBETRD', 'Enbee Trade', 'Enbee Trade Finance', 'INE993I01029']) {
+    assert.equal(matchesInstrumentQuery(enbee, query), true, query);
+  }
+  for (const query of ['INFY', '', '---']) {
+    assert.equal(matchesInstrumentQuery(enbee, query), false, query);
+  }
+});
 
 const data = ['NSE', 'BSE'].map(e => ({ s: 'NEWIPO', n: 'New Listing', i: 'INE123A01012', e, t: 'STOCK', c: '' }));
 async function setup(t, options = {}) {

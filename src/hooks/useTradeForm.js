@@ -56,7 +56,8 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
         const p = new URLSearchParams({
           q: form.symbol,
           limit: '8',
-          exchange: form.exchange || (form.assetType === 'MF' ? 'AMFI' : 'NSE'),
+          // Stocks search both NSE and BSE; selecting a result sets its exchange.
+          ...(form.assetType === 'MF' && { exchange: 'AMFI' }),
           ...(form.assetType && { assetType: form.assetType }),
         });
         const res = await fetch(`/api/instruments/search?${p}`);
