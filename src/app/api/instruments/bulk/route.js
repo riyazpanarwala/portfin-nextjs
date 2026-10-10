@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withErrorHandler, badRequest, conflict } from '@/lib/apiHelpers';
+import { requireAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,8 @@ export const GET = withErrorHandler('GET /api/instruments/bulk', async (request)
  *
  * Returns { created, updated, skipped, errors[] }
  */
-export const POST = withErrorHandler('POST /api/instruments/bulk', async (request) => {
+export const POST = withErrorHandler('POST /api/instruments/bulk', async (request, { session }) => {
+  requireAdmin(session);
   const { instruments } = await request.json();
 
   if (!Array.isArray(instruments) || instruments.length === 0) {
@@ -104,17 +106,19 @@ export const POST = withErrorHandler('POST /api/instruments/bulk', async (reques
         exchange,
         ...(sector    !== null && { sector }),
         ...(safeIsin  !== null && { isin: safeIsin }),
+        ...(['UNKNOWN', 'EQUITY_ELIGIBLE', 'OTHER'].includes(inst.taxCategory) && { taxCategory: inst.taxCategory }),
       };
 
       if (existing) {
-        await prisma.instrument.update({
-          where: { symbol_exchange: { symbol, exchange } },
-          data,
+        await prisma.$transaction(async db => {
+          await db.portfolio.updateMany({ where: { trades: { some: { instrumentId: existing.id } } }, data: { revision: { increment: 1 } } });
+          await db.instrument.update({ where: { id: existing.id }, data });
+          await db.snapshot.updateMany({ where: { portfolio: { trades: { some: { instrumentId: existing.id } } } }, data: { stale: true } });
         });
         updated++;
       } else {
         await prisma.instrument.create({
-          data: { symbol, exchange, name, assetType, sector, isin: safeIsin },
+          data: { symbol, exchange, name, assetType, sector, isin: safeIsin, taxCategory: data.taxCategory || 'UNKNOWN' },
         });
         created++;
       }
@@ -138,7 +142,8 @@ export const POST = withErrorHandler('POST /api/instruments/bulk', async (reques
  * FIX (Issue 5): this route was completely missing — the Instrument Manager
  * DELETE button called it and received 404 on every attempt.
  */
-export const DELETE = withErrorHandler('DELETE /api/instruments/bulk', async (request) => {
+export const DELETE = withErrorHandler('DELETE /api/instruments/bulk', async (request, { session }) => {
+  requireAdmin(session);
   const { id } = await request.json();
 
   if (!id) return badRequest('id required');

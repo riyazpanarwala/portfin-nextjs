@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 export function useSnapshots(portfolioId, limit = 200) {
   const [snapshots, setSnapshots] = useState([]);
@@ -67,8 +67,10 @@ export function useSnapshots(portfolioId, limit = 200) {
     };
   }, [load]);
 
+  const verifiedSnapshots = useMemo(() => snapshots.filter(s => !s.stale && s.valuationAt && s.engineVersion === 'fifo-v2'), [snapshots]);
   return {
-    snapshots,
+    allSnapshots: snapshots,
+    snapshots: verifiedSnapshots,
     loading,
     error,
     reload: load,

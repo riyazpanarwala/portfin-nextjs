@@ -5,9 +5,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Manages authentication state for PortFin.
  *
- * Session persistence:
- *   Stores { id, email, displayName } in localStorage under 'portfin:session:v1'.
- *   On mount, restores the session so the user stays logged in across reloads.
+ * Restores identity only from the server's HttpOnly session cookie.
  */
 
 import {
@@ -18,8 +16,6 @@ import {
   useCallback,
 } from "react";
 
-const SESSION_KEY = "portfin:session:v1";
-
 const AuthCtx = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -29,29 +25,14 @@ export function AuthProvider({ children }) {
 
   // ── Restore session on mount ──────────────────────────────────────────────
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      try {
-        const raw = localStorage.getItem(SESSION_KEY);
-
-        if (raw) {
-          const parsed = JSON.parse(raw);
-
-          if (parsed?.id && parsed?.email) {
-            setUser(parsed);
-          } else {
-            localStorage.removeItem(SESSION_KEY);
-          }
-        }
-      } catch {
-        localStorage.removeItem(SESSION_KEY);
-      } finally {
-        setLoading(false);
-      }
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
+    const controller = new AbortController();
+    localStorage.removeItem('portfin:session:v1');
+    fetch('/api/auth/session', { cache: 'no-store', signal: controller.signal })
+      .then(async res => res.ok ? (await res.json()).user : null)
+      .then(restored => { if (!controller.signal.aborted) setUser(restored); })
+      .catch(() => {})
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
 
   // ── Login ─────────────────────────────────────────────────────────────────
@@ -80,7 +61,6 @@ export function AuthProvider({ children }) {
       const { user: loggedInUser } = data;
 
       setUser(loggedInUser);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(loggedInUser));
 
       return true;
     } catch {
@@ -90,10 +70,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   // ── Logout ────────────────────────────────────────────────────────────────
-  const logout = useCallback(() => {
-    setUser(null);
-    setError(null);
-    localStorage.removeItem(SESSION_KEY);
+  const logout = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!res.ok) throw new Error('Sign out failed. Please retry.');
+      setUser(null);
+      setError(null);
+    } catch (err) { setError(err.message); }
   }, []);
 
   return (

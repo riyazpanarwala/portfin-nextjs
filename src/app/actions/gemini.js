@@ -5,6 +5,7 @@ import {
   sanitizeActionOptions,
   MAX_PROMPT_LENGTH,
 } from "../../services/ai/geminiService.js";
+import { requireSession } from '../../lib/auth.js';
 
 // Sliding-window rate limiter per client identifier
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -48,24 +49,6 @@ if (typeof setInterval !== "undefined") {
 }
 
 /**
- * Resolves a client identifier for rate limiting.
- * Safely handles calls inside Next.js request context or local test runners.
- */
-async function resolveClientIdentifier() {
-  try {
-    const { headers } = await import("next/headers");
-    const headerList = await headers();
-    const forwarded = headerList.get("x-forwarded-for");
-    if (forwarded) return forwarded.split(",")[0].trim();
-    const realIp = headerList.get("x-real-ip");
-    if (realIp) return realIp.trim();
-  } catch {
-    // Outside Next.js request context (e.g. CLI or unit test runner)
-  }
-  return "local_client";
-}
-
-/**
  * Server Action: askGeminiAction
  * Internal Next.js server action to call Gemini securely from client components within this app.
  * Automatically benefits from Next.js server action CSRF and origin validation.
@@ -96,7 +79,8 @@ export async function askGeminiAction({ prompt, options = {} } = {}) {
     }
 
     // 2. Server-side rate limiting
-    const clientId = await resolveClientIdentifier();
+    const session = await requireSession();
+    const clientId = session.userId;
     if (!checkRateLimit(clientId)) {
       return {
         success: false,

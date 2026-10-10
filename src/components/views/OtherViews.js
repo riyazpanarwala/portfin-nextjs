@@ -952,7 +952,7 @@ export function ActionView() {
 
 export function SnapshotView() {
   const { portfolioId, saveSnapshot } = usePortfolio();
-  const { snapshots, loading, reload } = useSnapshots(portfolioId, 100);
+  const { snapshots, allSnapshots, loading, reload } = useSnapshots(portfolioId, 100);
   const [saving, setSaving] = useState(false);
 
   async function handleSaveSnapshot() {
@@ -1031,12 +1031,12 @@ export function SnapshotView() {
       <div className={`glass ${styles.snapshotTablePanel}`}>
         <div className={styles.snapshotTableHeader}>
           <span className={styles.snapshotTableTitle}>Checkpoint Logs</span>
-          <span className={styles.snapshotTableCount}>{snapshots.length} saved</span>
+          <span className={styles.snapshotTableCount}>{snapshots.length} verified · {allSnapshots.length} saved</span>
         </div>
 
         {loading ? (
           <div className={styles.snapshotLoading}>Loading snapshot logs...</div>
-        ) : snapshots.length === 0 ? (
+        ) : allSnapshots.length === 0 ? (
           <div className={styles.snapshotEmpty}>
             <div className={styles.snapshotEmptyIcon}>📸</div>
             <div className={styles.snapshotEmptyText}>
@@ -1067,8 +1067,8 @@ export function SnapshotView() {
               </tr>
             </thead>
             <tbody>
-              {snapshots.map((s, idx) => {
-                const prev = snapshots[idx + 1];
+              {allSnapshots.map((s, idx) => {
+                const prev = !s.stale && s.valuationAt ? allSnapshots.slice(idx + 1).find(row => !row.stale && row.valuationAt) : null;
                 const valDelta = prev ? parseFloat(s.totalValue) - parseFloat(prev.totalValue) : null;
                 const pctDelta = prev && parseFloat(prev.totalValue) > 0 ? (valDelta / parseFloat(prev.totalValue)) * 100 : null;
 
@@ -1076,6 +1076,7 @@ export function SnapshotView() {
                   <tr key={s.id || idx}>
                     <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {new Date(s.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {(!s.valuationAt || s.stale) && <span> · Unverified / stale</span>}
                     </td>
                     <td>
                       <div className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>

@@ -37,6 +37,7 @@ import {
   colorPnl,
 } from '@/lib/store';
 import styles from './TaxReportView.module.css';
+import { currentFinancialYear } from "@/lib/financialRules";
 import IncomeTaxExport from './IncomeTaxExport';
 
 export default function TaxReportView() {
@@ -46,7 +47,7 @@ export default function TaxReportView() {
   const [activeTab, setActiveTab] = useState('REPORT');
 
   // Selected Financial Year (Default: '2026-27')
-  const [selectedFy, setSelectedFy] = useState('2026-27');
+  const [selectedFy, setSelectedFy] = useState(currentFinancialYear);
   // Asset category filter: 'ALL' | 'STOCK' | 'MF'
   const [filterAsset, setFilterAsset] = useState('ALL');
   // Expanded lots state for report table
@@ -66,7 +67,7 @@ export default function TaxReportView() {
 
   // Current FY report specifically for simulation baseline
   const currentFyReport = useMemo(() => {
-    return computeCapitalGainsReport(holdings, { fy: '2026-27' });
+    return computeCapitalGainsReport(holdings, { fy: currentFinancialYear() });
   }, [holdings]);
 
   // Run harvesting simulation
@@ -189,14 +190,14 @@ export default function TaxReportView() {
   const handleExportHarvestingPlan = () => {
     if (!simulation.orders || simulation.orders.length === 0) return;
     const csvContent = generateHarvestingExecutionCsv(simulation.orders);
-    triggerDownload(csvContent, `portfin-tax-harvesting-execution-plan-FY2026-27.csv`);
+    triggerDownload(csvContent, `portfin-tax-harvesting-execution-plan-FY${currentFinancialYear()}.csv`);
   };
 
   // Copy plan to clipboard
   const handleCopyPlan = () => {
     if (!simulation.orders || simulation.orders.length === 0) return;
     const lines = [
-      `PORTFIN TAX-HARVESTING EXECUTION PLAN (FY 2026-27)`,
+      `PORTFIN TAX-HARVESTING EXECUTION PLAN (FY ${currentFinancialYear()})`,
       `Immediate Tax Saved: ₹${Math.round(simulation.impact.immediateTaxSaved).toLocaleString('en-IN')}`,
       `Total Estimated Proceeds: ₹${Math.round(simulation.impact.totalProceeds).toLocaleString('en-IN')}`,
       `Generated Orders:`,
@@ -253,6 +254,8 @@ export default function TaxReportView() {
 
   return (
     <div className={styles.taxRoot}>
+      {!report.taxEstimateAvailable && activeTab === "REPORT" && <p role="alert">Tax estimate withheld: {report.reviewReasons.join(" ")}</p>}
+      {activeTab === "SIMULATOR" && simulation.reviewReasons?.length > 0 && <p role="alert">Harvesting unavailable: {simulation.reviewReasons.join(" ")}</p>}
       {/* Top Header Row */}
       <div className={styles.headerRow}>
         <div className={styles.titleArea}>
@@ -277,7 +280,7 @@ export default function TaxReportView() {
               >
                 {report.availableFys.map(f => (
                   <option key={f} value={f}>
-                    FY {f} {f === '2026-27' ? '(Current / AY 2027-28)' : f === '2025-26' ? '(AY 2026-27)' : ''}
+                    FY {f} {f === currentFinancialYear() ? '(Current)' : ''}
                   </option>
                 ))}
                 <option value="ALL">All Financial Years</option>
@@ -297,21 +300,21 @@ export default function TaxReportView() {
               </button>
               {exportMenuOpen && (
                 <div className={styles.exportDropdown}>
-                  <button className={styles.exportDropdownItem} onClick={handleExportSchedule112ACsv}>
+                  <button className={styles.exportDropdownItem} disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule112ACsv}>
                     <FileSpreadsheet size={14} color="var(--green2)" />
                     <div>
                       <div style={{ fontWeight: 600 }}>ITR-2 Schedule 112A (CSV)</div>
-                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>Official ITD format for CA & utilities</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>PortFin reconciliation for adviser review</div>
                     </div>
                   </button>
-                  <button className={styles.exportDropdownItem} onClick={handleExportSchedule112AJson}>
+                  <button className={styles.exportDropdownItem} disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule112AJson}>
                     <FileCode size={14} color="var(--accent2)" />
                     <div>
                       <div style={{ fontWeight: 600 }}>Schedule 112A (JSON)</div>
-                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>Ready for tax portal API e-filing</div>
+                      <div style={{ fontSize: 10, color: 'var(--text3)' }}>PortFin JSON; review before tax filing</div>
                     </div>
                   </button>
-                  <button className={styles.exportDropdownItem} onClick={handleExportSchedule111ACsv}>
+                  <button className={styles.exportDropdownItem} disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule111ACsv}>
                     <FileSpreadsheet size={14} color="var(--yellow)" />
                     <div>
                       <div style={{ fontWeight: 600 }}>ITR-2 Schedule 111A (STCG CSV)</div>
@@ -436,7 +439,7 @@ export default function TaxReportView() {
                 <div className={styles.kpiSubRow}>
                   <span>LTCG Tax @ 12.5%:</span>
                   <span className="mono-privacy" style={{ color: report.ltcgTax > 0 ? 'var(--red2)' : 'var(--text2)' }}>
-                    {fmtCr(report.ltcgTax)}
+                    {report.taxEstimateAvailable ? fmtCr(report.ltcgTax) : "Review required"}
                   </span>
                 </div>
               </div>
@@ -468,7 +471,7 @@ export default function TaxReportView() {
                 <div className={styles.kpiSubRow}>
                   <span>STCG Tax @ 20%:</span>
                   <span className="mono-privacy" style={{ color: report.stcgTax > 0 ? 'var(--red2)' : 'var(--text2)' }}>
-                    {fmtCr(report.stcgTax)}
+                    {report.taxEstimateAvailable ? fmtCr(report.stcgTax) : "Review required"}
                   </span>
                 </div>
               </div>
@@ -487,16 +490,16 @@ export default function TaxReportView() {
                 className={`${styles.kpiValue} mono-privacy`}
                 style={{ color: report.totalTax === 0 ? 'var(--green2)' : 'var(--red2)' }}
               >
-                {report.totalTax === 0 ? '₹0.00' : fmtCr(report.totalTax)}
+                {!report.taxEstimateAvailable ? "Review required" : report.totalTax === 0 ? '₹0.00' : fmtCr(report.totalTax)}
               </div>
               <div className={styles.kpiSub}>
                 <div className={styles.kpiSubRow}>
                   <span>Base Tax:</span>
-                  <span className="mono-privacy">{fmtCr(report.baseTax)}</span>
+                  <span className="mono-privacy">{report.taxEstimateAvailable ? fmtCr(report.baseTax) : "—"}</span>
                 </div>
                 <div className={styles.kpiSubRow}>
                   <span>4% Cess:</span>
-                  <span className="mono-privacy">{fmtCr(report.cess)}</span>
+                  <span className="mono-privacy">{report.taxEstimateAvailable ? fmtCr(report.cess) : "—"}</span>
                 </div>
                 <div className={styles.kpiSubRow}>
                   <span>Status:</span>
@@ -521,16 +524,16 @@ export default function TaxReportView() {
                 <button
                   className={styles.exportBtn}
                   style={{ padding: '4px 10px', fontSize: 11 }}
-                  onClick={handleExportSchedule112ACsv}
-                  disabled={!report.schedule112A || report.schedule112A.length === 0}
+                  disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule112ACsv}
+
                 >
                   <Download size={12} /> Schedule 112A CSV
                 </button>
                 <button
                   className={styles.exportBtn}
                   style={{ padding: '4px 10px', fontSize: 11, background: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.3)', color: 'var(--accent2)' }}
-                  onClick={handleExportSchedule112AJson}
-                  disabled={!report.schedule112A || report.schedule112A.length === 0}
+                  disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule112AJson}
+
                 >
                   <FileCode size={12} /> JSON Format
                 </button>
@@ -590,7 +593,7 @@ export default function TaxReportView() {
                 </>
               ) : (
                 <>
-                  Your estimated capital gains tax is <strong>{fmtCr(report.totalTax)}</strong> (Base Tax: {fmtCr(report.baseTax)} + 4% Cess: {fmtCr(report.cess)}).
+                  Your estimated capital gains tax is <strong>{fmtCr(report.totalTax)}</strong> (Base Tax: {report.taxEstimateAvailable ? fmtCr(report.baseTax) : "—"} + 4% Cess: {report.taxEstimateAvailable ? fmtCr(report.cess) : "—"}).
                   {report.exemptLtcg > 0 && <> The first <strong>{fmtCr(report.exemptLtcg)}</strong> of LTCG was exempted under Section 112A.</>}
                 </>
               )}
@@ -852,7 +855,7 @@ export default function TaxReportView() {
       )}
 
       {/* TAB 2: SMART TAX-HARVESTING SIMULATOR */}
-      {activeTab === 'SIMULATOR' && (
+      {activeTab === 'SIMULATOR' && !simulation.reviewReasons?.length && (
         <div className={styles.simulatorRoot}>
           {/* Strategy Selector Bar */}
           <div className={styles.strategyBar}>

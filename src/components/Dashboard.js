@@ -55,7 +55,8 @@ const VIEWS_BYPASS_EMPTY_GUARD = new Set([
 ]);
 
 export default function Dashboard() {
-  const { activeView, loading, error, trades, refreshData, refreshPrices, isDiscreet } = usePortfolio();
+  const { activeView, loading, error, trades, holdings, priceMeta, refreshData, refreshPrices, isDiscreet } = usePortfolio();
+  const unpriced = holdings.filter(h => h.qty > 1e-9 && (!h.priceAvailable || h.priceStale || priceMeta[h.instrumentId || h.symbol]?.stale));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showImporter, setShowImporter]         = useState(false);
 
@@ -152,6 +153,8 @@ export default function Dashboard() {
 
         {/* Main content area */}
         <main className="app-main">
+          {!loading && unpriced.length > 0 && <p role="alert">Valuation is provisional: {unpriced.map(h => h.symbol).join(', ')} have missing or stale prices. Missing prices use acquisition cost for display; refresh prices before relying on totals.</p>}
+          {!loading && holdings.some(h => h.hasDataError) && <p role="alert">Unmatched sales exist. Reconcile the transaction history before relying on portfolio gains.</p>}
           {error ? (
             <ErrorState message={error} onRetry={refreshData} />
           ) : loading ? (

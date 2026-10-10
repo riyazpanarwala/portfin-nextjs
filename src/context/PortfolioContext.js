@@ -8,6 +8,7 @@ import {
   useEffect,
   useCallback,
   useTransition,
+  useRef,
 } from 'react';
 import {
   computeHoldings,
@@ -18,6 +19,7 @@ import {
   computePortfolioXIRR,
 } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
+import { loadTradeHistory } from '@/lib/loadTradeHistory';
 
 const PortfolioCtx = createContext(null);
 const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v1';
@@ -66,6 +68,8 @@ export function PortfolioProvider({ children }) {
   const userId = user?.id ?? null;
 
   const [trades, setTrades]               = useState([]);
+  const [corporateActions, setCorporateActions] = useState([]);
+  const loadController = useRef(null);
   const [portfolioId, setPortfolioId]     = useState(null);
   const [currentPrices, setCurrentPrices] = useState({});
   const [priceMeta, setPriceMeta]         = useState({});
@@ -121,6 +125,7 @@ export function PortfolioProvider({ children }) {
     if (!userId) {
       const timerId = setTimeout(() => {
         setTrades([]);
+        setCorporateActions([]);
         setPortfolioId(null);
         setCurrentPrices({});
         setPriceMeta({});
@@ -136,12 +141,15 @@ export function PortfolioProvider({ children }) {
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!userId) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
 
     try {
       setLoading(true);
       setError(null);
 
-      let pfRes = await fetch(`/api/portfolio?userId=${userId}`);
+      let pfRes = await fetch('/api/portfolio', { signal: controller.signal });
       if (!pfRes.ok) throw new Error(await pfRes.text());
       let pfData = await pfRes.json();
 
@@ -151,39 +159,32 @@ export function PortfolioProvider({ children }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId }),
+          signal: controller.signal,
         });
         if (!cr.ok) throw new Error(await cr.text());
         pid = (await cr.json()).portfolio.id;
       }
+      const { trades: rawTrades, corporateActions: actions } = await loadTradeHistory(pid, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setPortfolioId(pid);
-
-      const tRes = await fetch(`/api/trades?portfolioId=${pid}`);
-      if (!tRes.ok) throw new Error(await tRes.text());
-      const { trades: rawTrades } = await tRes.json();
       setTrades(rawTrades || []);
+      setCorporateActions(actions);
 
       const symbols = [...new Set((rawTrades || []).map(t => t.symbol))];
       if (symbols.length > 0) {
-        const prRes = await fetch('/api/prices', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols, cacheOnly: true }),
-        });
-        if (prRes.ok) {
-          const priceData = await prRes.json();
+        const priceData = await fetchPriceBatches(symbols, { cacheOnly: true }, controller.signal);
+        if (priceData) {
+
+
+          if (controller.signal.aborted) return;
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
 
-          const missing = symbols.filter(s => !priceData.prices?.[s]);
+          const missing = symbols.filter(s => !priceData.prices?.[s] || priceData.meta?.[s]?.stale);
           if (missing.length > 0) {
-            fetch('/api/prices', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ symbols: missing, force: false }),
-            })
-              .then(r => r.ok ? r.json() : null)
+            fetchPriceBatches(missing, { force: false }, controller.signal)
               .then(data => {
-                if (data?.prices) {
+                if (data?.prices && !controller.signal.aborted) {
                   setCurrentPrices(prev => {
                     const changed = Object.keys(data.prices).some(
                       k => prev[k] !== data.prices[k]
@@ -198,9 +199,9 @@ export function PortfolioProvider({ children }) {
         }
       }
     } catch (err) {
-      setError(err.message);
+      if (!controller.signal.aborted) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [userId]);
 
@@ -209,13 +210,13 @@ export function PortfolioProvider({ children }) {
     const timeoutId = setTimeout(() => {
       loadData();
     }, 0);
-    return () => clearTimeout(timeoutId);
+    return () => { clearTimeout(timeoutId); loadController.current?.abort(); };
   }, [loadData, userId]);
 
   // ── Derived state ─────────────────────────────────────────────────────────
   const holdings = useMemo(
-    () => computeHoldings(trades, currentPrices),
-    [trades, currentPrices],
+    () => computeHoldings(trades, currentPrices, { corporateActions }).map(h => ({ ...h, priceStale: !priceMeta[h.instrumentId || h.symbol]?.asOf || !!priceMeta[h.instrumentId || h.symbol]?.stale })),
+    [trades, currentPrices, corporateActions, priceMeta],
   );
 
   const stats = useMemo(
@@ -333,16 +334,19 @@ export function PortfolioProvider({ children }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ symbols: [newTrade.symbol], cacheOnly: true }),
-        });
-        if (pr.ok) {
-          const prData = await pr.json();
+        }).catch(() => null);
+        if (pr?.ok) {
+          const prData = await pr.json().catch(() => null);
+          if (!prData) return newTrade;
           mergePrices(prData.prices);
           mergeMeta(prData.meta);
         }
       }
       toast('Trade recorded ✓', 'green');
+      return newTrade;
     } catch (err) {
       toast(err.message, 'red');
+      throw err;
     }
   }
 
@@ -379,7 +383,7 @@ export function PortfolioProvider({ children }) {
           stockCount:        stats.stockCount,
         }),
       });
-      if (!res.ok) throw new Error('Snapshot failed');
+      if (!res.ok) throw new Error((await res.json()).error || 'Snapshot failed');
       const data = await res.json();
 
       if (data.duplicateMinute) {
@@ -403,8 +407,8 @@ export function PortfolioProvider({ children }) {
         body: JSON.stringify({ symbol, price }),
       });
       if (!res.ok) throw new Error('Price update failed');
-      mergePrices({ [symbol]: parseFloat(price) });
       const data = await res.json();
+      mergePrices(data.prices);
       mergeMeta(data.meta);
       toast(`${symbol} price updated ✓`, 'green');
     } catch (err) {
@@ -473,7 +477,8 @@ export function PortfolioProvider({ children }) {
           const priceData = await res.json();
           Object.assign(allPrices, priceData.prices  || {});
           Object.assign(allMeta,   priceData.meta    || {});
-          updatedCount += Object.keys(priceData.prices || {}).length;
+          updatedCount += chunk.filter(symbol => ['yahoo', 'amfi'].includes(priceData.meta?.[symbol]?.source) && !priceData.meta?.[symbol]?.stale).length;
+          failedCount += chunk.filter(symbol => !['yahoo', 'amfi'].includes(priceData.meta?.[symbol]?.source) || priceData.meta?.[symbol]?.stale).length;
         } else {
           failedCount += chunk.length;
         }
@@ -534,7 +539,7 @@ export function PortfolioProvider({ children }) {
 
   return (
     <PortfolioCtx.Provider value={{
-      trades, holdings, stats, mfHoldings, stHoldings,
+      trades, corporateActions, holdings, stats, mfHoldings, stHoldings,
       monthlyFlow, taxData, currentPrices, priceMeta,
       realizedSummary, portfolioXIRR, portfolioBeta,
       portfolioId, loading, error,
@@ -553,4 +558,15 @@ export function usePortfolio() {
   const ctx = useContext(PortfolioCtx);
   if (!ctx) throw new Error('usePortfolio must be used within PortfolioProvider');
   return ctx;
+}
+
+async function fetchPriceBatches(symbols, options, signal) {
+  const result = { prices: {}, meta: {} };
+  for (let offset = 0; offset < symbols.length; offset += 100) {
+    const response = await fetch("/api/prices", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbols: symbols.slice(offset, offset + 100), ...options }), signal });
+    if (!response.ok) throw new Error("Price loading failed");
+    const data = await response.json();
+    Object.assign(result.prices, data.prices); Object.assign(result.meta, data.meta);
+  }
+  return result;
 }

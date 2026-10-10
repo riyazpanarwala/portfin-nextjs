@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 
 const INITIAL_FORM = {
   symbol: '', name: '', assetType: 'STOCK', exchange: 'NSE',
-  tradeType: 'BUY', quantity: '', price: '', brokerage: '',
+  tradeType: 'BUY', quantity: '', price: '', brokerage: '', taxBrokerage: '',
   tradeDate: new Date().toISOString().slice(0, 10), sector: '',
 };
 
@@ -90,6 +90,7 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
       assetType: inst.assetType,
       exchange:  inst.exchange,
       sector:    inst.sector || f.sector,
+      isin: inst.isin || undefined,
       price:     inst.price ? parseFloat(inst.price).toFixed(2) : f.price,
     }));
   }
@@ -97,18 +98,20 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
   async function handleSubmit() {
     if (!form.symbol || !form.quantity || !form.price || !form.tradeDate) return;
     setSubmitting(true);
+    try {
     await addTrade({
       ...form,
       quantity:  parseFloat(form.quantity),
       price:     parseFloat(form.price),
       brokerage: form.brokerage ? parseFloat(form.brokerage) : undefined,
     });
-    setSubmitting(false);
     setSuccess(true);
     setTimeout(() => {
       setSuccess(false);
-      setForm(f => ({ ...f, symbol: '', name: '', quantity: '', price: '', brokerage: '', sector: '' }));
+      setForm(f => ({ ...f, symbol: '', name: '', quantity: '', price: '', brokerage: '', taxBrokerage: '', sector: '' }));
     }, 1800);
+    } catch { setSuccess(false); }
+    finally { setSubmitting(false); }
   }
 
   async function handleDelete(id) {
