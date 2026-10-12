@@ -9,6 +9,7 @@ export function parseAmfiNav(text) {
   const isinIndexes = columns.map((s, i) => s.includes('isin') ? i : -1).filter(i => i >= 0);
   if (navIndex < 0 || dateIndex < 0 || !isinIndexes.length) throw new Error('AMFI columns missing');
   const byIsin = new Map();
+  const ambiguousIsins = new Set();
   for (const line of lines) {
     const fields = line.split(';');
     const rawNav = fields[navIndex]?.trim();
@@ -23,10 +24,19 @@ export function parseAmfiNav(text) {
     for (const index of isinIndexes) {
       const isin = fields[index]?.trim().toUpperCase();
       if (!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin || '')) continue;
+      if (ambiguousIsins.has(isin)) continue;
       const entry = { price, asOf, schemeCode: fields[0].trim() };
       const previous = byIsin.get(isin);
-      if (previous && (previous.schemeCode !== entry.schemeCode || previous.price !== price || previous.asOf !== asOf)) throw new Error('Conflicting NAV records for an ISIN');
-      byIsin.set(isin, entry);
+      if (previous) {
+        if (entry.asOf > previous.asOf) {
+          byIsin.set(isin, entry);
+        } else if (entry.asOf === previous.asOf && entry.price !== previous.price) {
+          ambiguousIsins.add(isin);
+          byIsin.delete(isin);
+        }
+      } else {
+        byIsin.set(isin, entry);
+      }
     }
   }
   if (!byIsin.size) throw new Error('AMFI NAV data unavailable');

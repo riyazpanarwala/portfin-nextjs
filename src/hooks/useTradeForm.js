@@ -18,6 +18,8 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
   const [sugLoading, setSugLoading]   = useState(false);
   const debounceRef = useRef(null);
   const skipSearchRef = useRef(false);
+  const submissionRef = useRef(null);
+  const submitBusyRef = useRef(false);
 
   function setField(k, v) {
     if (k === 'symbol') {
@@ -96,21 +98,27 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
   }
 
   async function handleSubmit() {
-    if (!form.symbol || !form.quantity || !form.price || !form.tradeDate) return;
+    if (submitBusyRef.current || !form.symbol || !form.quantity || !form.price || !form.tradeDate) return;
+    submitBusyRef.current = true;
+    const payload = {
+      ...form,
+      quantity: parseFloat(form.quantity),
+      price: parseFloat(form.price),
+      brokerage: form.brokerage ? parseFloat(form.brokerage) : undefined,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (submissionRef.current?.fingerprint !== fingerprint) submissionRef.current = { fingerprint, key: crypto.randomUUID() };
     setSubmitting(true);
     try {
-    await addTrade({
-      ...form,
-      quantity:  parseFloat(form.quantity),
-      price:     parseFloat(form.price),
-      brokerage: form.brokerage ? parseFloat(form.brokerage) : undefined,
-    });
-    setSuccess(true);
-    setTimeout(() => {
-      setSuccess(false);
-      setForm(f => ({ ...f, symbol: '', name: '', isin: undefined, quantity: '', price: '', brokerage: '', taxBrokerage: '', sector: '' }));
-    }, 1800);
-    } catch { setSuccess(false); }
+      await addTrade(payload, { idempotencyKey: submissionRef.current.key });
+      setSuccess(true);
+      setTimeout(() => {
+        setSuccess(false);
+        submissionRef.current = null;
+        submitBusyRef.current = false;
+        setForm(f => ({ ...f, symbol: '', name: '', isin: undefined, quantity: '', price: '', brokerage: '', taxBrokerage: '', sector: '' }));
+      }, 1800);
+    } catch { setSuccess(false); submitBusyRef.current = false; }
     finally { setSubmitting(false); }
   }
 
@@ -128,7 +136,7 @@ export function useTradeForm({ addTrade, deleteTrade, trades }) {
     ? parseFloat(form.quantity) * parseFloat(form.price)
     : null;
 
-  const canSubmit = !submitting && !!form.symbol && !!form.quantity && !!form.price;
+  const canSubmit = !submitting && !success && !!form.symbol && !!form.quantity && !!form.price;
 
   return {
     form, setField, handleAssetTypeChange,

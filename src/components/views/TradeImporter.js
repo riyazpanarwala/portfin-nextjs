@@ -230,6 +230,7 @@ export default function TradeImporter({ onClose }) {
       const trades = broker.parse(rows).map((t, i) => ({
         ...t,
         _id: i,
+        _submissionKey: crypto.randomUUID(),
         _errors: validateTrade(t),
         _selected: validateTrade(t).length === 0,
       }));
@@ -283,7 +284,7 @@ export default function TradeImporter({ onClose }) {
           brokerage: t.brokerage || null,
           tradeDate: t.tradeDate,
           isin: t.isin || undefined,
-        });
+        }, { idempotencyKey: t._submissionKey });
         setProgress(p => ({ ...p, done: i + 1 }));
       } catch (err) {
         errors.push(`${t.symbol} (${t.tradeDate}): ${err.message}`);
@@ -309,6 +310,7 @@ export default function TradeImporter({ onClose }) {
       if (t._id !== id) return t;
       const updated = {
         ...t,
+        _submissionKey: crypto.randomUUID(),
         [field]: field === 'quantity' || field === 'price' ? parseFloat(value) || 0 : value,
       };
       return { ...updated, _errors: validateTrade(updated) };
@@ -319,7 +321,7 @@ export default function TradeImporter({ onClose }) {
   const editField = useCallback((id, field, value) => {
     setEditedTrades(prev => prev.map(t => {
       if (t._id !== id) return t;
-      const updated = { ...t, [field]: field === 'quantity' || field === 'price' ? parseFloat(value) || 0 : value };
+      const updated = { ...t, _submissionKey: crypto.randomUUID(), [field]: field === 'quantity' || field === 'price' ? parseFloat(value) || 0 : value };
       return { ...updated, _errors: validateTrade(updated) };
     }));
   }, []);

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { withErrorHandler, badRequest } from "@/lib/apiHelpers";
-import { verifyPassword } from "@/lib/passwordHash";
+import { authenticatePassword } from '@/lib/passwordLogin';
 import { createSession } from '@/lib/auth';
 import { isAdministrator } from '@/lib/sessionTokens';
 
@@ -25,18 +24,13 @@ export const POST = withErrorHandler(
       return badRequest("Email and password are required");
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    const { user, retryAfter } = await authenticatePassword(request, email, password);
+    if (retryAfter) return NextResponse.json(
+      { error: 'Too many sign-in attempts. Please try again later.' },
+      { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+    );
 
     if (!user) {
-      return NextResponse.json(
-        { error: "Invalid email or password" },
-        { status: 401 },
-      );
-    }
-
-    if (!verifyPassword(password, user.passwordHash)) {
       return NextResponse.json(
         { error: "Invalid email or password" },
         { status: 401 },
