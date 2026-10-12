@@ -59,6 +59,31 @@ test('spoofed forwarding headers cannot change the default source bucket; accoun
   for (const bucket of loginBuckets('owner@example.com', first, '')) assert.match(bucket.key, /^[a-f0-9]{64}$/);
 });
 
+test('trusted client IPs isolate per-account limits and pair with IP limiter without shared untrusted bucket', () => {
+  const attacker = new Request('https://portfin.test', { headers: { 'x-real-ip': '198.51.100.1' } });
+  const victim = new Request('https://portfin.test', { headers: { 'x-real-ip': '203.0.113.5' } });
+  const attackerBuckets = loginBuckets('user@example.com', attacker, 'x-real-ip');
+  const victimBuckets = loginBuckets('user@example.com', victim, 'x-real-ip');
+
+  assert.equal(attackerBuckets.length, 2);
+  assert.equal(victimBuckets.length, 2);
+  assert.equal(attackerBuckets.find(b => b.limit === 5)?.limit, 5);
+  assert.equal(attackerBuckets.find(b => b.limit === 30)?.limit, 30);
+
+  // Per-account bucket is source-scoped: attacker cannot share keys with victim
+  const attackerKeys = new Set(attackerBuckets.map(b => b.key));
+  for (const bucket of victimBuckets) {
+    assert.equal(attackerKeys.has(bucket.key), false, 'Attacker and victim must not share rate limit keys');
+  }
+
+  // Without a trusted IP, no shared IP bucket is returned (prevents global sign-in lockout)
+  const defaultBuckets1 = loginBuckets('user1@example.com', attacker, '');
+  const defaultBuckets2 = loginBuckets('user2@example.com', attacker, '');
+  assert.equal(defaultBuckets1.length, 1);
+  assert.equal(defaultBuckets2.length, 1);
+  assert.notEqual(defaultBuckets1[0].key, defaultBuckets2[0].key);
+});
+
 test('login limits allow the boundary attempt and return a bounded Retry-After when either bucket blocks', async () => {
   const now = new Date('2026-10-10T00:00:00Z');
   const buckets = [{ key: 'account', limit: 5 }, { key: 'ip', limit: 30 }];

@@ -12,11 +12,19 @@ export function loginBuckets(email, request, trustedHeader = process.env.PORTFIN
   const allowed = ['cf-connecting-ip', 'x-real-ip', 'x-vercel-forwarded-for'];
   const header = trustedHeader.toLowerCase();
   const candidate = allowed.includes(header) ? request.headers.get(header)?.trim() : null;
-  const ip = candidate && isIP(candidate) ? candidate : 'untrusted-shared';
-  return [
-    { key: digest(`account:${email.trim().toLowerCase()}`), limit: 5 },
-    { key: digest(`ip:${ip}`), limit: 30 },
-  ].sort((a, b) => a.key.localeCompare(b.key));
+  const ip = candidate && isIP(candidate) ? candidate.toLowerCase() : null;
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const buckets = ip
+    ? [
+        { key: digest(`account-ip:${ip}:${normalizedEmail}`), limit: 5 },
+        { key: digest(`ip:${ip}`), limit: 30 },
+      ]
+    : [
+        { key: digest(`account:${normalizedEmail}`), limit: 5 },
+      ];
+
+  return buckets.sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export async function consumeLoginBuckets(buckets, db = prisma, now = new Date()) {
