@@ -1,60 +1,24 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { fmtCr, fmt } from '@/lib/store';
+import { useFundamentals } from '@/hooks/useFundamentals';
 import styles from './HoldingsTable.module.css';
 
 export default function FundamentalsPanel({ holdings = [] }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [data, setData] = useState({ fundamentals: {}, summary: null });
+  const { loading, error, data, refresh } = useFundamentals(holdings);
   const [filter, setFilter] = useState('');
   const [sortField, setSortField] = useState('marketValue');
   const [sortAsc, setSortAsc] = useState(false);
 
-  const fetchFundamentals = async (force = false) => {
-    if (!holdings.length) return;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const payload = holdings.map((h) => ({
-        symbol: h.symbol,
-        exchange: h.exchange || 'NSE',
-        sector: h.sector || '',
-        cmp: h.cmp || 0,
-        marketValue: h.marketValue || 0,
-      }));
-
-      const res = await fetch('/api/fundamentals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ holdings: payload, force }),
-      });
-
-      if (!res.ok) throw new Error('Failed to fetch fundamental metrics');
-      const json = await res.json();
-      setData(json);
-    } catch (err) {
-      console.error('[FundamentalsPanel] Error:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchFundamentals(false);
-  }, [holdings.length]);
-
   const summary = data.summary;
-  const fundamentals = data.fundamentals || {};
+  const fundamentals = data.fundamentals;
 
   // Table rows combined with holdings + fundamental data
   const tableRows = useMemo(() => {
     return holdings
       .map((h) => {
-        const f = fundamentals[h.symbol] || {};
+        const f = fundamentals[h.instrumentId] || {};
         const isCommodity = f.isCommodity || h.symbol?.includes('SILV') || h.symbol?.includes('GOLD') || false;
         const isEtf = f.isEtf || isCommodity || h.sector?.includes('ETF') || h.symbol?.endsWith('BEES') || h.symbol?.includes('BETA') || false;
         const defaultCap = isCommodity ? 'COMMODITY ETF' : isEtf ? 'INDEX ETF' : 'UNKNOWN';
@@ -135,7 +99,7 @@ export default function FundamentalsPanel({ holdings = [] }) {
         </div>
 
         <button
-          onClick={() => fetchFundamentals(true)}
+          onClick={refresh}
           disabled={loading}
           style={{
             padding: '8px 16px',
@@ -327,7 +291,7 @@ export default function FundamentalsPanel({ holdings = [] }) {
                     : '#9CA3AF';
 
                 return (
-                  <tr key={r.symbol} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <tr key={r.instrumentId} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={{ padding: '10px 12px' }}>
                       <div style={{ fontWeight: 700, color: 'var(--text)' }}>{r.symbol}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-muted)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

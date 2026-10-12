@@ -20,9 +20,10 @@ import {
 } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 import { loadTradeHistory } from '@/lib/loadTradeHistory';
+import { analyticsHoldingsPayload, portfolioBetaCacheSignature } from '@/lib/analyticsClient';
 
 const PortfolioCtx = createContext(null);
-const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v1';
+const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v2';
 const ACTIVE_QTY_EPSILON = 1e-6;
 
 // All valid view IDs — used to validate the URL hash on load
@@ -36,13 +37,6 @@ function getViewFromHash() {
   if (typeof window === 'undefined') return 'overview';
   const hash = window.location.hash.replace('#', '').trim();
   return VALID_VIEWS.has(hash) ? hash : 'overview';
-}
-
-function portfolioBetaCacheSignature(holdings) {
-  return holdings
-    .map(h => `${h.symbol}:${h.assetType}:${Number(h.qty || 0).toFixed(6)}`)
-    .sort()
-    .join('|');
 }
 
 function todayKey() {
@@ -256,7 +250,7 @@ export function PortfolioProvider({ children }) {
     }
 
     const cacheDate = todayKey();
-    const cacheSignature = portfolioBetaCacheSignature(activeHoldings);
+    const cacheSignature = portfolioBetaCacheSignature(userId, portfolioId, activeHoldings);
     try {
       const cached = JSON.parse(localStorage.getItem(PORTFOLIO_BETA_CACHE_KEY) || 'null');
       if (
@@ -268,33 +262,31 @@ export function PortfolioProvider({ children }) {
         return () => clearTimeout(timeoutId);
       }
     } catch {
-      localStorage.removeItem(PORTFOLIO_BETA_CACHE_KEY);
+      try { localStorage.removeItem(PORTFOLIO_BETA_CACHE_KEY); } catch { /* Optional cache. */ }
     }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(async () => {
+      setPortfolioBeta(null);
       try {
         const res = await fetch('/api/portfolio-beta', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            holdings: activeHoldings.map(h => ({
-              symbol: h.symbol,
-              assetType: h.assetType,
-              marketValue: h.marketValue,
-            })),
+            holdings: analyticsHoldingsPayload(activeHoldings),
           }),
           signal: controller.signal,
         });
         if (!res.ok) throw new Error('Portfolio beta fetch failed');
         const data = await res.json();
+        if (controller.signal.aborted) return;
         setPortfolioBeta(data);
-        localStorage.setItem(
+        try { localStorage.setItem(
           PORTFOLIO_BETA_CACHE_KEY,
           JSON.stringify({ date: cacheDate, signature: cacheSignature, data }),
-        );
+        ); } catch { /* Optional cache must not hide a valid beta result. */ }
       } catch (err) {
-        if (err.name !== 'AbortError') setPortfolioBeta(null);
+        if (!controller.signal.aborted) setPortfolioBeta(null);
       }
     }, 0);
 
@@ -302,7 +294,7 @@ export function PortfolioProvider({ children }) {
       controller.abort();
       clearTimeout(timeoutId);
     };
-  }, [holdings]);
+  }, [holdings, userId, portfolioId]);
 
   // ── Stable price-merge helpers ────────────────────────────────────────────
   function mergePrices(next = {}) {
