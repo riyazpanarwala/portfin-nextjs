@@ -109,6 +109,26 @@ test('AMFI rejects impossible and malformed dates instead of normalizing them', 
   assert.equal(parseAmfiNav(navText.replace('01-Oct-2026', '29-Feb-2024')).get('INF000000001').asOf, '2024-02-29');
 });
 
+test('AMFI handles duplicate ISIN entries by preferring newer dates and omitting ambiguous same-day conflicts', () => {
+  const header = 'Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date';
+  const csv = [
+    header,
+    '101;INF000000001;-;Old Scheme;10.00;01-Oct-2025',
+    '102;INF000000001;-;New Scheme;15.50;01-Oct-2026',
+    '201;INF000000002;-;Dual Scheme A;20.00;01-Oct-2026',
+    '202;INF000000002;-;Dual Scheme B;20.00;01-Oct-2026',
+    '301;INF000000003;-;Conflict A;30.00;01-Oct-2026',
+    '302;INF000000003;-;Conflict B;35.00;01-Oct-2026',
+    '401;INF000000004;-;Normal Fund;40.00;01-Oct-2026',
+  ].join('\n');
+  const map = parseAmfiNav(csv);
+  assert.equal(map.get('INF000000001').price, 15.50);
+  assert.equal(map.get('INF000000001').asOf, '2026-10-01');
+  assert.equal(map.get('INF000000002').price, 20.00);
+  assert.equal(map.get('INF000000003'), undefined);
+  assert.equal(map.get('INF000000004').price, 40.00);
+});
+
 test('session verification returns signed-out only on 401 and supports retry after a failure', async () => {
   assert.equal(await readClientSession({ fetcher: async () => new Response(null, { status: 401 }) }), null);
   for (const status of [403, 429, 500, 503]) {
