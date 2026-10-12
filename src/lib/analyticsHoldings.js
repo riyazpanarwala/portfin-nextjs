@@ -1,5 +1,16 @@
 import { HttpError } from './auth.js';
 
+/** Parse analytics JSON and reject invalid bodies or refresh flags with HTTP 400. */
+export async function readAnalyticsRequest(request) {
+  const body = await request.json().catch(() => null);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HttpError(400, 'Invalid request body.');
+  }
+  const { holdings = [], force = false } = body;
+  if (typeof force !== 'boolean') throw new HttpError(400, 'force must be a boolean.');
+  return { holdings, force };
+}
+
 export async function resolveAnalyticsHoldings(holdings, db) {
   if (!Array.isArray(holdings) || holdings.length > 1000) throw new HttpError(400, 'Provide up to 1000 holdings.');
   const ids = new Set();

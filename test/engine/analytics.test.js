@@ -2,11 +2,53 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectFundamentals } from '../../src/lib/fundamentalsService.js';
 import { collectPortfolioBeta } from '../../src/lib/portfolioBetaService.js';
-import { resolveAnalyticsHoldings } from '../../src/lib/analyticsHoldings.js';
+import { readAnalyticsRequest, resolveAnalyticsHoldings } from '../../src/lib/analyticsHoldings.js';
+import { withErrorHandler } from '../../src/lib/apiHelpers.js';
 import { analyticsRequestKey, portfolioBetaCacheSignature, startFundamentalsRequest, EMPTY_FUNDAMENTALS } from '../../src/lib/analyticsClient.js';
 
 const instrument = (id, symbol, exchange = 'NSE', extra = {}) => ({ id, symbol, exchange, name: symbol, sector: 'Example', assetType: 'STOCK', isin: `TEST-${id}`, price: 100, ...extra });
 const holdings = [{ instrumentId: 'nse', marketValue: 100 }, { instrumentId: 'bse', marketValue: 300 }];
+
+const analyticsRequest = body => new Request('http://localhost/api/fundamentals', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+});
+
+test('analytics request parser rejects malformed JSON and non-object bodies with HTTP 400', async () => {
+  for (const body of ['', '{', 'null', '[]', '"text"', 'false', '42']) {
+    await assert.rejects(readAnalyticsRequest(analyticsRequest(body)), { status: 400, message: 'Invalid request body.' });
+  }
+});
+
+test('analytics request parser accepts defaults and boolean refresh flags without coercion', async () => {
+  assert.deepEqual(await readAnalyticsRequest(analyticsRequest('{}')), { holdings: [], force: false });
+  for (const force of [false, true]) {
+    assert.deepEqual(await readAnalyticsRequest(analyticsRequest(JSON.stringify({ holdings, force }))), { holdings, force });
+  }
+  for (const force of ['false', 'true', 0, 1, null, [], {}]) {
+    await assert.rejects(readAnalyticsRequest(analyticsRequest(JSON.stringify({ force }))), { status: 400, message: 'force must be a boolean.' });
+  }
+});
+
+test('analytics validation errors return HTTP 400 through the authenticated API wrapper before collection', async t => {
+  t.mock.method(console, 'error', () => {});
+  let collections = 0;
+  const handler = withErrorHandler('POST analytics', async request => {
+    const body = await readAnalyticsRequest(request);
+    collections++;
+    return Response.json(body);
+  }, { authenticate: async () => ({ userId: 'test-user' }) });
+  for (const body of ['{', 'null', '[]', '{"force":"false"}']) {
+    const response = await handler(analyticsRequest(body));
+    assert.equal(response.status, 400);
+    assert.equal(typeof (await response.json()).error, 'string');
+  }
+  assert.equal(collections, 0);
+  const response = await handler(analyticsRequest(JSON.stringify({ holdings, force: true })));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { holdings, force: true });
+  assert.equal(collections, 1);
+});
+
 function catalogue(rows) {
   const queries = [];
   return { queries, instrument: { findMany: async query => {
