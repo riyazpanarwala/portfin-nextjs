@@ -95,7 +95,7 @@ test('snapshots reject absent, zero, stale or future prices; valuation uses its 
     assert.throws(() => buildSnapshotData(rows, prices, meta, { asOf: at, revision: 3 }), /Missing or stale/);
   }
   const snapshot = buildSnapshotData(rows, { 'stock-a': 120 }, { 'stock-a': { asOf: at, source: 'test' } }, { asOf: at, revision: 3 });
-  assert.equal(snapshot.totalValue, 1200); assert.equal(snapshot.totalInvested, 1000); assert.equal(snapshot.ledgerRevision, 3);
+  assert.equal(snapshot.totalValue, '1200.00'); assert.equal(snapshot.totalInvested, '1000.00'); assert.equal(snapshot.ledgerRevision, 3);
   assert.equal(snapshot.priceProvenance['stock-a'].asOf, at);
   assert.equal(computeHoldings(rows, {}, { asOf: '2024-02-01' })[0].holdingDays, 31);
 });

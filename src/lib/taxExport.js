@@ -1,6 +1,7 @@
 import { computeCapitalGainsReport } from './store.js';
+import { decimal, decimalField, sumDecimal } from './financialDecimal.js';
 
-const money = n => Number(n.toFixed(2));
+const money = n => decimal(n).toDecimalPlaces(2).toNumber();
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
 
 // A decision is an explicit user attestation, never inferred from a fund name.
@@ -34,13 +35,13 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
     const expected = new Map();
     for (const t of trades.filter(t => t.tradeType === 'SELL' && t.tradeDate.slice(0, 10) >= start && t.tradeDate.slice(0, 10) <= end)) {
       const key = JSON.stringify([t.symbol, t.tradeDate.slice(0, 10)]);
-      expected.set(key, (expected.get(key) || 0) + Number(t.quantity));
+      expected.set(key, decimal(expected.get(key)).plus(t.quantity));
     }
     for (const s of report.sells) {
       const key = JSON.stringify([s.symbol, s.date]);
-      expected.set(key, (expected.get(key) || 0) - s.qty);
+      expected.set(key, decimal(expected.get(key)).minus(decimalField(s, 'qty')));
     }
-    if ([...expected.values()].some(n => !Number.isFinite(n) || Math.abs(n) > 1e-6)) warnings.push('Sale quantities do not reconcile with the FIFO report. Some sales may have no matching purchases.');
+    if ([...expected.values()].some(n => !n.isFinite() || n.abs().gt('0.000001'))) warnings.push('Sale quantities do not reconcile with the FIFO report. Some sales may have no matching purchases.');
   }
   if (holdings.some(h => h.hasDataError)) warnings.push('Unmatched sales exist in the portfolio; the FIFO report may omit proceeds. Reconcile all trades before relying on an estimate.');
   const gains = [];
@@ -57,9 +58,10 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
         ...classification,
         instrument: { symbol: sell.symbol, name: sell.name, isin: sell.isin || '', exchange: sell.exchange || '' },
         acquired: lot.buyDate, sold: sell.date, quantity: lot.qty,
-        saleProceeds: money(lot.qty * sell.sellPrice), costBasis: money(lot.taxCostBasis ?? lot.costBasis),
-        transferExpenditure: money(lot.expenditure || 0),
-        gain: money(lot.taxGain ?? lot.gain), holdingDays: lot.holdDays, source: 'fifo',
+        saleProceeds: money(lot.grossProceeds == null ? decimalField(lot, 'qty').times(decimalField(sell, 'sellPrice')) : decimalField(lot, 'grossProceeds')),
+        costBasis: money(decimalField(lot, lot.taxCostBasis == null ? 'costBasis' : 'taxCostBasis')),
+        transferExpenditure: money(decimalField(lot, 'expenditure')),
+        gain: money(decimalField(lot, lot.taxGain == null ? 'gain' : 'taxGain')), holdingDays: lot.holdDays, source: 'fifo',
       });
     }
   }
@@ -68,7 +70,7 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
   for (const g of gains) {
     const row = summary[bucket[g.kind]];
     const field = g.gain < 0 ? 'loss' : 'gain';
-    row[field] = money(row[field] + Math.abs(g.gain));
+    row[field] = money(decimal(row[field]).plus(decimal(g.gain).abs()));
   }
   return {
     schemaVersion: 1, source: 'portfin', financialYear: fy, generatedAt: new Date().toISOString(),
@@ -76,7 +78,7 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
     reconciliation: {
       transactionCount: report.sells.length, gainCount: gains.length,
       reviewCount: gains.filter(g => g.kind === 'review' || g.gain < 0).length,
-      totalGain: money(gains.reduce((sum, g) => sum + g.gain, 0)),
+      totalGain: money(sumDecimal(gains, g => g.gain)),
     },
   };
 }

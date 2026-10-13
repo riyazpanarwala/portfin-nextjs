@@ -3,6 +3,8 @@
 import { useMemo, useState, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { colorPnl, fmtCr, fmt, sectorColor } from '@/lib/store';
+import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult, lotCost, lotGain } from '@/lib/financialDecimal';
+import { holdingPriceMeta } from '@/lib/holdingIdentity';
 import { xirr, holdingXIRR, lotXIRR } from '@/lib/xirr';
 import { HoldingPerformanceChart } from '@/components/charts/Charts';
 import { usePortfolio } from '@/context/PortfolioContext';
@@ -590,9 +592,9 @@ export function LotTable({ lots, cmp, qtyDecimals = 0 }) {
           </thead>
           <tbody>
             {rows.map((l, i) => {
-              const inv  = l.qty * l.price;
-              const gain = l.qty * cmp - inv;
-              const ret  = inv > 0 ? gain / inv * 100 : 0;
+              const inv = lotCost(l);
+              const gain = lotGain(l, cmp);
+              const ret = inv.gt(0) ? gain.div(inv).times(100).toNumber() : 0;
               const days = Math.round((new Date() - new Date(l.date)) / 864e5);
               const xi   = calcLotXIRR(l, cmp);
               return (
@@ -613,21 +615,21 @@ export function LotTable({ lots, cmp, qtyDecimals = 0 }) {
               <td colSpan={2} className={styles.td} style={{ fontSize: 10, color: 'var(--text3)' }}>
                 TOTAL · {lots.length} LOTS
               </td>
-              <TD ch={fmt(lots.reduce((s, l) => s + l.qty, 0), qtyDecimals)} right mono bold />
-              <TD ch={`₹${fmt(lots.reduce((s, l) => s + l.qty * l.price, 0), 0)}`} right mono bold />
+              <TD ch={fmt(sumDecimal(lots, l => decimalField(l, 'qty')), qtyDecimals)} right mono bold />
+              <TD ch={`₹${fmt(sumDecimal(lots, l => lotCost(l)), 0)}`} right mono bold />
               <TD
-                ch={fmtCr(lots.reduce((s, l) => s + (l.qty * cmp - l.qty * l.price), 0))}
+                ch={fmtCr(sumDecimal(lots, l => lotGain(l, cmp)))}
                 right mono bold
-                color={colorPnl(lots.reduce((s, l) => s + (l.qty * cmp - l.qty * l.price), 0))}
+                color={colorPnl(sumDecimal(lots, l => lotGain(l, cmp)))}
               />
               <TD
                 ch={pct((() => {
-                  const inv = lots.reduce((s, l) => s + l.qty * l.price, 0);
-                  const val = lots.reduce((s, l) => s + l.qty * cmp, 0);
-                  return inv > 0 ? (val - inv) / inv * 100 : 0;
+                  const inv = sumDecimal(lots, l => lotCost(l));
+                  const gain = sumDecimal(lots, l => lotGain(l, cmp));
+                  return inv.gt(0) ? gain.div(inv).times(100).toNumber() : 0;
                 })())}
                 right mono bold
-                color={pcol(lots.reduce((s, l) => s + (l.qty * cmp - l.qty * l.price), 0))}
+                color={pcol(sumDecimal(lots, l => lotGain(l, cmp)))}
               />
               <TD ch="← XIRR above" right small color="var(--text3)" />
               <TD ch="" />
@@ -649,19 +651,19 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
     const map = {};
     lots.forEach(l => {
       const k = l.date.slice(0, 7);
-      if (!map[k]) map[k] = { month: k, qty: 0, inv: 0, lots: 0 };
-      map[k].qty += l.qty;
-      map[k].inv += l.qty * l.price;
+      if (!map[k]) map[k] = { month: k, qty: decimal(0), inv: decimal(0), lots: 0 };
+      map[k].qty = map[k].qty.plus(decimalField(l, 'qty'));
+      map[k].inv = map[k].inv.plus(lotCost(l));
       map[k].lots += 1;
     });
     return Object.values(map)
       .sort((a, b) => a.month.localeCompare(b.month))
-      .map(m => ({
+      .map(m => financialResult({
         ...m,
-        avgPrice: m.qty > 0 ? m.inv / m.qty : 0,
-        val:  m.qty * cmp,
-        gain: m.qty * cmp - m.inv,
-        ret:  m.inv > 0 ? (m.qty * cmp - m.inv) / m.inv * 100 : 0,
+        avgPrice: m.qty.gt(0) ? m.inv.div(m.qty) : decimal(0),
+        val: m.qty.times(cmp),
+        gain: m.qty.times(cmp).minus(m.inv),
+        ret: m.inv.gt(0) ? m.qty.times(cmp).minus(m.inv).div(m.inv).times(100) : decimal(0),
       }));
   }, [lots, cmp]);
 
@@ -671,18 +673,18 @@ export function MonthlyTable({ lots, cmp, qtyDecimals = 0 }) {
     const map = {};
     monthly.forEach(m => {
       const year = m.month.slice(0, 4);
-      if (!map[year]) map[year] = { year, inv: 0, qty: 0, lots: 0 };
-      map[year].inv += m.inv;
-      map[year].qty += m.qty;
+      if (!map[year]) map[year] = { year, inv: decimal(0), qty: decimal(0), lots: 0 };
+      map[year].inv = map[year].inv.plus(decimalField(m, 'inv'));
+      map[year].qty = map[year].qty.plus(decimalField(m, 'qty'));
       map[year].lots += m.lots;
     });
     return Object.values(map).map(y => {
-      const gain = y.qty * cmp - y.inv;
-      return {
+      const gain = y.qty.times(cmp).minus(y.inv);
+      return financialResult({
         ...y,
         gain,
-        ret: y.inv > 0 ? gain / y.inv * 100 : 0,
-      };
+        ret: y.inv.gt(0) ? gain.div(y.inv).times(100) : decimal(0),
+      });
     });
   }, [monthly, cmp]);
 
@@ -788,7 +790,7 @@ export function SellHistoryTable({ h, qtyDecimals = 0 }) {
                 <TD ch={s.date} mono color="var(--text2)" />
                 <TD ch={`₹${fmt(s.sellPrice, 2)}`} right mono />
                 <TD ch={fmt(s.qty, qtyDecimals)} right mono />
-                <TD ch={fmtCr(s.qty * s.sellPrice)} right mono />
+                <TD ch={fmtCr(s.grossProceeds == null ? decimalField(s, 'qty').times(decimalField(s, 'sellPrice')) : decimalField(s, 'grossProceeds'))} right mono />
                 <TD ch={fmtCr(s.realized)} right mono color={colorPnl(s.realized)} bold />
                 <TD ch={<TaxChip type={s.taxType} />} />
                 <TD ch={
@@ -841,7 +843,7 @@ export function SIPConsistencyPanel({ lots }) {
     const totalMonths = Math.max(1, (ly - fy) * 12 + (lm - fm) + 1);
     const monthsInvested = months.size;
     const consistency = Math.round((monthsInvested / totalMonths) * 100);
-    const totalInv = lots.reduce((s, l) => s + l.qty * l.price, 0);
+    const totalInv = sumDecimal(lots, l => lotCost(l)).toNumber();
     const avgMonthlyInvestment = totalInv / monthsInvested;
     const daysSinceLastBuy = Math.round((new Date() - lastDate) / 864e5);
 
@@ -905,12 +907,12 @@ export function UnrealizedTaxPanel({ h }) {
     return days < 365;
   });
 
-  const ltcgGain = ltcgLots.reduce((s, l) => s + l.qty * (h.cmp - l.price), 0);
-  const stcgGain = stcgLots.reduce((s, l) => s + l.qty * (h.cmp - l.price), 0);
+  const ltcgGain = sumDecimal(ltcgLots, l => lotGain(l, decimalField(h, 'cmp')));
+  const stcgGain = sumDecimal(stcgLots, l => lotGain(l, decimalField(h, 'cmp')));
 
-  const ltcgTax = Math.max(0, ltcgGain - 125000) * 0.125;
-  const stcgTax = Math.max(0, stcgGain) * 0.20;
-  const totalTax = ltcgTax + stcgTax;
+  const ltcgTax = D.max(0, ltcgGain.minus(125000)).times('0.125');
+  const stcgTax = D.max(0, stcgGain).times('0.20');
+  const totalTax = ltcgTax.plus(stcgTax);
 
   if (totalTax <= 0 && ltcgGain <= 0 && stcgGain <= 0) return null;
 
@@ -1015,16 +1017,12 @@ export function HoldingDetailPanel({ h, priceMeta, chartLabel, qtyDecimals, xirr
   const { setActiveView } = usePortfolio();
   const [tab, setTab] = useState('lots');
 
-  // Use a stable key derived from primitives to avoid re-computing on
-  // every render when lots/sells are new array references.
-  const xirrKey = `${h.symbol}:${h.cmp}:${h.lots?.length ?? 0}:${h.lots?.reduce((s, l) => s + l.qty, 0) ?? 0}:${h.sells?.length ?? 0}`;
   const xirrVal = useMemo(
     () => calcHoldingXIRR(h.lots, h.sells, h.cmp),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [xirrKey],
+    [h.lots, h.sells, h.cmp],
   );
 
-  const meta     = priceMeta?.[h.symbol];
+  const meta = holdingPriceMeta(h, priceMeta);
   const hasSells = h.sells && h.sells.length > 0;
   const isMF     = assetType === 'MF' || h.assetType === 'MF';
   const isStock  = !isMF;

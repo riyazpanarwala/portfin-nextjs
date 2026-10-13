@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { isVerifiedSnapshot } from '@/lib/financialRules';
 
 export function useSnapshots(portfolioId, limit = 200) {
   const [snapshots, setSnapshots] = useState([]);
@@ -67,7 +68,7 @@ export function useSnapshots(portfolioId, limit = 200) {
     };
   }, [load]);
 
-  const verifiedSnapshots = useMemo(() => snapshots.filter(s => !s.stale && s.valuationAt && s.engineVersion === 'fifo-v2'), [snapshots]);
+  const verifiedSnapshots = useMemo(() => snapshots.filter(isVerifiedSnapshot), [snapshots]);
   return {
     allSnapshots: snapshots,
     snapshots: verifiedSnapshots,

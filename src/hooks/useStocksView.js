@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { HOLDING_EPSILON, downloadCsv, useHoldingsViewState } from '@/hooks/useHoldingsViewState';
+import { holdingKey, stockHoldingMetrics } from '@/lib/holdingIdentity';
+import { decimalField, sumDecimal } from '@/lib/financialDecimal';
 
 const stockSearchFields = [
   h => h.symbol,
@@ -21,12 +23,13 @@ export function useStocksView({ stHoldings, stats }) {
     holdings: stHoldings,
     search: filter,
     searchFields: stockSearchFields,
+    rowKey: holdingKey,
   });
 
-  const stGain = useMemo(() => stats.stValue - stats.stInvested, [stats.stValue, stats.stInvested]);
+  const stGain = useMemo(() => decimalField(stats, 'stValue').minus(decimalField(stats, 'stInvested')).toNumber(), [stats]);
 
   const stRealized = useMemo(() =>
-    stHoldings.reduce((s, h) => s + (h.realizedGain || 0), 0),
+    sumDecimal(stHoldings, h => decimalField(h, 'realizedGain')).toNumber(),
     [stHoldings]
   );
 
@@ -35,30 +38,15 @@ export function useStocksView({ stHoldings, stats }) {
 
   // Total ever invested across all stocks (including exited positions)
   const stTotalEverInvested = useMemo(() =>
-    stHoldings.reduce((s, h) => s + (h.totalEverInvested ?? h.invested), 0),
+    sumDecimal(stHoldings, h => decimalField(h, h.totalEverInvested == null ? 'invested' : 'totalEverInvested')).toNumber(),
     [stHoldings]
   );
 
   // Concentration: per-holding weight within stock portfolio
-  const concentrationMap = useMemo(() => {
-    const total = activeHoldings.reduce((s, h) => s + h.marketValue, 0);
-    const map = {};
-    activeHoldings.forEach(h => {
-      map[h.symbol] = total > 0 ? (h.marketValue / total) * 100 : 0;
-    });
-    return map;
-  }, [activeHoldings]);
-
-  // Days since last buy per holding
-  const daysSinceLastBuyMap = useMemo(() => {
-    const map = {};
-    stHoldings.forEach(h => {
-      if (!h.lots || !h.lots.length) { map[h.symbol] = null; return; }
-      const lastLot = [...h.lots].sort((a, b) => b.date.localeCompare(a.date))[0];
-      map[h.symbol] = Math.round((new Date() - new Date(lastLot.date)) / 864e5);
-    });
-    return map;
-  }, [stHoldings]);
+  const { concentrationMap, daysSinceLastBuyMap } = useMemo(
+    () => stockHoldingMetrics(activeHoldings, stHoldings),
+    [activeHoldings, stHoldings]
+  );
 
   const summaryItems = useMemo(() => [
     { l: 'Stock Value',    v: stats.stValue,             c: 'var(--purple)'  },
@@ -76,31 +64,34 @@ export function useStocksView({ stHoldings, stats }) {
   function exportCSV(formatNum, formatHold) {
     const rows2 = [['Stock', 'Sector', 'Lots', 'Qty', 'CMP', 'Avg Buy', 'Invested', 'Total Deployed',
       'Value', 'Unrealized', 'Realized', 'Total Gain', 'Return%', 'CAGR', 'Holding', 'Portfolio%',
-      'Status', 'Data Error', 'Days Since Last Buy']];
+      'Status', 'Data Error', 'Days Since Last Buy', 'Exchange', 'Instrument ID']];
     rows.forEach(h => rows2.push([
       h.symbol, h.sector || '', h.lots.length, formatNum(h.qty, 0), formatNum(h.cmp, 2), formatNum(h.avgBuy, 2),
       formatNum(h.invested, 0), formatNum(h.totalEverInvested ?? h.invested, 0),
       formatNum(h.marketValue, 0), formatNum(h.unrealizedGain, 0), formatNum(h.realizedGain, 0),
       formatNum(h.totalGain, 0), formatNum(h.returnPct, 2) + '%', formatNum(h.cagr, 2) + '%',
       formatHold(h.holdingDays),
-      formatNum(concentrationMap[h.symbol] ?? 0, 1) + '%',
+      formatNum(concentrationMap[holdingKey(h)] ?? 0, 1) + '%',
       h.qty <= HOLDING_EPSILON ? 'Exited' : 'Active',
       h.hasDataError ? 'YES' : '',
-      daysSinceLastBuyMap[h.symbol] ?? '',
+      daysSinceLastBuyMap[holdingKey(h)] ?? '', h.exchange || '', h.instrumentId || '',
     ]));
     downloadCsv(`stocks_${mode}.csv`, rows2);
   }
 
   // Allocation data for Donut Chart
   const stockAllocationData = useMemo(() => {
-    const total = activeHoldings.reduce((s, h) => s + h.marketValue, 0);
-    if (!total) return [];
+    const total = sumDecimal(activeHoldings, h => decimalField(h, 'marketValue'));
+    if (total.isZero()) return [];
+    const symbolCounts = new Map();
+    for (const h of activeHoldings) symbolCounts.set(h.symbol, (symbolCounts.get(h.symbol) || 0) + 1);
     return [...activeHoldings]
       .sort((a, b) => b.marketValue - a.marketValue)
       .map(h => ({
-        label: h.symbol,
+        instrumentId: h.instrumentId,
+        label: symbolCounts.get(h.symbol) > 1 ? `${h.symbol} (${h.exchange})` : h.symbol,
         value: h.marketValue,
-        pct: (h.marketValue / total) * 100,
+        pct: decimalField(h, 'marketValue').div(total).times(100).toNumber(),
         assetType: 'STOCK',
       }));
   }, [activeHoldings]);
