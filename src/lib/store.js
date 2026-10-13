@@ -5,6 +5,7 @@
 import { xirr } from './xirr.js';
 import { applyCorporateActions } from './corporateActions.js';
 import { dayKey, currentFinancialYear, isLongTermEquity, equityTaxReview } from './financialRules.js';
+import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult } from './financialDecimal.js';
 
 const EPSILON = 1e-9;
 
@@ -30,81 +31,98 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
     const lotQueue = buys
       .slice()
       .sort(compareTrades)
-      .map(t => ({
-        date:      t.tradeDate,
-        qty:       parseFloat(t.quantity),
-        price:     parseFloat(t.price) + Number(t.brokerage || 0) / Number(t.quantity),
-        rawPrice:  parseFloat(t.price),
-        taxPrice:  parseFloat(t.price) + Number(t.taxBrokerage || 0) / Number(t.quantity),
-        feesNeedReview: Number(t.brokerage || 0) > 0 && t.taxBrokerage == null,
-        id: t.id,
-        source: t,
-        remaining: parseFloat(t.quantity),
-      }));
+      .filter(t => decimal(t.quantity).gt(0))
+      .map(t => {
+        const qty = decimal(t.quantity), rawPrice = decimal(t.price);
+        const grossCost = decimal(t.grossAmount ?? qty.times(rawPrice));
+        const cost = grossCost.plus(t.brokerage || 0), taxCost = grossCost.plus(t.taxBrokerage || 0);
+        return {
+          date: t.tradeDate, qty,
+          price: cost.div(qty), rawPrice,
+          taxPrice: taxCost.div(qty), cost, taxCost,
+          feesNeedReview: decimal(t.brokerage || 0).gt(0) && t.taxBrokerage == null,
+          id: t.id, source: t,
+          remaining: qty, remainingCost: cost, remainingTaxCost: taxCost,
+        };
+      });
 
     const earliestBuyDate = lotQueue.length > 0 ? lotQueue[0].date : null;
-    const totalEverInvested = lotQueue.reduce((s, l) => s + l.qty * l.price, 0);
+    const totalEverInvested = sumDecimal(lotQueue, l => l.cost);
 
     const sellRecords = [];
-    let realizedGain  = 0;
-    let unmatchedSellQty = 0;
+    let realizedGain = decimal(0);
+    let unmatchedSellQty = decimal(0);
 
     const sortedSells = sells
       .slice()
       .sort(compareTrades);
 
     for (const sellTrade of sortedSells) {
-      let sellQtyLeft   = parseFloat(sellTrade.quantity);
-      const sellPrice   = parseFloat(sellTrade.price);
+      const sellQty = decimal(sellTrade.quantity);
+      if (sellQty.isZero()) continue;
+      let sellQtyLeft = sellQty;
+      const sellPrice = decimal(sellTrade.price);
+      const sellGross = decimal(sellTrade.grossAmount ?? sellQty.times(sellPrice));
+      let remainingGross = sellGross;
+      let remainingFee = decimal(sellTrade.brokerage || 0), remainingTaxFee = decimal(sellTrade.taxBrokerage || 0);
       const sellDate    = sellTrade.tradeDate;
       const matchedLots = [];
 
       for (const lot of lotQueue) {
-        if (sellQtyLeft <= EPSILON) break;
-        if (lot.remaining <= EPSILON) continue;
+        if (sellQtyLeft.lte(EPSILON)) break;
+        if (lot.remaining.lte(EPSILON)) continue;
         if (lot.date > sellDate) continue;
         if (lot.date === sellDate && compareTrades(lot.source, sellTrade) > 0) continue;
 
-        const consumed  = Math.min(lot.remaining, sellQtyLeft);
-        const costBasis = consumed * lot.price;
-        const sellFee = Number(sellTrade.brokerage || 0) * consumed / Number(sellTrade.quantity);
-        const taxSellFee = Number(sellTrade.taxBrokerage || 0) * consumed / Number(sellTrade.quantity);
-        const proceeds  = consumed * sellPrice - sellFee;
-        const lotGain   = proceeds - costBasis;
+        const consumed = D.min(lot.remaining, sellQtyLeft);
+        // Use the residual on the final allocation so even recurring divisions conserve cost/fees.
+        const costBasis = consumed.eq(lot.remaining) ? lot.remainingCost : lot.cost.times(consumed).div(lot.qty);
+        const taxCostBasis = consumed.eq(lot.remaining) ? lot.remainingTaxCost : lot.taxCost.times(consumed).div(lot.qty);
+        const sellFee = consumed.eq(sellQtyLeft) ? remainingFee : decimal(sellTrade.brokerage || 0).times(consumed).div(sellQty);
+        const taxSellFee = consumed.eq(sellQtyLeft) ? remainingTaxFee : decimal(sellTrade.taxBrokerage || 0).times(consumed).div(sellQty);
+        const grossProceeds = consumed.eq(sellQtyLeft) ? remainingGross : sellGross.times(consumed).div(sellQty);
+        const proceeds = grossProceeds.minus(sellFee);
+        const lotGain = proceeds.minus(costBasis);
         const holdDays  = daysBetween(lot.date, sellDate);
         const taxType   = isLongTermEquity(lot.date, sellDate) ? 'LTCG' : 'STCG';
 
         matchedLots.push({
           buyDate: lot.date, qty: consumed, buyPrice: lot.price,
           holdDays, taxType, costBasis, gain: lotGain,
-          taxCostBasis: consumed * lot.taxPrice, expenditure: taxSellFee,
-          taxGain: consumed * sellPrice - taxSellFee - consumed * lot.taxPrice,
-          feesNeedReview: lot.feesNeedReview || (Number(sellTrade.brokerage || 0) > 0 && sellTrade.taxBrokerage == null),
+          grossProceeds, sellFee, taxCostBasis, expenditure: taxSellFee,
+          taxGain: grossProceeds.minus(taxSellFee).minus(taxCostBasis),
+          feesNeedReview: lot.feesNeedReview || (decimal(sellTrade.brokerage || 0).gt(0) && sellTrade.taxBrokerage == null),
         });
-        lot.remaining -= consumed;
-        sellQtyLeft   -= consumed;
-        realizedGain  += lotGain;
+        lot.remaining = lot.remaining.minus(consumed);
+        lot.remainingCost = lot.remainingCost.minus(costBasis);
+        lot.remainingTaxCost = lot.remainingTaxCost.minus(taxCostBasis);
+        sellQtyLeft = sellQtyLeft.minus(consumed);
+        remainingFee = remainingFee.minus(sellFee);
+        remainingTaxFee = remainingTaxFee.minus(taxSellFee);
+        remainingGross = remainingGross.minus(grossProceeds);
+        realizedGain = realizedGain.plus(lotGain);
       }
 
-      if (sellQtyLeft > EPSILON) {
-        unmatchedSellQty += sellQtyLeft;
+      if (sellQtyLeft.gt(EPSILON)) {
+        unmatchedSellQty = unmatchedSellQty.plus(sellQtyLeft);
         console.warn(
           `[portfin] FIFO mismatch for ${symbol}: ${sellQtyLeft.toFixed(4)} units sold ` +
           `on ${sellDate} have no matching buy lots. Realized gain is understated.`
         );
       }
 
-      const actualQtySold = parseFloat(sellTrade.quantity) - Math.max(0, sellQtyLeft);
-      if (actualQtySold > EPSILON || sellQtyLeft > EPSILON) {
+      const actualQtySold = sellQty.minus(D.max(0, sellQtyLeft));
+      if (actualQtySold.gt(EPSILON) || sellQtyLeft.gt(EPSILON)) {
         sellRecords.push({
           date:        sellDate,
           id: sellTrade.id,
           taxCategory: meta.taxCategory || 'UNKNOWN',
-          unmatchedQty: Math.max(0, sellQtyLeft),
+          unmatchedQty: D.max(0, sellQtyLeft),
           isin:        meta.isin || null,
           qty:         actualQtySold,
           sellPrice,
-          realized:    matchedLots.reduce((s, m) => s + m.gain, 0),
+          grossProceeds: sumDecimal(matchedLots, m => m.grossProceeds),
+          realized: sumDecimal(matchedLots, m => m.gain),
           matchedLots,
           taxType: dominantTaxType(matchedLots),
         });
@@ -112,35 +130,31 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
     }
 
     const remainingLots = lotQueue
-      .filter(l => l.remaining > EPSILON)
-      .map(l => ({ id: l.id, date: l.date, qty: l.remaining, price: l.price, taxPrice: l.taxPrice, rawPrice: l.rawPrice, feesNeedReview: l.feesNeedReview }));
+      .filter(l => l.remaining.gt(EPSILON))
+      .map(l => ({ id: l.id, date: l.date, qty: l.remaining, price: l.price, taxPrice: l.taxPrice, rawPrice: l.rawPrice, costBasis: l.remainingCost, taxCostBasis: l.remainingTaxCost, feesNeedReview: l.feesNeedReview }));
 
-    const qty      = remainingLots.reduce((s, l) => s + l.qty, 0);
-    const invested = remainingLots.reduce((s, l) => s + l.qty * l.price, 0);
+    const qty = sumDecimal(remainingLots, l => l.qty);
+    const invested = sumDecimal(remainingLots, l => l.costBasis);
 
-    if (qty <= EPSILON && realizedGain === 0 && sellRecords.length === 0 && unmatchedSellQty <= EPSILON) continue;
+    if (qty.lte(EPSILON) && realizedGain.isZero() && sellRecords.length === 0 && unmatchedSellQty.lte(EPSILON)) continue;
 
-    const avgBuy         = qty > EPSILON ? invested / qty : 0;
+    const avgBuy = qty.gt(EPSILON) ? invested.div(qty) : decimal(0);
     const suppliedPrice = meta.instrumentId ? currentPrices[meta.instrumentId] : currentPrices[symbol];
     const priceAvailable = suppliedPrice != null && Number.isFinite(Number(suppliedPrice)) && Number(suppliedPrice) > 0;
-    const cmp            = priceAvailable ? Number(suppliedPrice) : avgBuy;
-    const marketValue    = qty * cmp;
-    const unrealizedGain = marketValue - invested;
-    const totalGain      = unrealizedGain + realizedGain;
+    const cmp = priceAvailable ? decimal(suppliedPrice) : avgBuy;
+    const marketValue = priceAvailable ? qty.times(cmp) : invested;
+    const unrealizedGain = marketValue.minus(invested);
+    const totalGain = unrealizedGain.plus(realizedGain);
 
-    const returnPct = totalEverInvested > EPSILON
-      ? (totalGain / totalEverInvested) * 100
-      : 0;
-    const unrealizedReturnPct = invested > EPSILON
-      ? (unrealizedGain / invested) * 100
-      : 0;
+    const returnPct = totalEverInvested.gt(EPSILON) ? totalGain.div(totalEverInvested).times(100) : decimal(0);
+    const unrealizedReturnPct = invested.gt(EPSILON) ? unrealizedGain.div(invested).times(100) : decimal(0);
 	
 	const firstDate = earliestBuyDate ? new Date(earliestBuyDate) : new Date(asOf);
 	const holdingDays = Math.max(0, Math.round((new Date(asOf) - firstDate) / (24 * 3600 * 1000)));
 	const years       = Math.max(0.1, holdingDays / 365.25);
 
-	const rawCagr = invested > EPSILON && marketValue > 0
-	  ? (Math.pow(marketValue / invested, 1 / years) - 1) * 100
+	const rawCagr = invested.gt(EPSILON) && marketValue.gt(0)
+	  ? (Math.pow(marketValue.div(invested).toNumber(), 1 / years) - 1) * 100
 	  : 0;
 
     // FIX: annualizing returns for very short holding periods (years floored to
@@ -152,10 +166,10 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
 	const CAGR_CAP = 9999.99;
 	const cagr = Math.max(-99.99, Math.min(rawCagr, CAGR_CAP));
 
-    const winCount  = sellRecords.filter(s => s.realized > 0).length;
-    const lossCount = sellRecords.filter(s => s.realized < 0).length;
+    const winCount = sellRecords.filter(s => s.realized.gt(0)).length;
+    const lossCount = sellRecords.filter(s => s.realized.lt(0)).length;
 
-    holdings.push({
+    holdings.push(financialResult({
       symbol,
       instrumentId: meta.instrumentId || null,
       taxCategory: meta.taxCategory || 'UNKNOWN',
@@ -173,7 +187,7 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
       returnPct, unrealizedReturnPct,
       cagr, holdingDays, years,
       sells: sellRecords,
-      hasDataError: unmatchedSellQty > EPSILON,
+      hasDataError: unmatchedSellQty.gt(EPSILON),
       unmatchedSellQty,
       stats: {
         trades:            buys.length + sells.length,
@@ -181,9 +195,9 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
         sellTrades:        sells.length,
         winCount,
         lossCount,
-        totalSellProceeds: sellRecords.reduce((s, sr) => s + sr.qty * sr.sellPrice, 0),
+        totalSellProceeds: sumDecimal(sellRecords, sr => sr.grossProceeds),
       },
-    });
+    }));
   }
 
   return holdings.filter(h => h.qty > EPSILON || h.realizedGain !== 0 || h.sells.length > 0 || h.hasDataError);
@@ -198,52 +212,43 @@ function compareTrades(a, b) {
 export function computePortfolioStats(holdings) {
   const active = holdings.filter(h => h.qty > EPSILON);
 
-  const totalValue          = active.reduce((s, h) => s + h.marketValue, 0);
-  const totalInvested       = active.reduce((s, h) => s + h.invested,    0);
-  const totalUnrealizedGain = active.reduce((s, h) => s + h.unrealizedGain, 0);
-  const totalRealizedGain   = holdings.reduce((s, h) => s + h.realizedGain, 0);
-  const totalGain           = totalUnrealizedGain + totalRealizedGain;
+  const totalValue = sumDecimal(active, h => decimalField(h, 'marketValue'));
+  const totalInvested = sumDecimal(active, h => decimalField(h, 'invested'));
+  const totalUnrealizedGain = sumDecimal(active, h => decimalField(h, 'unrealizedGain'));
+  const totalRealizedGain = sumDecimal(holdings, h => decimalField(h, 'realizedGain'));
+  const totalGain = totalUnrealizedGain.plus(totalRealizedGain);
 
-  const totalEverInvested = holdings.reduce(
-    (s, h) => s + (h.totalEverInvested ?? h.invested),
-    0
-  );
-  const totalReturnPct = totalEverInvested > EPSILON
-    ? (totalGain / totalEverInvested) * 100
-    : 0;
+  const totalEverInvested = sumDecimal(holdings, h => decimalField(h, h.totalEverInvested == null ? 'invested' : 'totalEverInvested'));
+  const totalReturnPct = totalEverInvested.gt(EPSILON) ? totalGain.div(totalEverInvested).times(100) : decimal(0);
 
   const mfH = active.filter(h => h.assetType === 'MF');
   const stH = active.filter(h => h.assetType === 'STOCK');
 
-  const mfValue    = mfH.reduce((s, h) => s + h.marketValue, 0);
-  const stValue    = stH.reduce((s, h) => s + h.marketValue, 0);
-  const mfInvested = mfH.reduce((s, h) => s + h.invested,    0);
-  const stInvested = stH.reduce((s, h) => s + h.invested,    0);
+  const mfValue = sumDecimal(mfH, h => decimalField(h, 'marketValue'));
+  const stValue = sumDecimal(stH, h => decimalField(h, 'marketValue'));
+  const mfInvested = sumDecimal(mfH, h => decimalField(h, 'invested'));
+  const stInvested = sumDecimal(stH, h => decimalField(h, 'invested'));
 
-  const mfCagr = mfInvested > 0
-    ? mfH.reduce((s, h) => s + h.cagr * h.invested, 0) / mfInvested
-    : 0;
-  const stCagr = stInvested > 0
-    ? stH.reduce((s, h) => s + h.cagr * h.invested, 0) / stInvested
-    : 0;
+  const mfCagr = mfInvested.gt(0) ? sumDecimal(mfH, h => decimalField(h, 'invested').times(h.cagr)).div(mfInvested) : decimal(0);
+  const stCagr = stInvested.gt(0) ? sumDecimal(stH, h => decimalField(h, 'invested').times(h.cagr)).div(stInvested) : decimal(0);
 
-  const allYears = totalInvested > 0
-    ? active.reduce((s, h) => s + h.years * h.invested, 0) / totalInvested
+  const allYears = totalInvested.gt(0)
+    ? sumDecimal(active, h => decimalField(h, 'invested').times(h.years)).div(totalInvested).toNumber()
     : 1;
-  const overallCagr = totalInvested > 0 && totalValue > 0
-    ? (Math.pow(totalValue / totalInvested, 1 / Math.max(0.1, allYears)) - 1) * 100
+  const overallCagr = totalInvested.gt(0) && totalValue.gt(0)
+    ? (Math.pow(totalValue.div(totalInvested).toNumber(), 1 / Math.max(0.1, allYears)) - 1) * 100
     : 0;
 
-  return {
+  return financialResult({
     totalValue, totalInvested, totalGain,
     totalUnrealizedGain, totalRealizedGain, totalReturnPct,
     mfValue, stValue, mfInvested, stInvested,
     mfCagr, stCagr, overallCagr,
     fundCount:  mfH.length,
     stockCount: stH.length,
-    mfPct: totalValue > 0 ? (mfValue / totalValue) * 100 : 0,
-    stPct: totalValue > 0 ? (stValue / totalValue) * 100 : 0,
-  };
+    mfPct: totalValue.gt(0) ? mfValue.div(totalValue).times(100) : decimal(0),
+    stPct: totalValue.gt(0) ? stValue.div(totalValue).times(100) : decimal(0),
+  });
 }
 
 // ─── Portfolio XIRR ───────────────────────────────────────────────────────────
@@ -252,18 +257,14 @@ export function computePortfolioXIRR(trades, currentPrices = {}, precomputedHold
   const holdings = precomputedHoldings ?? computeHoldings(trades, currentPrices);
 
   const cashflows = trades.map(t => {
-    const qty       = parseFloat(t.quantity);
-    const price     = parseFloat(t.price);
-    const brokerage = t.brokerage ? parseFloat(t.brokerage) : 0;
-    const amount    = t.tradeType === 'BUY'
-      ? -(qty * price + brokerage)
-      :   qty * price - brokerage;
-    return { date: (t.tradeDate || '').slice(0, 10), amount };
+    const gross = decimal(t.quantity).times(t.price);
+    const amount = t.tradeType === 'BUY' ? gross.plus(t.brokerage || 0).neg() : gross.minus(t.brokerage || 0);
+    return { date: (t.tradeDate || '').slice(0, 10), amount: amount.toNumber() };
   });
 
-  const termValue = holdings.reduce((s, h) => s + h.marketValue, 0);
-  if (termValue > 0) {
-    cashflows.push({ date: new Date().toISOString().slice(0, 10), amount: termValue });
+  const termValue = sumDecimal(holdings, h => decimalField(h, 'marketValue'));
+  if (termValue.gt(0)) {
+    cashflows.push({ date: new Date().toISOString().slice(0, 10), amount: termValue.toNumber() });
   }
 
   if (cashflows.length < 2) return null;
@@ -328,49 +329,49 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
   const taxEstimateAvailable = reviewReasons.size === 0;
 
   // 4. Detailed lot-level breakdown
-  let grossLtcg = 0;
-  let grossLtcl = 0;
-  let grossStcg = 0;
-  let grossStcl = 0;
+  let grossLtcg = decimal(0);
+  let grossLtcl = decimal(0);
+  let grossStcg = decimal(0);
+  let grossStcl = decimal(0);
 
-  let stockLtcg = 0, stockLtcl = 0, stockStcg = 0, stockStcl = 0;
-  let mfLtcg = 0, mfLtcl = 0, mfStcg = 0, mfStcl = 0;
+  let stockLtcg = decimal(0), stockLtcl = decimal(0), stockStcg = decimal(0), stockStcl = decimal(0);
+  let mfLtcg = decimal(0), mfLtcl = decimal(0), mfStcg = decimal(0), mfStcl = decimal(0);
 
   const enrichedSells = filteredSells.map(s => {
-    let sellLtcg = 0, sellLtcl = 0, sellStcg = 0, sellStcl = 0;
+    let sellLtcg = decimal(0), sellLtcl = decimal(0), sellStcg = decimal(0), sellStcl = decimal(0);
     const isMF = s.assetType === 'MF';
 
     for (const economicLot of (s.matchedLots || [])) {
-      const m = { ...economicLot, gain: economicLot.taxGain ?? economicLot.gain };
+      const m = { ...economicLot, gain: decimalField(economicLot, economicLot.taxGain == null ? 'gain' : 'taxGain') };
       if (m.taxType === 'LTCG') {
-        if (m.gain >= 0) {
-          sellLtcg += m.gain;
-          grossLtcg += m.gain;
-          if (isMF) mfLtcg += m.gain; else stockLtcg += m.gain;
+        if (m.gain.gte(0)) {
+          sellLtcg = sellLtcg.plus(m.gain);
+          grossLtcg = grossLtcg.plus(m.gain);
+          if (isMF) mfLtcg = mfLtcg.plus(m.gain); else stockLtcg = stockLtcg.plus(m.gain);
         } else {
-          sellLtcl += Math.abs(m.gain);
-          grossLtcl += Math.abs(m.gain);
-          if (isMF) mfLtcl += Math.abs(m.gain); else stockLtcl += Math.abs(m.gain);
+          sellLtcl = sellLtcl.plus(m.gain.abs());
+          grossLtcl = grossLtcl.plus(m.gain.abs());
+          if (isMF) mfLtcl = mfLtcl.plus(m.gain.abs()); else stockLtcl = stockLtcl.plus(m.gain.abs());
         }
       } else {
-        if (m.gain >= 0) {
-          sellStcg += m.gain;
-          grossStcg += m.gain;
-          if (isMF) mfStcg += m.gain; else stockStcg += m.gain;
+        if (m.gain.gte(0)) {
+          sellStcg = sellStcg.plus(m.gain);
+          grossStcg = grossStcg.plus(m.gain);
+          if (isMF) mfStcg = mfStcg.plus(m.gain); else stockStcg = stockStcg.plus(m.gain);
         } else {
-          sellStcl += Math.abs(m.gain);
-          grossStcl += Math.abs(m.gain);
-          if (isMF) mfStcl += Math.abs(m.gain); else stockStcl += Math.abs(m.gain);
+          sellStcl = sellStcl.plus(m.gain.abs());
+          grossStcl = grossStcl.plus(m.gain.abs());
+          if (isMF) mfStcl = mfStcl.plus(m.gain.abs()); else stockStcl = stockStcl.plus(m.gain.abs());
         }
       }
     }
 
-    const totalCost = (s.matchedLots || []).reduce((sum, m) => sum + (m.taxCostBasis ?? m.costBasis ?? 0), 0);
-    const totalProceeds = s.qty * s.sellPrice;
-    const expenditure = (s.matchedLots || []).reduce((sum, m) => sum + (m.expenditure || 0), 0);
-    const netGain = totalProceeds - totalCost - expenditure;
+    const totalCost = sumDecimal(s.matchedLots || [], m => decimalField(m, m.taxCostBasis == null ? 'costBasis' : 'taxCostBasis'));
+    const totalProceeds = sumDecimal(s.matchedLots || [], m => m.grossProceeds == null ? decimalField(m, 'qty').times(decimalField(s, 'sellPrice')) : decimalField(m, 'grossProceeds'));
+    const expenditure = sumDecimal(s.matchedLots || [], m => decimalField(m, 'expenditure'));
+    const netGain = totalProceeds.minus(totalCost).minus(expenditure);
 
-    return {
+    return financialResult({
       ...s,
       totalCost,
       totalProceeds,
@@ -380,46 +381,46 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
       sellLtcl,
       sellStcg,
       sellStcl,
-    };
+    });
   });
 
   // 5. Inter-head Loss Set-off Rules (Income Tax Act):
   // Rule 1: LTCL can ONLY be set off against LTCG.
-  const ltclUsedAgainstLtcg = Math.min(grossLtcl, grossLtcg);
-  const unabsorbedLtcl = grossLtcl - ltclUsedAgainstLtcg;
-  let remainingLtcg = grossLtcg - ltclUsedAgainstLtcg;
+  const ltclUsedAgainstLtcg = D.min(grossLtcl, grossLtcg);
+  const unabsorbedLtcl = grossLtcl.minus(ltclUsedAgainstLtcg);
+  let remainingLtcg = grossLtcg.minus(ltclUsedAgainstLtcg);
 
   // Rule 2: STCL can be set off against STCG first.
-  const stclUsedAgainstStcg = Math.min(grossStcl, grossStcg);
-  let remainingStcl = grossStcl - stclUsedAgainstStcg;
-  const netTaxableStcg = grossStcg - stclUsedAgainstStcg;
+  const stclUsedAgainstStcg = D.min(grossStcl, grossStcg);
+  let remainingStcl = grossStcl.minus(stclUsedAgainstStcg);
+  const netTaxableStcg = grossStcg.minus(stclUsedAgainstStcg);
 
   // Rule 3: Any remaining STCL can be set off against remaining LTCG
-  const stclUsedAgainstLtcg = Math.min(remainingStcl, remainingLtcg);
-  remainingLtcg -= stclUsedAgainstLtcg;
-  remainingStcl -= stclUsedAgainstLtcg;
+  const stclUsedAgainstLtcg = D.min(remainingStcl, remainingLtcg);
+  remainingLtcg = remainingLtcg.minus(stclUsedAgainstLtcg);
+  remainingStcl = remainingStcl.minus(stclUsedAgainstLtcg);
   const unabsorbedStcl = remainingStcl;
 
   // 6. Section 112A LTCG Exemption (₹1,25,000 post Budget 2024):
   const LTCG_EXEMPTION_LIMIT = 125000;
-  const exemptLtcg = Math.min(remainingLtcg, LTCG_EXEMPTION_LIMIT);
-  const taxableLtcg = Math.max(0, remainingLtcg - LTCG_EXEMPTION_LIMIT);
+  const exemptLtcg = D.min(remainingLtcg, LTCG_EXEMPTION_LIMIT);
+  const taxableLtcg = D.max(0, remainingLtcg.minus(LTCG_EXEMPTION_LIMIT));
 
   // 7. Tax Liability calculation:
   // LTCG tax @ 12.5% u/s 112A
-  const ltcgTax = taxableLtcg * 0.125;
+  const ltcgTax = taxableLtcg.times('0.125');
 
   // STCG tax @ 20% u/s 111A
-  const stcgTax = netTaxableStcg * 0.20;
+  const stcgTax = netTaxableStcg.times('0.20');
 
   // 4% Health & Education Cess
-  const baseTax = ltcgTax + stcgTax;
-  const cess = baseTax * 0.04;
-  const totalTax = baseTax + cess;
+  const baseTax = ltcgTax.plus(stcgTax);
+  const cess = baseTax.times('0.04');
+  const totalTax = baseTax.plus(cess);
 
-  const totalRealized = enrichedSells.reduce((sum, s) => sum + (s.realized ?? s.netGain), 0);
+  const totalRealized = sumDecimal(enrichedSells, s => decimalField(s, s.realized == null ? 'netGain' : 'realized'));
 
-  return {
+  return financialResult({
     fy,
     taxEstimateAvailable, reviewReasons: [...reviewReasons],
     availableFys,
@@ -427,7 +428,7 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
     // LTCG
     grossLtcg,
     grossLtcl,
-    netLtcg: grossLtcg - grossLtcl,
+    netLtcg: grossLtcg.minus(grossLtcl),
     ltclUsedAgainstLtcg,
     unabsorbedLtcl,
     stclUsedAgainstLtcg,
@@ -437,7 +438,7 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
     // STCG
     grossStcg,
     grossStcl,
-    netStcg: grossStcg - grossStcl,
+    netStcg: grossStcg.minus(grossStcl),
     stclUsedAgainstStcg,
     unabsorbedStcl,
     netTaxableStcg,
@@ -449,18 +450,18 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
     // Category Breakdown
     breakdown: {
       stocks: {
-        ltcg: stockLtcg - stockLtcl,
-        stcg: stockStcg - stockStcl,
-        total: (stockLtcg - stockLtcl) + (stockStcg - stockStcl),
+        ltcg: stockLtcg.minus(stockLtcl),
+        stcg: stockStcg.minus(stockStcl),
+        total: stockLtcg.minus(stockLtcl).plus(stockStcg).minus(stockStcl),
         grossLtcg: stockLtcg,
         grossLtcl: stockLtcl,
         grossStcg: stockStcg,
         grossStcl: stockStcl,
       },
       mf: {
-        ltcg: mfLtcg - mfLtcl,
-        stcg: mfStcg - mfStcl,
-        total: (mfLtcg - mfLtcl) + (mfStcg - mfStcl),
+        ltcg: mfLtcg.minus(mfLtcl),
+        stcg: mfStcg.minus(mfStcl),
+        total: mfLtcg.minus(mfLtcl).plus(mfStcg).minus(mfStcl),
         grossLtcg: mfLtcg,
         grossLtcl: mfLtcl,
         grossStcg: mfStcg,
@@ -477,7 +478,7 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
       {
         description: 'STCL set-off against STCG',
         amount: stclUsedAgainstStcg,
-        remainingStcl: grossStcl - stclUsedAgainstStcg,
+        remainingStcl: grossStcl.minus(stclUsedAgainstStcg),
       },
       ...(stclUsedAgainstLtcg > 0 ? [{
         description: 'Remaining STCL set-off against LTCG',
@@ -493,10 +494,10 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
         const ltcgMatched = (s.matchedLots || []).filter(m => m.taxType === 'LTCG');
         if (ltcgMatched.length > 0) {
           for (const m of ltcgMatched) {
-            const fullValueConsideration = m.qty * s.sellPrice;
-            const costOfAcquisition = m.taxCostBasis ?? m.costBasis;
-            const expenditure = m.expenditure || 0;
-            const gain = fullValueConsideration - costOfAcquisition - expenditure;
+            const fullValueConsideration = m.grossProceeds == null ? decimalField(m, 'qty').times(decimalField(s, 'sellPrice')) : decimalField(m, 'grossProceeds');
+            const costOfAcquisition = decimalField(m, m.taxCostBasis == null ? 'costBasis' : 'taxCostBasis');
+            const expenditure = decimalField(m, 'expenditure');
+            const gain = fullValueConsideration.minus(costOfAcquisition).minus(expenditure);
             rows.push({
               srNo: srNo++,
               sellDate: s.date,
@@ -504,17 +505,17 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
               symbol: s.symbol,
               name: s.name || s.symbol,
               assetType: s.assetType,
-              quantity: m.qty,
-              salePrice: s.sellPrice,
+              quantity: decimalField(m, 'qty'),
+              salePrice: decimalField(s, 'sellPrice'),
               fullValueConsideration,
               costOfAcquisition,
               expenditure,
-              totalDeductions: costOfAcquisition + expenditure,
+              totalDeductions: costOfAcquisition.plus(expenditure),
               balance: gain,
               deduction54F: 0,
               netLtcg: gain,
               buyDate: m.buyDate,
-              buyPrice: m.buyPrice,
+              buyPrice: decimalField(m, 'buyPrice'),
               holdDays: m.holdDays,
             });
           }
@@ -546,7 +547,7 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
       }
       return rows;
     })(),
-  };
+  });
 }
 
 export function computeRealizedSummary(holdings, { fy = currentFinancialYear() } = {}) {
@@ -554,13 +555,13 @@ export function computeRealizedSummary(holdings, { fy = currentFinancialYear() }
   const annual = computeCapitalGainsReport(holdings, { fy });
   const sellsBySymbol = {};
   for (const s of report.sells) {
-    if (!sellsBySymbol[s.symbol]) sellsBySymbol[s.symbol] = { realized: 0, sells: [] };
-    sellsBySymbol[s.symbol].realized += (s.realized ?? s.netGain);
+    if (!sellsBySymbol[s.symbol]) sellsBySymbol[s.symbol] = { realized: decimal(0), sells: [] };
+    sellsBySymbol[s.symbol].realized = sellsBySymbol[s.symbol].realized.plus(decimalField(s, s.realized == null ? 'netGain' : 'realized'));
     sellsBySymbol[s.symbol].sells.push(s);
   }
 
-  return {
-    totalRealized: holdings.reduce((sum, h) => sum + h.realizedGain, 0),
+  return financialResult({
+    totalRealized: sumDecimal(holdings, h => decimalField(h, 'realizedGain')),
     fy, annualReport: annual, taxEstimateAvailable: annual.taxEstimateAvailable,
     ltcgGain: annual.netLtcg,
     stcgGain: annual.netStcg,
@@ -569,7 +570,7 @@ export function computeRealizedSummary(holdings, { fy = currentFinancialYear() }
     totalTax: annual.totalTax,
     sells: report.sells,
     sellsBySymbol,
-  };
+  });
 }
 
 // ─── Monthly flow ─────────────────────────────────────────────────────────────
@@ -586,17 +587,17 @@ export function buildMonthlyFlow(trades) {
   for (const t of trades) {
     const key = (t.tradeDate || '').slice(0, 7);
     if (!key) continue;
-    if (!map[key]) map[key] = { month: key, amount: 0, activity: 0 };
-    const value = parseFloat(t.quantity) * parseFloat(t.price);
+    if (!map[key]) map[key] = { month: key, amount: decimal(0), activity: decimal(0) };
+    const value = decimal(t.quantity).times(t.price);
     if (t.tradeType === 'BUY') {
-      map[key].amount   += value;   // invested capital (buy only)
-      map[key].activity += value;
+      map[key].amount = map[key].amount.plus(value);   // invested capital (buy only)
+      map[key].activity = map[key].activity.plus(value);
     } else {
       // SELL counts as activity (non-negative) but not as invested capital
-      map[key].activity += value;
+      map[key].activity = map[key].activity.plus(value);
     }
   }
-  return Object.values(map).sort((a, b) => a.month.localeCompare(b.month));
+  return financialResult(Object.values(map).sort((a, b) => a.month.localeCompare(b.month)));
 }
 
 // ─── Tax computation ──────────────────────────────────────────────────────────
@@ -605,9 +606,9 @@ export function computeTax(holdings) {
   return holdings.map(h => {
     const isLTCG      = h.years >= 1;
     const taxRate     = isLTCG ? 0.125 : 0.20;
-    const taxableGain = Math.max(0, h.unrealizedGain ?? h.gain ?? 0);
-    const tax = taxableGain * taxRate;
-    return { ...h, isLTCG, taxRate, taxableGain, tax };
+    const taxableGain = D.max(0, decimalField(h, h.unrealizedGain == null ? 'gain' : 'unrealizedGain'));
+    const tax = taxableGain.times(String(taxRate));
+    return financialResult({ ...h, isLTCG, taxRate, taxableGain, tax });
   });
 }
 
@@ -616,7 +617,7 @@ export function computeTax(holdings) {
 export function computeTaxHarvesting(holdings, realizedSummary = {}) {
   const simulation = simulateTaxHarvesting(holdings, realizedSummary.annualReport || {}, {}, 'LOSS');
   return {
-    totalHarvestableLoss: simulation.orders.reduce((sum, o) => sum + Math.max(0, -o.gainOrLoss), 0),
+    totalHarvestableLoss: sumDecimal(simulation.orders, o => D.max(0, decimalField(o, 'gainOrLoss').neg())).toNumber(),
     stclCandidateLoss: simulation.simulated.harvestedStcl || 0,
     ltclCandidateLoss: simulation.simulated.harvestedLtcl || 0,
     potentialTaxSavings: simulation.impact.immediateTaxSaved,
@@ -653,24 +654,24 @@ export function simulateTaxHarvesting(
   };
 
   // Baseline figures from current FY realized report
-  const baseGrossStcg = realizedReport.grossStcg || 0;
-  const baseGrossStcl = realizedReport.grossStcl || 0;
-  const baseGrossLtcg = realizedReport.grossLtcg || 0;
-  const baseGrossLtcl = realizedReport.grossLtcl || 0;
-  const baseTotalTax  = realizedReport.totalTax || 0;
-  const baseExemptLtcg = realizedReport.exemptLtcg || 0;
-  const baseTaxableLtcg = realizedReport.taxableLtcg || 0;
-  const baseTaxableStcg = realizedReport.netTaxableStcg || 0;
+  const baseGrossStcg = decimalField(realizedReport, 'grossStcg');
+  const baseGrossStcl = decimalField(realizedReport, 'grossStcl');
+  const baseGrossLtcg = decimalField(realizedReport, 'grossLtcg');
+  const baseGrossLtcl = decimalField(realizedReport, 'grossLtcl');
+  const baseTotalTax  = decimalField(realizedReport, 'totalTax');
+  const baseExemptLtcg = decimalField(realizedReport, 'exemptLtcg');
+  const baseTaxableLtcg = decimalField(realizedReport, 'taxableLtcg');
+  const baseTaxableStcg = decimalField(realizedReport, 'netTaxableStcg');
 
   const LTCG_LIMIT = 125000;
-  const remainingLtcgExemption = Math.max(0, LTCG_LIMIT - baseExemptLtcg);
+  const remainingLtcgExemption = D.max(0, decimal(LTCG_LIMIT).minus(baseExemptLtcg));
 
   // 1. Gather all candidate lots across active holdings
   const allCandidateLots = [];
 
   for (const h of holdings) {
     if (!h.qty || h.qty <= EPSILON || !h.lots || !h.lots.length) continue;
-    const cmp = h.cmp || h.avgBuy;
+    const cmp = decimalField(h, h.cmp ? 'cmp' : 'avgBuy');
 
     for (let idx = 0; idx < h.lots.length; idx++) {
       const lot = h.lots[idx];
@@ -681,14 +682,14 @@ export function simulateTaxHarvesting(
       const isLTCG = isLongTermEquity(lot.date, dayKey(today));
       const taxType = isLTCG ? 'LTCG' : 'STCG';
 
-      const costBasis = lot.qty * (lot.taxPrice ?? lot.price);
-      const currentValue = lot.qty * cmp;
-      const unrealizedGain = currentValue - costBasis;
-      const isGain = unrealizedGain > EPSILON;
-      const isLoss = unrealizedGain < -EPSILON;
+      const costBasis = lot.taxCostBasis == null ? decimalField(lot, 'qty').times(decimalField(lot, lot.taxPrice == null ? 'price' : 'taxPrice')) : decimalField(lot, 'taxCostBasis');
+      const currentValue = decimalField(lot, 'qty').times(cmp);
+      const unrealizedGain = currentValue.minus(costBasis);
+      const isGain = unrealizedGain.gt(EPSILON);
+      const isLoss = unrealizedGain.lt(-EPSILON);
 
 
-      const gainLossPct = costBasis > 0 ? (unrealizedGain / costBasis) * 100 : 0;
+      const gainLossPct = costBasis.gt(0) ? unrealizedGain.div(costBasis).times(100) : decimal(0);
 
       allCandidateLots.push({
         lotKey,
@@ -698,8 +699,8 @@ export function simulateTaxHarvesting(
         name: h.name || h.symbol,
         assetType: h.assetType,
         buyDate: lot.date,
-        buyPrice: lot.taxPrice ?? lot.price,
-        qty: lot.qty,
+        buyPrice: decimalField(lot, lot.taxPrice == null ? 'price' : 'taxPrice'),
+        qty: decimalField(lot, 'qty'),
         cmp,
         costBasis,
         currentValue,
@@ -733,7 +734,7 @@ export function simulateTaxHarvesting(
       if (a.taxType !== b.taxType) {
         return a.taxType === 'STCG' ? -1 : 1;
       }
-      return a.unrealizedGain - b.unrealizedGain;
+      return a.unrealizedGain.cmp(b.unrealizedGain);
     });
 
   // Calculate default auto-selections if no user override provided
@@ -758,20 +759,20 @@ export function simulateTaxHarvesting(
       let neededLtcgOffset = baseTaxableLtcg;
 
       for (const lot of lossCandidates) {
-        const lossAbs = Math.abs(lot.unrealizedGain);
+        const lossAbs = lot.unrealizedGain.abs();
         if (lot.taxType === 'STCG') {
           if (neededStclOffset > 0 || neededLtcgOffset > 0) {
             effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: 1 };
             if (neededStclOffset > 0) {
-              neededStclOffset = Math.max(0, neededStclOffset - lossAbs);
+              neededStclOffset = D.max(0, neededStclOffset.minus(lossAbs));
             } else {
-              neededLtcgOffset = Math.max(0, neededLtcgOffset - lossAbs);
+              neededLtcgOffset = D.max(0, neededLtcgOffset.minus(lossAbs));
             }
           }
         } else {
           if (neededLtcgOffset > 0) {
             effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: 1 };
-            neededLtcgOffset = Math.max(0, neededLtcgOffset - lossAbs);
+            neededLtcgOffset = D.max(0, neededLtcgOffset.minus(lossAbs));
           }
         }
       }
@@ -782,13 +783,13 @@ export function simulateTaxHarvesting(
       let capRemaining = remainingLtcgExemption;
       for (const lot of ltcgGainCandidates) {
         if (capRemaining > 500) {
-          if (lot.unrealizedGain <= capRemaining) {
+          if (lot.unrealizedGain.lte(capRemaining)) {
             effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: 1 };
-            capRemaining -= lot.unrealizedGain;
+            capRemaining = capRemaining.minus(lot.unrealizedGain);
           } else {
-            const partialRatio = capRemaining / lot.unrealizedGain;
-            effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: Math.min(1, partialRatio) };
-            capRemaining = 0;
+            const partialRatio = capRemaining.div(lot.unrealizedGain);
+            effectiveSelections[lot.lotKey] = { selected: true, harvestRatio: D.min(1, partialRatio) };
+            capRemaining = decimal(0);
           }
         }
       }
@@ -798,21 +799,24 @@ export function simulateTaxHarvesting(
   // Convert requested quantities to actual FIFO allocations, including any older lots.
   for (const h of holdings) {
     const siblings = allCandidateLots.filter(l => h.instrumentId ? l.instrumentId === h.instrumentId : l.symbol === h.symbol);
-    let requested = siblings.reduce((sum, lot) => sum + (effectiveSelections[lot.lotKey]?.selected ? lot.qty * effectiveSelections[lot.lotKey].harvestRatio : 0), 0);
-    requested = h.assetType === 'STOCK' ? Math.floor(requested + EPSILON) : Math.floor(requested * 1e6 + EPSILON) / 1e6;
+    let requested = sumDecimal(siblings, lot => effectiveSelections[lot.lotKey]?.selected ? lot.qty.times(effectiveSelections[lot.lotKey].harvestRatio) : 0);
+    const totalQty = sumDecimal(siblings, lot => lot.qty);
+    // A full fund exit consumes exact residual units and cost; partial orders keep unit precision.
+    requested = h.assetType !== 'STOCK' && requested.gte(totalQty) ? totalQty
+      : h.assetType === 'STOCK' ? requested.plus(EPSILON).floor() : requested.times('1000000').plus(EPSILON).floor().div('1000000');
     for (const lot of siblings) {
-      const quantity = Math.min(lot.qty, requested);
-      effectiveSelections[lot.lotKey] = { selected: quantity > EPSILON, harvestRatio: quantity / lot.qty };
-      requested = Math.max(0, requested - quantity);
+      const quantity = D.min(lot.qty, requested);
+      effectiveSelections[lot.lotKey] = { selected: quantity > EPSILON, quantity, harvestRatio: quantity.div(lot.qty) };
+      requested = D.max(0, requested.minus(quantity));
     }
   }
 
   // 2. Compute simulated execution impact
-  let addHarvestStcg = 0;
-  let addHarvestStcl = 0;
-  let addHarvestLtcg = 0;
-  let addHarvestLtcl = 0;
-  let totalProceeds = 0;
+  let addHarvestStcg = decimal(0);
+  let addHarvestStcl = decimal(0);
+  let addHarvestLtcg = decimal(0);
+  let addHarvestLtcl = decimal(0);
+  let totalProceeds = decimal(0);
 
   const orders = [];
 
@@ -820,20 +824,20 @@ export function simulateTaxHarvesting(
     const sel = effectiveSelections[lot.lotKey] || { selected: false, harvestRatio: 1 };
     lot.isSelected = sel.selected;
     lot.harvestRatio = sel.harvestRatio;
-    lot.qtyToSell = sel.selected ? lot.qty * sel.harvestRatio : 0;
-    lot.simulatedProceeds = lot.qtyToSell * lot.cmp;
-    lot.simulatedCost = lot.qtyToSell * lot.buyPrice;
-    lot.simulatedGain = lot.simulatedProceeds - lot.simulatedCost;
+    lot.qtyToSell = sel.selected ? sel.quantity : decimal(0);
+    lot.simulatedProceeds = lot.qtyToSell.times(lot.cmp);
+    lot.simulatedCost = lot.qtyToSell.eq(lot.qty) ? lot.costBasis : lot.costBasis.times(lot.qtyToSell).div(lot.qty);
+    lot.simulatedGain = lot.simulatedProceeds.minus(lot.simulatedCost);
 
     if (sel.selected && lot.qtyToSell > EPSILON) {
-      totalProceeds += lot.simulatedProceeds;
+      totalProceeds = totalProceeds.plus(lot.simulatedProceeds);
 
       if (lot.isLTCG) {
-        if (lot.simulatedGain >= 0) addHarvestLtcg += lot.simulatedGain;
-        else                        addHarvestLtcl += Math.abs(lot.simulatedGain);
+        if (lot.simulatedGain >= 0) addHarvestLtcg = addHarvestLtcg.plus(lot.simulatedGain);
+        else                        addHarvestLtcl = addHarvestLtcl.plus(lot.simulatedGain.abs());
       } else {
-        if (lot.simulatedGain >= 0) addHarvestStcg += lot.simulatedGain;
-        else                        addHarvestStcl += Math.abs(lot.simulatedGain);
+        if (lot.simulatedGain >= 0) addHarvestStcg = addHarvestStcg.plus(lot.simulatedGain);
+        else                        addHarvestStcl = addHarvestStcl.plus(lot.simulatedGain.abs());
       }
 
       orders.push({
@@ -863,39 +867,39 @@ export function simulateTaxHarvesting(
   }
 
   // 3. Rerun tax set-off on combined (realized + simulated) gains
-  const combGrossStcg = baseGrossStcg + addHarvestStcg;
-  const combGrossStcl = baseGrossStcl + addHarvestStcl;
-  const combGrossLtcg = baseGrossLtcg + addHarvestLtcg;
-  const combGrossLtcl = baseGrossLtcl + addHarvestLtcl;
+  const combGrossStcg = baseGrossStcg.plus(addHarvestStcg);
+  const combGrossStcl = baseGrossStcl.plus(addHarvestStcl);
+  const combGrossLtcg = baseGrossLtcg.plus(addHarvestLtcg);
+  const combGrossLtcl = baseGrossLtcl.plus(addHarvestLtcl);
 
-  const simLtclUsedAgainstLtcg = Math.min(combGrossLtcl, combGrossLtcg);
-  let simRemLtcg = combGrossLtcg - simLtclUsedAgainstLtcg;
-  const simUnabsorbedLtcl = combGrossLtcl - simLtclUsedAgainstLtcg;
+  const simLtclUsedAgainstLtcg = D.min(combGrossLtcl, combGrossLtcg);
+  let simRemLtcg = combGrossLtcg.minus(simLtclUsedAgainstLtcg);
+  const simUnabsorbedLtcl = combGrossLtcl.minus(simLtclUsedAgainstLtcg);
 
-  const simStclUsedAgainstStcg = Math.min(combGrossStcl, combGrossStcg);
-  let simRemStcl = combGrossStcl - simStclUsedAgainstStcg;
-  const simNetTaxableStcg = combGrossStcg - simStclUsedAgainstStcg;
+  const simStclUsedAgainstStcg = D.min(combGrossStcl, combGrossStcg);
+  let simRemStcl = combGrossStcl.minus(simStclUsedAgainstStcg);
+  const simNetTaxableStcg = combGrossStcg.minus(simStclUsedAgainstStcg);
 
-  const simStclUsedAgainstLtcg = Math.min(simRemStcl, simRemLtcg);
-  simRemLtcg -= simStclUsedAgainstLtcg;
-  simRemStcl -= simStclUsedAgainstLtcg;
+  const simStclUsedAgainstLtcg = D.min(simRemStcl, simRemLtcg);
+  simRemLtcg = simRemLtcg.minus(simStclUsedAgainstLtcg);
+  simRemStcl = simRemStcl.minus(simStclUsedAgainstLtcg);
   const simUnabsorbedStcl = simRemStcl;
 
-  const simExemptLtcg = Math.min(simRemLtcg, LTCG_LIMIT);
-  const simTaxableLtcg = Math.max(0, simRemLtcg - LTCG_LIMIT);
+  const simExemptLtcg = D.min(simRemLtcg, LTCG_LIMIT);
+  const simTaxableLtcg = D.max(0, simRemLtcg.minus(LTCG_LIMIT));
 
-  const simLtcgTax = simTaxableLtcg * 0.125;
-  const simStcgTax = simNetTaxableStcg * 0.20;
-  const simBaseTax = simLtcgTax + simStcgTax;
-  const simCess = simBaseTax * 0.04;
-  const simTotalTax = simBaseTax + simCess;
+  const simLtcgTax = simTaxableLtcg.times('0.125');
+  const simStcgTax = simNetTaxableStcg.times('0.20');
+  const simBaseTax = simLtcgTax.plus(simStcgTax);
+  const simCess = simBaseTax.times('0.04');
+  const simTotalTax = simBaseTax.plus(simCess);
 
-  const immediateTaxSaved = Math.max(0, baseTotalTax - simTotalTax);
-  const harvestedTaxFreeGains = Math.max(0, simExemptLtcg - baseExemptLtcg);
-  const futureLtcgTaxShielded = harvestedTaxFreeGains * 0.125;
-  const totalFinancialBenefit = immediateTaxSaved + futureLtcgTaxShielded;
+  const immediateTaxSaved = D.max(0, baseTotalTax.minus(simTotalTax));
+  const harvestedTaxFreeGains = D.max(0, simExemptLtcg.minus(baseExemptLtcg));
+  const futureLtcgTaxShielded = harvestedTaxFreeGains.times('0.125');
+  const totalFinancialBenefit = immediateTaxSaved.plus(futureLtcgTaxShielded);
 
-  return {
+  return financialResult({
     reviewReasons: [],
     strategy,
     baseline: {
@@ -941,7 +945,7 @@ export function simulateTaxHarvesting(
     lossCandidates,
     orders,
     effectiveSelections,
-  };
+  });
 }
 
 // ─── Schedule 112A & Tax Export Generators ────────────────────────────────────
@@ -975,19 +979,19 @@ export function generateSchedule112ACsv(report) {
     row.isin || row.symbol,
     `"${(row.name || row.symbol).replace(/"/g, '""')}"`,
     String(row.quantity),
-    Number(row.salePrice || 0).toFixed(2),
-    Number(row.fullValueConsideration || 0).toFixed(2),
-    Number(row.costOfAcquisition || 0).toFixed(2),
-    Number(row.costOfAcquisition || 0).toFixed(2),
+    decimalField(row, 'salePrice').toFixed(2),
+    decimalField(row, 'fullValueConsideration').toFixed(2),
+    decimalField(row, 'costOfAcquisition').toFixed(2),
+    decimalField(row, 'costOfAcquisition').toFixed(2),
     '0.00',
     '0.00',
-    Number(row.expenditure || 0).toFixed(2),
-    Number((row.costOfAcquisition || 0) + (row.expenditure || 0)).toFixed(2),
+    decimalField(row, 'expenditure').toFixed(2),
+    decimalField(row, 'costOfAcquisition').plus(decimalField(row, 'expenditure')).toFixed(2),
     '0.00',
-    Number(row.costOfAcquisition || 0).toFixed(2),
-    Number(row.netLtcg || 0).toFixed(2),
+    decimalField(row, 'costOfAcquisition').toFixed(2),
+    decimalField(row, 'netLtcg').toFixed(2),
     '0.00',
-    Number(row.netLtcg || 0).toFixed(2),
+    decimalField(row, 'netLtcg').toFixed(2),
   ]);
 
   return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
@@ -1024,7 +1028,7 @@ export function generateSchedule112AJson(report) {
       fullValueOfConsideration: row.fullValueConsideration,
       costOfAcquisitionWithoutIndexation: row.costOfAcquisition,
       transferExpenditure: row.expenditure || 0,
-      totalDeductions: row.costOfAcquisition + (row.expenditure || 0),
+      totalDeductions: decimalField(row, 'costOfAcquisition').plus(decimalField(row, 'expenditure')).toNumber(),
       balance: row.netLtcg,
       deduction54F: 0,
       netLtcg: row.netLtcg,
@@ -1043,21 +1047,21 @@ export function generateSchedule111ACsv(report) {
 
   const stcgRows = [];
   let srNo = 1;
-  let totalProceeds = 0;
-  let totalCost = 0;
-  let totalExpenditure = 0;
+  let totalProceeds = decimal(0);
+  let totalCost = decimal(0);
+  let totalExpenditure = decimal(0);
 
   for (const s of (report.sells || [])) {
     const stcgLots = (s.matchedLots || []).filter(m => m.taxType === 'STCG');
     if (stcgLots.length > 0) {
       for (const m of stcgLots) {
-        const proceeds = m.qty * s.sellPrice;
-        const cost = m.taxCostBasis ?? m.costBasis;
-        const expenditure = m.expenditure || 0;
-        const gain = proceeds - cost - expenditure;
-        totalProceeds += proceeds;
-        totalCost += cost;
-        totalExpenditure += expenditure;
+        const proceeds = m.grossProceeds == null ? decimalField(m, 'qty').times(decimalField(s, 'sellPrice')) : decimalField(m, 'grossProceeds');
+        const cost = decimalField(m, m.taxCostBasis == null ? 'costBasis' : 'taxCostBasis');
+        const expenditure = decimalField(m, 'expenditure');
+        const gain = proceeds.minus(cost).minus(expenditure);
+        totalProceeds = totalProceeds.plus(proceeds);
+        totalCost = totalCost.plus(cost);
+        totalExpenditure = totalExpenditure.plus(expenditure);
 
         stcgRows.push([
           srNo++,
@@ -1068,20 +1072,20 @@ export function generateSchedule111ACsv(report) {
           `"${(s.name || s.symbol).replace(/"/g, '""')}"`,
           s.assetType === 'MF' ? 'Mutual Fund' : 'Equity Share',
           String(m.qty),
-          Number(s.sellPrice || 0).toFixed(2),
-          Number(proceeds).toFixed(2),
-          Number(m.buyPrice || 0).toFixed(2),
-          Number(cost).toFixed(2),
-          Number(expenditure).toFixed(2),
-          Number(gain).toFixed(2),
+          decimalField(s, 'sellPrice').toFixed(2),
+          proceeds.toFixed(2),
+          decimalField(m, 'buyPrice').toFixed(2),
+          cost.toFixed(2),
+          expenditure.toFixed(2),
+          gain.toFixed(2),
         ]);
       }
     } else if (s.taxType === 'STCG') {
-      const proceeds = s.totalProceeds || (s.qty * s.sellPrice);
-      const cost = s.totalCost || 0;
-      const gain = s.netGain || (proceeds - cost);
-      totalProceeds += proceeds;
-      totalCost += cost;
+      const proceeds = s.totalProceeds == null ? decimalField(s, 'qty').times(decimalField(s, 'sellPrice')) : decimalField(s, 'totalProceeds');
+      const cost = decimalField(s, 'totalCost');
+      const gain = s.netGain == null ? proceeds.minus(cost) : decimalField(s, 'netGain');
+      totalProceeds = totalProceeds.plus(proceeds);
+      totalCost = totalCost.plus(cost);
 
       stcgRows.push([
         srNo++,
@@ -1092,17 +1096,17 @@ export function generateSchedule111ACsv(report) {
         `"${(s.name || s.symbol).replace(/"/g, '""')}"`,
         s.assetType === 'MF' ? 'Mutual Fund' : 'Equity Share',
         typeof s.qty === 'number' ? s.qty.toFixed(s.assetType === 'MF' ? 3 : 0) : s.qty,
-        Number(s.sellPrice || 0).toFixed(2),
-        Number(proceeds).toFixed(2),
+        decimalField(s, 'sellPrice').toFixed(2),
+        proceeds.toFixed(2),
         '',
-        Number(cost).toFixed(2),
+        cost.toFixed(2),
         '0.00',
-        Number(gain).toFixed(2),
+        gain.toFixed(2),
       ]);
     }
   }
 
-  const netStcg = totalProceeds - totalCost - totalExpenditure;
+  const netStcg = totalProceeds.minus(totalCost).minus(totalExpenditure);
 
   const summaryLines = [
     '# ITR-2 SCHEDULE CG — SECTION 111A (SHORT-TERM CAPITAL GAINS TAXABLE @ 20%)',
@@ -1112,11 +1116,11 @@ export function generateSchedule111ACsv(report) {
     `# 1. Full Value of Consideration (Gross Short-Term Sale Proceeds):,${totalProceeds.toFixed(2)}`,
     `# 2. Cost of Acquisition without indexation (FIFO Basis):,${totalCost.toFixed(2)}`,
     `# 3. Expenditure incurred wholly and exclusively in connection with transfer:,${totalExpenditure.toFixed(2)}`,
-    `# 4. Total Deductions (Cost + Expenditure):,${(totalCost + totalExpenditure).toFixed(2)}`,
+    `# 4. Total Deductions (Cost + Expenditure):,${totalCost.plus(totalExpenditure).toFixed(2)}`,
     `# 5. Net Short-Term Capital Gain u/s 111A:,${netStcg.toFixed(2)}`,
-    `# 6. STCL Set-off against STCG:,${(report.stclUsedAgainstStcg || 0).toFixed(2)}`,
-    `# 7. Net Taxable STCG (Taxable @ 20%):,${(report.netTaxableStcg || 0).toFixed(2)}`,
-    `# 8. Estimated STCG Tax @ 20% + 4% Cess:,${(report.stcgTax ? report.stcgTax * 1.04 : 0).toFixed(2)}`,
+    `# 6. STCL Set-off against STCG:,${decimalField(report, 'stclUsedAgainstStcg').toFixed(2)}`,
+    `# 7. Net Taxable STCG (Taxable @ 20%):,${decimalField(report, 'netTaxableStcg').toFixed(2)}`,
+    `# 8. Estimated STCG Tax @ 20% + 4% Cess:,${decimalField(report, 'stcgTax').times('1.04').toFixed(2)}`,
     '# ---------------------------------------------------------------------------------',
     '',
   ];
@@ -1168,10 +1172,10 @@ export function generateHarvestingExecutionCsv(orders = []) {
     `"${(o.name || o.symbol).replace(/"/g, '""')}"`,
     o.assetType,
     String(o.unitsToSell),
-    Number(o.cmp || 0).toFixed(2),
-    Number(o.estimatedProceeds || 0).toFixed(2),
-    Number(o.costBasis || 0).toFixed(2),
-    Number(o.gainOrLoss || 0).toFixed(2),
+    decimalField(o, 'cmp').toFixed(2),
+    decimalField(o, 'estimatedProceeds').toFixed(2),
+    decimalField(o, 'costBasis').toFixed(2),
+    decimalField(o, 'gainOrLoss').toFixed(2),
     o.taxType,
     `"${(o.strategyAction || '').replace(/"/g, '""')}"`,
   ]);
@@ -1208,13 +1212,10 @@ function daysBetween(dateStrA, dateStrB) {
 
 function dominantTaxType(matchedLots) {
   if (!matchedLots.length) return 'STCG';
-  const ltcgGain = matchedLots
-    .filter(m => m.taxType === 'LTCG')
-    .reduce((s, m) => s + Math.abs(m.gain || m.costBasis), 0);
-  const stcgGain = matchedLots
-    .filter(m => m.taxType === 'STCG')
-    .reduce((s, m) => s + Math.abs(m.gain || m.costBasis), 0);
-  return ltcgGain >= stcgGain ? 'LTCG' : 'STCG';
+  const weight = m => (decimalField(m, 'gain').isZero() ? decimalField(m, 'costBasis') : decimalField(m, 'gain')).abs();
+  const ltcgGain = sumDecimal(matchedLots.filter(m => m.taxType === 'LTCG'), weight);
+  const stcgGain = sumDecimal(matchedLots.filter(m => m.taxType === 'STCG'), weight);
+  return ltcgGain.gte(stcgGain) ? 'LTCG' : 'STCG';
 }
 
 // ─── Formatters ───────────────────────────────────────────────────────────────

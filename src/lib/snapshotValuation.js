@@ -1,5 +1,6 @@
 import { computeHoldings, computePortfolioStats } from './store.js';
 import { ENGINE_VERSION, dayKey } from './financialRules.js';
+import { decimalField } from './financialDecimal.js';
 
 export function buildSnapshotData(trades, prices, meta, { asOf, corporateActions = [], revision }) {
   if (dayKey(asOf) !== asOf) throw new Error('Invalid snapshot date');
@@ -15,13 +16,14 @@ export function buildSnapshotData(trades, prices, meta, { asOf, corporateActions
   const stats = computePortfolioStats(holdings);
   const fields = ['totalValue', 'totalInvested', 'totalGain', 'totalReturnPct', 'totalRealizedGain', 'mfCagr', 'stCagr', 'mfInvested', 'stInvested', 'fundCount', 'stockCount'];
   if (fields.some(key => !Number.isFinite(stats[key]))) throw new Error('Non-finite snapshot values');
-  return { ...Object.fromEntries(fields.map(key => [key, stats[key]])), valuationAt: new Date(asOf), ledgerRevision: revision, priceProvenance: provenance, engineVersion: ENGINE_VERSION, stale: false };
+  // Pass decimal strings directly to Prisma; never round-trip money through a JS Number.
+  return { ...Object.fromEntries(fields.map(key => [key, ['fundCount', 'stockCount'].includes(key) ? stats[key] : decimalField(stats, key).toFixed(2)])), valuationAt: new Date(asOf), ledgerRevision: revision, priceProvenance: provenance, engineVersion: ENGINE_VERSION, stale: false };
 }
 
 export function cachedValuationInputs(instruments) {
   const prices = {}, meta = {};
   for (const instrument of instruments) {
-    prices[instrument.id] = instrument.price == null ? null : Number(instrument.price);
+    prices[instrument.id] = instrument.price == null ? null : instrument.price.toString();
     meta[instrument.id] = { asOf: instrument.priceAsOf ? dayKey(instrument.priceAsOf) : null, source: instrument.priceSource || 'unknown' };
   }
   return { prices, meta };

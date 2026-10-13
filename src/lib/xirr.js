@@ -1,3 +1,5 @@
+import { decimalField, sumDecimal, lotCost } from './financialDecimal.js';
+
 /** Annualised rates outside this range are treated as non-convergent. */
 const MAX_REASONABLE_RATE = 5.0; // 500% p.a. as a decimal fraction
 const MIN_REASONABLE_RATE = -0.99; // -99% p.a.
@@ -112,17 +114,17 @@ function _solve(seed, npv, dnpv) {
  * @returns {number|null}
  */
 export function holdingXIRR(lots, sells, cmp) {
-  const totalQty = lots.reduce((s, l) => s + l.qty, 0);
+  const totalQty = sumDecimal(lots, l => decimalField(l, 'qty'));
   return xirr([
-    ...lots.map((l) => ({ amount: -(l.qty * l.price), date: l.date })),
+    ...lots.map((l) => ({ amount: lotCost(l).neg().toNumber(), date: l.date })),
     ...(sells || []).map((s) => ({
-      amount: s.qty * s.sellPrice,
+      amount: (s.grossProceeds == null ? decimalField(s, 'qty').times(decimalField(s, 'sellPrice')) : decimalField(s, 'grossProceeds')).toNumber(),
       date: s.date,
     })),
-    ...(totalQty > 0
+    ...(totalQty.gt(0)
       ? [
           {
-            amount: totalQty * cmp,
+            amount: totalQty.times(cmp).toNumber(),
             date: new Date().toISOString().slice(0, 10),
           },
         ]
@@ -139,7 +141,7 @@ export function holdingXIRR(lots, sells, cmp) {
  */
 export function lotXIRR(lot, cmp) {
   return xirr([
-    { amount: -(lot.qty * lot.price), date: lot.date },
-    { amount: lot.qty * cmp, date: new Date().toISOString().slice(0, 10) },
+    { amount: lotCost(lot).neg().toNumber(), date: lot.date },
+    { amount: decimalField(lot, 'qty').times(cmp).toNumber(), date: new Date().toISOString().slice(0, 10) },
   ]);
 }

@@ -4,12 +4,14 @@ import { useMemo, useState } from 'react';
 
 export const HOLDING_EPSILON = 1e-6;
 const DEFAULT_GROUP_KEY = h => h.sector || 'Other';
+const DEFAULT_ROW_KEY = h => h.symbol;
 
 export function useHoldingsViewState({
   holdings,
   groupKey = DEFAULT_GROUP_KEY,
   search = '',
   searchFields = [],
+  rowKey = DEFAULT_ROW_KEY,
 }) {
   const [sort, setSort] = useState({ key: 'returnPct', dir: -1 });
   const [group, setGroup] = useState('All');
@@ -66,18 +68,18 @@ export function useHoldingsViewState({
     setSort(s => s.key === key ? { key, dir: -s.dir } : { key, dir: -1 });
   }
 
-  function toggleExpanded(symbol) {
-    setExpanded(e => ({ ...e, [symbol]: !e[symbol] }));
+  function toggleExpanded(key) {
+    setExpanded(e => ({ ...e, [key]: !e[key] }));
   }
 
   const allExpanded = useMemo(() => {
     if (rows.length === 0) return false;
-    return rows.every(r => !!expanded[r.symbol]);
-  }, [rows, expanded]);
+    return rows.every(r => !!expanded[rowKey(r)]);
+  }, [rows, expanded, rowKey]);
 
   function expandAll() {
     const next = {};
-    rows.forEach(r => { next[r.symbol] = true; });
+    rows.forEach(r => { next[rowKey(r)] = true; });
     setExpanded(next);
   }
 

@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 import { saveTradeOnce } from '../../src/lib/tradeSubmission.js';
 import { consumeLoginBuckets, LOGIN_WINDOW_MS } from '../../src/lib/loginRateLimit.js';
+import { flattenTrade } from '../../src/lib/apiHelpers.js';
+import { computeHoldings } from '../../src/lib/store.js';
+import { buildSnapshotData } from '../../src/lib/snapshotValuation.js';
 
 // Explicitly opt in. All fixtures live in a newly created, disposable schema.
 const databaseUrl = process.env.PORTFIN_TEST_DATABASE_URL;
@@ -80,6 +83,21 @@ test('PostgreSQL: concurrent trade retries, rollback, isolation and shared login
       assert.equal(await db.tradeSubmission.findUnique({ where: { portfolioId_key: { portfolioId: portfolio.id, key: failedKey } } }), null);
       assert.equal((await db.portfolio.findUnique({ where: { id: portfolio.id } })).revision, revision);
       assert.equal((await saveTradeOnce(db, session, input, failedKey)).replayed, false);
+    });
+    await t.test('decimal ledger strings survive FIFO and Prisma snapshot persistence without losing cents', async () => {
+      const isolated = await db.portfolio.create({ data: { id: randomUUID(), userId: user.id } });
+      const submitted = await saveTradeOnce(db, session, { ...input, portfolioId: isolated.id, symbol: 'PRECISION', quantity: '9007199254.740993', price: '100000.0001' }, randomUUID());
+      const rows = [flattenTrade(submitted.trade)];
+      assert.equal(rows[0].quantity, '9007199254.740993');
+      const instrumentId = rows[0].instrumentId;
+      const prices = { [instrumentId]: '100000.0001' };
+      assert.equal(computeHoldings(rows, prices, { asOf: '2026-10-13' })[0].exact.marketValue, '900719926374819.2254740993');
+      const data = buildSnapshotData(rows, prices, { [instrumentId]: { asOf: '2026-10-13', source: 'test' } }, { asOf: '2026-10-13', revision: 1 });
+      assert.equal(data.totalValue, '900719926374819.23');
+      const saved = await db.snapshot.create({ data: { ...data, portfolioId: isolated.id, snapshotAt: new Date('2026-10-13T00:00:00Z') } });
+      assert.equal(saved.totalValue.toFixed(2), '900719926374819.23');
+      assert.equal(saved.totalInvested.toFixed(2), '900719926374819.23');
+      assert.equal(saved.totalGain.toFixed(2), '0.00');
     });
     // Scope raw SQL explicitly too, so this test never touches live rate-limit records.
     const rateDb = { $queryRaw: query => {

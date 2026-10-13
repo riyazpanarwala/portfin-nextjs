@@ -17,6 +17,7 @@ import {
   HoldingCategoryBadge, HoldingMetricCells,
 } from '@/components/views/HoldingsShared';
 import { useStocksView } from '@/hooks/useStocksView';
+import { holdingKey } from '@/lib/holdingIdentity';
 import styles from './HoldingsTable.module.css';
 
 const COL = '20px 1fr 120px 32px 72px 110px 80px 90px 80px 80px 88px 64px 130px 50px 28px';
@@ -245,19 +246,20 @@ export default function StocksView() {
             {isExited ? 'No fully exited positions yet.' : 'No stocks match the selected filter.'}
           </div>
         ) : rows.map(h => {
-          const open = !!expanded[h.symbol];
-          const concentration = concentrationMap[h.symbol] ?? 0;
-          const daysSinceBuy = daysSinceLastBuyMap[h.symbol];
+          const key = holdingKey(h);
+          const open = !!expanded[key];
+          const concentration = concentrationMap[key] ?? 0;
+          const daysSinceBuy = daysSinceLastBuyMap[key];
 
           return (
-            <div key={h.symbol} className={styles.rowOuter}>
+            <div key={key} className={styles.rowOuter}>
               <div
                 className={[
                   styles.dataRow,
                   open ? styles.dataRowExpanded : '',
                   isExited ? styles.dataRowExited : '',
                 ].filter(Boolean).join(' ')}
-                onClick={() => toggleExpanded(h.symbol)}
+                onClick={() => toggleExpanded(key)}
                 style={{ display: 'grid', gridTemplateColumns: COL }}
               >
                 <div className={styles.expandChevron}>{open ? '▼' : '►'}</div>
@@ -266,6 +268,7 @@ export default function StocksView() {
                 <div className={styles.symbolCell}>
                   <div className={styles.symbolNameRow}>
                     <span className={styles.symbolText}>{h.symbol}</span>
+                    {h.exchange && <span className={styles.symbolMeta}>{h.exchange}</span>}
                     {isExited && <span className={styles.exitedBadge}>EXITED</span>}
                     {h.hasDataError && <DataErrorBadge qty={h.unmatchedSellQty} />}
                     {!isExited && <ConcentrationBadge pct={concentration} />}

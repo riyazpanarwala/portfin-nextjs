@@ -1,4 +1,6 @@
-export const ENGINE_VERSION = 'fifo-v2';
+export const ENGINE_VERSION = 'fifo-v3-decimal';
+// Prior verified snapshots stay visible; only new valuations use the decimal engine.
+export const isVerifiedSnapshot = snapshot => !snapshot.stale && !!snapshot.valuationAt && ['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion);
 export const dayKey = value => value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
 
 export function isLongTermEquity(buyDate, sellDate) {

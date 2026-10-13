@@ -5,6 +5,7 @@ import { requireOwnedPortfolio, HttpError } from '@/lib/auth';
 import { dateOnly, decimalInput, lockPortfolio, reviseLedger, tradeOrder } from '@/lib/ledger';
 import { applyCorporateActions } from '@/lib/corporateActions';
 import { dayKey } from '@/lib/financialRules';
+import { decimal, decimalField, financialResult } from '@/lib/financialDecimal';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +17,8 @@ export const POST = withErrorHandler('POST /api/corporate-actions', async (reque
   if (exDate > dayKey(new Date())) throw new HttpError(400, 'Future corporate actions cannot be applied yet');
   const num = decimalInput(ratioNumerator, { scale: 6 });
   const den = decimalInput(ratioDenominator, { scale: 6 });
-  const multiplier = Number(num) / Number(den);
-  if (!Number.isFinite(multiplier) || multiplier <= 0 || multiplier > 10000) throw new HttpError(400, 'Invalid ratio');
+  const multiplier = decimal(num).div(den);
+  if (!multiplier.isFinite() || multiplier.lte(0) || multiplier.gt(10000)) throw new HttpError(400, 'Invalid ratio');
   const result = await prisma.$transaction(async db => {
     await lockPortfolio(db, portfolioId, session.userId);
     const portfolio = await db.portfolio.findUnique({ where: { id: portfolioId } });
@@ -34,10 +35,10 @@ export const POST = withErrorHandler('POST /api/corporate-actions', async (reque
     const after = applyCorporateActions(flat, [...actions, candidate], exDate);
     const previewTrades = after.map(t => {
       const old = before.find(b => b.id === t.id);
-      return { id: t.id, tradeDate: t.tradeDate, tradeType: t.tradeType, oldQty: Number(old?.quantity || 0), oldPrice: Number(old?.price || 0), oldInvested: Number(old?.quantity || 0) * Number(old?.price || 0), newQty: Number(t.quantity), newPrice: Number(t.price), newInvested: Number(t.quantity) * Number(t.price) };
-    }).filter(t => t.oldQty !== t.newQty || t.oldPrice !== t.newPrice);
+      return financialResult({ id: t.id, tradeDate: t.tradeDate, tradeType: t.tradeType, oldQty: decimal(old?.quantity), oldPrice: decimal(old?.price), oldInvested: decimal(old?.grossAmount), newQty: decimal(t.quantity), newPrice: decimal(t.price), newInvested: decimal(t.grossAmount) });
+    }).filter(t => !decimalField(t, 'oldQty').eq(decimalField(t, 'newQty')) || !decimalField(t, 'oldPrice').eq(decimalField(t, 'newPrice')));
     if (!previewTrades.length) throw new HttpError(400, 'No eligible pre-action holdings or trades');
-    if (preview) return { preview: true, revision: portfolio.revision, symbol: instrument.symbol, multiplier, affectedCount: previewTrades.length, trades: previewTrades };
+    if (preview) return { preview: true, revision: portfolio.revision, symbol: instrument.symbol, multiplier: multiplier.toNumber(), affectedCount: previewTrades.length, trades: previewTrades };
     await db.corporateAction.create({ data: { portfolioId, instrumentId, actionType, ratioNumerator: num, ratioDenominator: den, exDate: new Date(exDate) } });
     await reviseLedger(db, portfolioId, exDate);
     return { success: true, message: 'Corporate action recorded. Original trades are preserved.', updatedCount: previewTrades.length };
