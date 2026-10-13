@@ -800,7 +800,10 @@ export function simulateTaxHarvesting(
   for (const h of holdings) {
     const siblings = allCandidateLots.filter(l => h.instrumentId ? l.instrumentId === h.instrumentId : l.symbol === h.symbol);
     let requested = sumDecimal(siblings, lot => effectiveSelections[lot.lotKey]?.selected ? lot.qty.times(effectiveSelections[lot.lotKey].harvestRatio) : 0);
-    requested = h.assetType === 'STOCK' ? requested.plus(EPSILON).floor() : requested.times('1000000').plus(EPSILON).floor().div('1000000');
+    const totalQty = sumDecimal(siblings, lot => lot.qty);
+    // A full fund exit consumes exact residual units and cost; partial orders keep unit precision.
+    requested = h.assetType !== 'STOCK' && requested.gte(totalQty) ? totalQty
+      : h.assetType === 'STOCK' ? requested.plus(EPSILON).floor() : requested.times('1000000').plus(EPSILON).floor().div('1000000');
     for (const lot of siblings) {
       const quantity = D.min(lot.qty, requested);
       effectiveSelections[lot.lotKey] = { selected: quantity > EPSILON, quantity, harvestRatio: quantity.div(lot.qty) };

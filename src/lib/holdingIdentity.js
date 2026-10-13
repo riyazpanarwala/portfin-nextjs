@@ -3,6 +3,9 @@ import { decimalField, sumDecimal } from './financialDecimal.js';
 /** Catalogue IDs identify holdings; legacy data is separated by symbol and exchange. */
 export const holdingKey = holding => holding.instrumentId || JSON.stringify([holding.symbol, holding.exchange || '', holding.assetType || '']);
 export const holdingPriceMeta = (holding, meta) => meta?.[holding.instrumentId || holding.symbol];
+export const stockAllocationLabel = (holding, duplicate) => duplicate
+  ? `${holding.symbol} (${holding.exchange || holding.instrumentId || 'Unknown exchange'})`
+  : holding.symbol;
 
 export function stockHoldingMetrics(activeHoldings, holdings, now = new Date()) {
   const total = sumDecimal(activeHoldings, h => decimalField(h, 'marketValue'));

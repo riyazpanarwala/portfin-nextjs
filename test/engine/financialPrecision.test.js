@@ -154,3 +154,29 @@ test('harvesting executes exact FIFO quantities and consumes residual lot costs'
   assert.equal(simulation.simulated.exact.harvestedLtcg, '0.29');
   assert.equal(simulation.impact.exact.futureLtcgTaxShielded, '0.03625');
 });
+
+test('full non-stock harvesting preserves exact sibling quantities and costs without fractional dust', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(`${asOf}T06:00:00Z`) });
+  const h = calculate([
+    trade('b1', 'BUY', '1.123456789', '0.1', { assetType: 'MF', tradeDate: '2024-04-01', brokerage: '0.01', taxBrokerage: '0.01' }),
+    trade('b2', 'BUY', '0.123456789', '0.2', { assetType: 'MF', tradeDate: '2024-05-01', brokerage: '0.01', taxBrokerage: '0.01' }),
+  ], { nse: '0.3' });
+  const report = computeCapitalGainsReport(h, { fy: '2026-27' });
+  const overrides = Object.fromEntries(h[0].lots.map((lot, index) => [`nse_${lot.date}_${index}`, { selected: true, harvestRatio: 1 }]));
+  const simulation = simulateTaxHarvesting(h, report, overrides);
+  assert.equal(sumDecimal(simulation.orders, o => decimalField(o, 'unitsToSell')).toFixed(), '1.246913578');
+  assert.equal(sumDecimal(simulation.orders, o => decimalField(o, 'costBasis')).toFixed(), h[0].exact.invested);
+  for (const order of simulation.orders) assert.equal(order.exact.unitsToSell, order.exact.totalUnits);
+});
+
+test('partial fund requests keep six-decimal flooring and stock requests keep whole-share flooring', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(`${asOf}T06:00:00Z`) });
+  for (const assetType of ['MF', 'STOCK']) {
+    const h = calculate([trade('b', 'BUY', '3.123456789', '0.1', { assetType, tradeDate: '2024-04-01' })], { nse: '0.2' });
+    const report = computeCapitalGainsReport(h, { fy: '2026-27' });
+    const partial = simulateTaxHarvesting(h, report, { 'nse_2024-04-01_0': { selected: true, harvestRatio: 0.5 } });
+    assert.equal(partial.orders[0].exact.unitsToSell, assetType === 'MF' ? '1.561728' : '1');
+    const full = simulateTaxHarvesting(h, report, { 'nse_2024-04-01_0': { selected: true, harvestRatio: 1 } });
+    assert.equal(full.orders[0].exact.unitsToSell, assetType === 'MF' ? '3.123456789' : '3');
+  }
+});

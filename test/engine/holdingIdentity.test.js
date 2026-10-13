@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { holdingKey, holdingPriceMeta, stockHoldingMetrics } from '../../src/lib/holdingIdentity.js';
+import { holdingKey, holdingPriceMeta, stockHoldingMetrics, stockAllocationLabel } from '../../src/lib/holdingIdentity.js';
 
 test('duplicate stock symbols retain independent concentration and last-buy metrics by instrument ID', () => {
   const rows = [
@@ -32,4 +32,13 @@ test('stock detail price metadata never borrows another exchange through a symbo
   assert.equal(holdingPriceMeta({ instrumentId: 'nse', symbol: 'DUP' }, meta), meta.nse);
   assert.equal(holdingPriceMeta({ instrumentId: 'bse', symbol: 'DUP' }, meta), meta.bse);
   assert.equal(holdingPriceMeta({ instrumentId: 'missing', symbol: 'DUP' }, meta), undefined);
+});
+
+test('duplicate allocation labels use instrument IDs when exchange is absent and retain normal labels', () => {
+  assert.equal(stockAllocationLabel({ symbol: 'DUP', exchange: 'NSE', instrumentId: 'nse' }, true), 'DUP (NSE)');
+  assert.equal(stockAllocationLabel({ symbol: 'DUP', instrumentId: 'first' }, true), 'DUP (first)');
+  assert.equal(stockAllocationLabel({ symbol: 'DUP', exchange: null, instrumentId: 'second' }, true), 'DUP (second)');
+  assert.equal(stockAllocationLabel({ symbol: 'DUP', exchange: '', instrumentId: 'third' }, true), 'DUP (third)');
+  assert.equal(stockAllocationLabel({ symbol: 'LEGACY' }, true), 'LEGACY (Unknown exchange)');
+  assert.equal(stockAllocationLabel({ symbol: 'UNIQUE', instrumentId: 'first' }, false), 'UNIQUE');
 });

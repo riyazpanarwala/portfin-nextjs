@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { HOLDING_EPSILON, downloadCsv, useHoldingsViewState } from '@/hooks/useHoldingsViewState';
-import { holdingKey, stockHoldingMetrics } from '@/lib/holdingIdentity';
+import { holdingKey, stockHoldingMetrics, stockAllocationLabel } from '@/lib/holdingIdentity';
 import { decimalField, sumDecimal } from '@/lib/financialDecimal';
 
 const stockSearchFields = [
@@ -89,7 +89,7 @@ export function useStocksView({ stHoldings, stats }) {
       .sort((a, b) => b.marketValue - a.marketValue)
       .map(h => ({
         instrumentId: h.instrumentId,
-        label: symbolCounts.get(h.symbol) > 1 ? `${h.symbol} (${h.exchange})` : h.symbol,
+        label: stockAllocationLabel(h, symbolCounts.get(h.symbol) > 1),
         value: h.marketValue,
         pct: decimalField(h, 'marketValue').div(total).times(100).toNumber(),
         assetType: 'STOCK',
