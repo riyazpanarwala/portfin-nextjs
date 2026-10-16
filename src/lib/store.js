@@ -4,8 +4,8 @@
 
 import { xirr } from './xirr.js';
 import { applyCorporateActions } from './corporateActions.js';
-import { dayKey, currentFinancialYear, isLongTermEquity, equityTaxReview } from './financialRules.js';
-import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult } from './financialDecimal.js';
+import { dayKey, currentFinancialYear, isLongTermEquity, equityTaxReview, isEquityTaxInstrument } from './financialRules.js';
+import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult, lotCost } from './financialDecimal.js';
 
 const EPSILON = 1e-9;
 
@@ -117,6 +117,7 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
           date:        sellDate,
           id: sellTrade.id,
           taxCategory: meta.taxCategory || 'UNKNOWN',
+          sttEligible: typeof sellTrade.sttEligible === 'boolean' ? sellTrade.sttEligible : null,
           unmatchedQty: D.max(0, sellQtyLeft),
           isin:        meta.isin || null,
           qty:         actualQtySold,
@@ -230,7 +231,7 @@ export function computePortfolioStats(holdings) {
   const stInvested = sumDecimal(stH, h => decimalField(h, 'invested'));
 
   const mfCagr = mfInvested.gt(0) ? sumDecimal(mfH, h => decimalField(h, 'invested').times(h.cagr)).div(mfInvested) : decimal(0);
-  const stCagr = stInvested.gt(0) ? sumDecimal(stH, h => decimalField(h, 'invested').times(h.cagr)).div(stInvested) : decimal(0);
+  const stCagr = computeOpenStockReturn(stH);
 
   const allYears = totalInvested.gt(0)
     ? sumDecimal(active, h => decimalField(h, 'invested').times(h.years)).div(totalInvested).toNumber()
@@ -249,6 +250,24 @@ export function computePortfolioStats(holdings) {
     mfPct: totalValue.gt(0) ? mfValue.div(totalValue).times(100) : decimal(0),
     stPct: totalValue.gt(0) ? stValue.div(totalValue).times(100) : decimal(0),
   });
+}
+
+// One money-weighted annualized return for the open stock position. Averaging
+// individual CAGRs can reverse the sign of an overall loss. Sales are excluded:
+// remaining FIFO lots and their costs describe the current unrealized position.
+export function computeOpenStockReturn(holdings) {
+  const stocks = holdings.filter(h => h.assetType === 'STOCK' && h.qty > EPSILON);
+  if (!stocks.length) return 0;
+  const asOf = stocks[0].valuationAt;
+  if (!asOf || stocks.some(h => h.valuationAt !== asOf || !h.priceAvailable || h.hasDataError)) return null;
+  const cashflows = stocks.flatMap(h => h.lots.map(lot => ({
+    date: lot.date, amount: lotCost(lot).neg().toNumber(),
+  }))).filter(flow => flow.amount !== 0);
+  if (!cashflows.length || cashflows.some(flow => !flow.date || flow.date > asOf)) return null;
+  cashflows.sort((a, b) => a.date.localeCompare(b.date));
+  if (cashflows[0].date === asOf) return null;
+  cashflows.push({ date: asOf, amount: sumDecimal(stocks, h => decimalField(h, 'marketValue')).toNumber() });
+  return xirr(cashflows);
 }
 
 // ─── Portfolio XIRR ───────────────────────────────────────────────────────────
@@ -305,6 +324,8 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
         name: h.name || h.symbol,
         assetType: h.assetType,
         exchange: h.exchange,
+        sector: h.sector,
+        taxCategory: h.taxCategory || s.taxCategory,
         fy: fyOfTrade,
       });
     }
@@ -639,7 +660,7 @@ export function simulateTaxHarvesting(
   const reviewReasons = [...(realizedReport.reviewReasons || [])];
   if (realizedReport.taxEstimateAvailable !== true || realizedReport.fy !== currentFinancialYear()) reviewReasons.push('A verified current-year tax report is required.');
   for (const h of holdings.filter(h => h.qty > EPSILON)) {
-    if (h.taxCategory !== 'EQUITY_ELIGIBLE') reviewReasons.push(`${h.symbol}: tax eligibility is not verified.`);
+    if (!isEquityTaxInstrument(h)) reviewReasons.push(`${h.symbol}: tax category is unresolved.`);
     if (!h.priceAvailable) reviewReasons.push(`${h.symbol}: current market price unavailable.`);
     if (h.priceStale) reviewReasons.push(`${h.symbol}: market price is stale or undated.`);
     if (h.hasDataError) reviewReasons.push(`${h.symbol}: unmatched sales exist.`);
@@ -950,8 +971,8 @@ export function simulateTaxHarvesting(
 
 // ─── Schedule 112A & Tax Export Generators ────────────────────────────────────
 
-export function generateSchedule112ACsv(report) {
-  requireVerifiedTaxReport(report);
+export function generateSchedule112ACsv(report, { reconciliation = false } = {}) {
+  if (!reconciliation) requireVerifiedTaxReport(report);
   const headers = [
     'Sr. No.',
     'Whether shares/units acquired on or before 31st January 2018?',
@@ -994,28 +1015,30 @@ export function generateSchedule112ACsv(report) {
     decimalField(row, 'netLtcg').toFixed(2),
   ]);
 
-  return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  return [...taxExportWarnings(report), headers.join(','), ...rows.map(r => r.join(','))].join('\n');
 }
 
-export function generateSchedule112AJson(report) {
-  requireVerifiedTaxReport(report);
+export function generateSchedule112AJson(report, { reconciliation = false } = {}) {
+  if (!reconciliation) requireVerifiedTaxReport(report);
   const ay = report.fy && report.fy !== 'ALL'
     ? `${parseInt(report.fy.slice(0, 4), 10) + 1}-${String(parseInt(report.fy.slice(5, 7), 10) + 1).padStart(2, '0')}`
-    : '2027-28';
+    : null;
 
   return JSON.stringify({
     schemaVersion: 'portfin-112a-reconciliation-v1',
     financialYear: report.fy || '2026-27',
     assessmentYear: ay,
     generatedAt: new Date().toISOString(),
+    taxEstimateAvailable: report.taxEstimateAvailable,
+    reviewReasons: report.reviewReasons || [],
     summary: {
       totalTransactions: report.schedule112A?.length || 0,
       grossLtcg: report.grossLtcg || 0,
-      exemptLtcgSec112A: report.exemptLtcg || 0,
-      taxableLtcg: report.taxableLtcg || 0,
-      ltcgTaxPayable: report.ltcgTax || 0,
-      stcgTaxPayable: report.stcgTax || 0,
-      totalTaxPayable: report.totalTax || 0,
+      exemptLtcgSec112A: report.exemptLtcg,
+      taxableLtcg: report.taxableLtcg,
+      ltcgTaxPayable: report.ltcgTax,
+      stcgTaxPayable: report.stcgTax,
+      totalTaxPayable: report.totalTax,
     },
     schedule112A: (report.schedule112A || []).map((row, idx) => ({
       srNo: idx + 1,
@@ -1039,11 +1062,11 @@ export function generateSchedule112AJson(report) {
   }, null, 2);
 }
 
-export function generateSchedule111ACsv(report) {
-  requireVerifiedTaxReport(report);
+export function generateSchedule111ACsv(report, { reconciliation = false } = {}) {
+  if (!reconciliation) requireVerifiedTaxReport(report);
   const ay = report.fy && report.fy !== 'ALL'
     ? `${parseInt(report.fy.slice(0, 4), 10) + 1}-${String(parseInt(report.fy.slice(5, 7), 10) + 1).padStart(2, '0')}`
-    : '2027-28';
+    : 'Multiple assessment years';
 
   const stcgRows = [];
   let srNo = 1;
@@ -1119,8 +1142,8 @@ export function generateSchedule111ACsv(report) {
     `# 4. Total Deductions (Cost + Expenditure):,${totalCost.plus(totalExpenditure).toFixed(2)}`,
     `# 5. Net Short-Term Capital Gain u/s 111A:,${netStcg.toFixed(2)}`,
     `# 6. STCL Set-off against STCG:,${decimalField(report, 'stclUsedAgainstStcg').toFixed(2)}`,
-    `# 7. Net Taxable STCG (Taxable @ 20%):,${decimalField(report, 'netTaxableStcg').toFixed(2)}`,
-    `# 8. Estimated STCG Tax @ 20% + 4% Cess:,${decimalField(report, 'stcgTax').times('1.04').toFixed(2)}`,
+    `# 7. Net Taxable STCG (Taxable @ 20%):,${report.taxEstimateAvailable ? decimalField(report, 'netTaxableStcg').toFixed(2) : 'Unavailable'}`,
+    `# 8. Estimated STCG Tax @ 20% + 4% Cess:,${report.taxEstimateAvailable ? decimalField(report, 'stcgTax').times('1.04').toFixed(2) : 'Unavailable'}`,
     '# ---------------------------------------------------------------------------------',
     '',
   ];
@@ -1143,6 +1166,7 @@ export function generateSchedule111ACsv(report) {
   ];
 
   return [
+    ...taxExportWarnings(report),
     ...summaryLines,
     tableHeaders.join(','),
     ...stcgRows.map(r => r.join(',')),
@@ -1186,6 +1210,12 @@ export function generateHarvestingExecutionCsv(orders = []) {
 // ─── Wealth projection ────────────────────────────────────────────────────────
 function requireVerifiedTaxReport(report) {
   if (!report.taxEstimateAvailable || report.fy === 'ALL') throw new Error('Tax eligibility, fees, acquisition history and one financial year must be verified before export.');
+}
+
+function taxExportWarnings(report) {
+  if (report.taxEstimateAvailable) return [];
+  return ['# RECONCILIATION ONLY — tax estimate unavailable; schedule eligibility requires review.',
+    ...(report.reviewReasons || []).map(reason => `# ${reason.replace(/[\r\n]/g, ' ')}`)];
 }
 
 export function projectWealth(sipMonthly, years, annualReturn, stepUpPct = 0) {

@@ -29,7 +29,7 @@ export function useAnalyticsView({ stats, holdings, taxData, monthlyFlow, realiz
     { label: 'Unrealized Return', value: stats.totalReturnPct,                         color: null, /* colorPnl applied in component */ sub: 'Open positions', suffix: '%', target: 'cagr' },
     { label: 'Total Realized',    value: null, crValue: realizedSummary.totalRealized, color: null, sub: 'Closed positions', target: 'realized' },
     { label: 'MF CAGR',           value: stats.mfCagr,                                color: 'var(--purple)',           sub: 'Weighted avg',         suffix: '%', target: 'cagr' },
-    { label: 'Stock CAGR',        value: stats.stCagr,                                color: 'var(--teal)',             sub: 'Weighted avg',         suffix: '%', target: 'cagr' },
+    { label: 'Stock XIRR',        value: stats.stCagr,                                color: 'var(--teal)',             sub: 'Open stock lots',         suffix: '%', target: 'cagr' },
   ], [stats, sharpe, realizedSummary, portfolioXIRR, portfolioBeta]);
 
   const sectorData = useMemo(() => {

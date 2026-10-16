@@ -15,6 +15,12 @@ const yahoo = new YahooFinance({
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 });
 
+// Same surviving direct-growth scheme, renamed on the L&T acquisition.
+// https://www.assetmanagement.hsbc.co.in/en/mutual-funds/acquisition-of-lt-mutual-fund
+const FUND_PREDECESSORS = {
+  INF917K01QA1: { schemeCode: '129220', before: '2022-11-25' },
+};
+
 /**
  * fetchStockMonthlyPrices
  * Returns a map { 'YYYY-MM': closingPrice } for the given stock symbol,
@@ -25,7 +31,7 @@ const yahoo = new YahooFinance({
  * @param {string} fromDate   'YYYY-MM-DD'
  * @returns {Promise<Record<string, number>>}
  */
-export async function fetchStockMonthlyPrices(symbol, exchange, fromDate) {
+export async function fetchStockMonthlyPrices(symbol, exchange, fromDate, { daily = false } = {}) {
   const yahooSym = exchange === "BSE" ? `${symbol}.BO` : `${symbol}.NS`;
 
   try {
@@ -53,13 +59,13 @@ export async function fetchStockMonthlyPrices(symbol, exchange, fromDate) {
         if (new Date(split.date) > new Date(q.date)) close *= split.numerator / split.denominator;
       }
       const asOf = new Date(q.date).toISOString().slice(0, 10);
-      const month = asOf.slice(0, 7);
+      const month = daily ? asOf : asOf.slice(0, 7);
       if (!Number.isFinite(close) || close <= 0) continue;
       if (!priceMap[month] || priceMap[month].asOf < asOf) priceMap[month] = { price: close, asOf, source: 'yahoo-close' };
     }
 
     console.log(
-      `[historicalPrices] Fetched ${Object.keys(priceMap).length} monthly prices for ${yahooSym}`,
+      `[historicalPrices] Fetched ${Object.keys(priceMap).length} ${daily ? 'daily' : 'monthly'} prices for ${yahooSym}`,
     );
 
     return priceMap;
@@ -90,7 +96,7 @@ export async function fetchStockMonthlyPrices(symbol, exchange, fromDate) {
  * @param {string} fromDate   'YYYY-MM-DD'
  * @returns {Promise<Record<string, number>>}
  */
-export async function fetchMFHistoricalNAV(isin, fromDate) {
+export async function fetchMFHistoricalNAV(isin, fromDate, { daily = false } = {}) {
   // Step 1: resolve ISIN → scheme code via AMFI daily NAV file
   const schemeCode = await resolveISINtoSchemeCode(isin);
   if (!schemeCode) {
@@ -100,7 +106,14 @@ export async function fetchMFHistoricalNAV(isin, fromDate) {
     return {};
   }
 
-  return fetchMFHistoricalNAV_byCode(schemeCode, fromDate);
+  const current = await fetchMFHistoricalNAV_byCode(schemeCode, fromDate, null, daily);
+  const predecessor = FUND_PREDECESSORS[isin.trim().toUpperCase()];
+  if (!predecessor || fromDate >= predecessor.before) return current;
+  const previous = await fetchMFHistoricalNAV_byCode(predecessor.schemeCode, fromDate, predecessor.before, daily);
+  for (const [key, record] of Object.entries(previous)) {
+    previous[key] = { ...record, source: `mfapi-predecessor-${predecessor.schemeCode}` };
+  }
+  return { ...previous, ...current };
 }
 
 /**
@@ -129,6 +142,7 @@ async function fetchMFHistoricalNAV_byCode(
   schemeCode,
   fromDate,
   toDate = null,
+  daily = false,
 ) {
   try {
     const res = await fetch(`https://api.mfapi.in/mf/${schemeCode}`, {
@@ -157,7 +171,7 @@ async function fetchMFHistoricalNAV_byCode(
       if (!Number.isFinite(nav) || nav <= 0) continue;
       if (new Date(dateMs).toISOString().slice(0, 10) !== `${yyyy}-${mm}-${dd}`) continue;
 
-      const monthKey = `${yyyy}-${mm}`;
+      const monthKey = daily ? `${yyyy}-${mm}-${dd}` : `${yyyy}-${mm}`;
       // Keep only one entry per month — since data is newest-first,
       // the first entry we see for a month is the last NAV of that month.
       if (!monthMap[monthKey] || monthMap[monthKey].asOf < yyyy + "-" + mm + "-" + dd) {

@@ -8,6 +8,8 @@ import { StatCard } from '@/components/ui/SharedUI';
 import { BenchmarkComparisonPanel } from '@/components/views/BenchmarkComparisonPanel';
 import { useAnalyticsView } from '@/hooks/useAnalyticsView';
 import { useSnapshots } from '@/hooks/useSnapshots';
+import { analyzeDrawdown, drawdownHistory } from '@/lib/drawdown';
+import { isVerifiedSnapshot } from '@/lib/financialRules';
 import { YearByYearView } from './YearByYearView';
 import styles from './AnalyticsView.module.css';
 import {
@@ -204,14 +206,14 @@ function DrawdownLineChart({ analysis }) {
               strokeWidth={2}
             />
           )}
-          <ReferenceDot
+          {analysis.maxDrawdownDate && <ReferenceDot
             x={analysis.maxDrawdownDate}
             y={analysis.maxDrawdown}
             r={6}
             fill="#ff5148"
             stroke="#111827"
             strokeWidth={2}
-          />
+          />}
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -219,86 +221,12 @@ function DrawdownLineChart({ analysis }) {
 }
 
 function DrawdownAnalysis({ snapshots, onTakeSnapshot }) {
-  const analysis = useMemo(() => {
-    if (!snapshots || snapshots.length < 2) return null;
-
-    const series = [...snapshots]
-      .sort((a, b) => a.snapshotAt.localeCompare(b.snapshotAt))
-      .map(s => ({ date: s.snapshotAt.slice(0, 10), value: parseFloat(s.totalValue) }));
-
-    const drawdownState = series.reduce((acc, pt) => {
-      const peak = pt.value > acc.peak ? pt.value : acc.peak;
-      const peakDate = pt.value > acc.peak ? pt.date : acc.peakDate;
-      const dd = peak > 0 ? ((pt.value - peak) / peak) * 100 : 0;
-      const isMaxDrawdown = dd < acc.maxDrawdown;
-      const isAllTimePeak = pt.value > acc.allTimePeak;
-
-      return {
-        peak,
-        peakDate,
-        maxDrawdown: isMaxDrawdown ? dd : acc.maxDrawdown,
-        maxDrawdownDate: isMaxDrawdown ? pt.date : acc.maxDrawdownDate,
-        maxDrawdownPeakDate: isMaxDrawdown ? peakDate : acc.maxDrawdownPeakDate,
-        allTimePeak: isAllTimePeak ? pt.value : acc.allTimePeak,
-        allTimePeakDate: isAllTimePeak ? pt.date : acc.allTimePeakDate,
-        drawdownSeries: [...acc.drawdownSeries, { ...pt, drawdown: dd, peak, peakDate }],
-      };
-    }, {
-      peak: series[0].value,
-      peakDate: series[0].date,
-      maxDrawdown: 0,
-      maxDrawdownDate: series[0].date,
-      maxDrawdownPeakDate: series[0].date,
-      allTimePeak: series[0].value,
-      allTimePeakDate: series[0].date,
-      drawdownSeries: [],
-    });
-
-    const {
-      drawdownSeries,
-      maxDrawdown,
-      maxDrawdownDate,
-      maxDrawdownPeakDate,
-      allTimePeak,
-      allTimePeakDate,
-    } = drawdownState;
-
-    const currentDrawdown = drawdownSeries[drawdownSeries.length - 1].drawdown;
-    const currentVal = series[series.length - 1].value;
-    const gapFromATH = allTimePeak > 0 ? ((currentVal - allTimePeak) / allTimePeak) * 100 : 0;
-
-    // Detect recovery periods
-    let inDrawdown = false;
-    let drawdownStart = null;
-    let currentDrawdownDays = null;
-    const recoveries = [];
-    for (let i = 1; i < drawdownSeries.length; i++) {
-      const curr = drawdownSeries[i];
-      if (!inDrawdown && curr.drawdown < -1) { inDrawdown = true; drawdownStart = curr.date; }
-      else if (inDrawdown && curr.drawdown >= -0.5) {
-        const days = Math.round((new Date(curr.date) - new Date(drawdownStart)) / 864e5);
-        recoveries.push({ start: drawdownStart, end: curr.date, days });
-        inDrawdown = false; drawdownStart = null;
-      }
-    }
-    if (inDrawdown && drawdownStart) {
-      currentDrawdownDays = Math.max(1, Math.round((new Date(series[series.length - 1].date) - new Date(drawdownStart)) / 864e5));
-    }
-
-    const avgRecovery = recoveries.length > 0
-      ? Math.round(recoveries.reduce((s, r) => s + r.days, 0) / recoveries.length) : null;
-    const recoveryDays = currentDrawdownDays ?? avgRecovery;
-
-    return { drawdownSeries, maxDrawdown, maxDrawdownDate, currentDrawdown,
-      maxDrawdownPeakDate, allTimePeak, allTimePeakDate, gapFromATH, recoveries,
-      avgRecovery, recoveryDays, currentDrawdownDays, currentVal };
-  }, [snapshots]);
-
+  const analysis = useMemo(() => analyzeDrawdown(snapshots), [snapshots]);
   if (!analysis) return (
     <EmptyFeature
       icon="📉"
-      title="Need at least 2 snapshots"
-      sub="Save snapshots over time to track drawdown history"
+      title="Need checkpoints from at least 2 days"
+      sub="Choose saved history, rebuild historical checkpoints, or save snapshots on different days."
       onAction={onTakeSnapshot}
       actionLabel="📸 Take Snapshot Now"
     />
@@ -319,15 +247,15 @@ function DrawdownAnalysis({ snapshots, onTakeSnapshot }) {
       </div>
 
       <div className={styles.drawdownMetricGrid}>
-        <MetricCard label="Max Drawdown" value={`${fmt(analysis.maxDrawdown, 1)}%`} color={maxDdColor} sub={`Worst fall on ${analysis.maxDrawdownDate}`} />
+        <MetricCard label="Max Drawdown" value={`${fmt(analysis.maxDrawdown, 2)}%`} color={maxDdColor} sub={analysis.maxDrawdownDate ? `Worst fall on ${analysis.maxDrawdownDate}` : 'No decline in selected history'} />
         <MetricCard label="Current Drawdown" value={`${fmt(analysis.currentDrawdown, 1)}%`} color={ddColor} sub="Below recent peak" />
         <MetricCard
           label="Recovery Time"
           value={fmtMonths(analysis.recoveryDays)}
           color={analysis.currentDrawdownDays ? 'var(--yellow)' : 'var(--green2)'}
-          sub={analysis.currentDrawdownDays ? 'Still recovering' : 'Fully recovered'}
+          sub={analysis.currentDrawdownDays ? 'Still recovering' : analysis.recoveries.length ? 'Fully recovered' : 'No decline in selected history'}
         />
-        <MetricCard label="Peak Portfolio Value" value={fmtCr(analysis.allTimePeak)} color="var(--accent2)" sub={`All-time high on ${analysis.allTimePeakDate}`} />
+        <MetricCard label="Peak Portfolio Value" value={fmtCr(analysis.allTimePeak)} color="var(--accent2)" sub={`Highest selected checkpoint on ${analysis.allTimePeakDate}`} />
       </div>
 
       <div className={styles.recoveryBar}>
@@ -967,11 +895,11 @@ function RollingXIRR({ snapshots, onTakeSnapshot }) {
 
   return (
     <div className={styles.featureSection}>
-      <FeatureHeader icon="📈" title="Rolling CAGR Trend" sub="MF CAGR and Stock CAGR evolution captured at each snapshot" />
+      <FeatureHeader icon="📈" title="Rolling CAGR Trend" sub="MF CAGR and Stock XIRR evolution captured at each snapshot" />
 
       <div className={styles.metricsGrid4}>
         <MetricCard label="Latest MF CAGR" value={last.mfCagr != null ? fmtPct(last.mfCagr, true) : '—'} color="var(--teal)" sub={last.date} />
-        <MetricCard label="Latest Stock CAGR" value={last.stCagr != null ? fmtPct(last.stCagr, true) : '—'} color="var(--purple)" sub={last.date} />
+        <MetricCard label="Latest Stock XIRR" value={last.stCagr != null ? fmtPct(last.stCagr, true) : '—'} color="var(--purple)" sub={last.date} />
         <MetricCard label="Combined CAGR" value={last.weightedCagr != null ? fmtPct(last.weightedCagr, true) : '—'} color="var(--accent2)" sub="Weighted avg" />
         <MetricCard label="CAGR Trend" value={cagrChange != null ? `${cagrChange >= 0 ? '+' : ''}${fmt(cagrChange, 1)}%` : '—'}
           color={cagrChange != null ? colorPnl(cagrChange) : 'var(--text2)'} sub="First → latest snapshot" />
@@ -985,7 +913,7 @@ function RollingXIRR({ snapshots, onTakeSnapshot }) {
               <th style={{ textAlign: 'right' }}>Portfolio Value</th>
               <th style={{ textAlign: 'right' }}>Total Return</th>
               <th style={{ textAlign: 'right' }}>MF CAGR</th>
-              <th style={{ textAlign: 'right' }}>Stock CAGR</th>
+              <th style={{ textAlign: 'right' }}>Stock XIRR</th>
               <th style={{ textAlign: 'right' }}>Combined CAGR</th>
               <th style={{ textAlign: 'right' }}>Funds</th>
               <th style={{ textAlign: 'right' }}>Stocks</th>
@@ -1021,7 +949,7 @@ function RollingXIRR({ snapshots, onTakeSnapshot }) {
       </TableBox>
 
       {mfBars.length > 1 && <ChartBox title="MF CAGR Over Snapshots (%)"><BarChart data={mfBars} height={110} /></ChartBox>}
-      {stBars.length > 1 && <ChartBox title="Stock CAGR Over Snapshots (%)"><BarChart data={stBars} height={110} /></ChartBox>}
+      {stBars.length > 1 && <ChartBox title="Stock XIRR Over Snapshots (%)"><BarChart data={stBars} height={110} /></ChartBox>}
     </div>
   );
 }
@@ -1680,7 +1608,10 @@ export default function AnalyticsView() {
   const { stats, holdings, taxData, monthlyFlow, realizedSummary,
     portfolioXIRR, portfolioBeta, trades, currentPrices, portfolioId, saveSnapshot } = usePortfolio();
 
-  const { snapshots, loading: snapsLoading, load: reloadSnapshots } = useSnapshots(portfolioId);
+  const { snapshots, allSnapshots, loading: snapsLoading, error: snapshotsError, reload: reloadSnapshots } = useSnapshots(portfolioId, 1000);
+  const [drawdownSource, setDrawdownSource] = useState('saved');
+  const drawdownSnapshots = useMemo(() => drawdownHistory(allSnapshots, drawdownSource === 'verified'), [allSnapshots, drawdownSource]);
+  const unverifiedDrawdownCount = drawdownSnapshots.filter(snapshot => !isVerifiedSnapshot(snapshot)).length;
 
   const {
     analyticsTab, setAnalyticsTab,
@@ -1692,7 +1623,7 @@ export default function AnalyticsView() {
   const handleTakeSnapshot = async () => {
     if (saveSnapshot) {
       await saveSnapshot();
-      if (reloadSnapshots) reloadSnapshots();
+      await reloadSnapshots();
     }
   };
 
@@ -1704,7 +1635,7 @@ export default function AnalyticsView() {
     { label: 'Unrealized Return', value: fmtPct(stats.totalReturnPct),      color: colorPnl(stats.totalReturnPct), sub: 'Open positions ↗', target: 'cagr' },
     { label: 'Total Realized',    value: fmtCr(realizedSummary.totalRealized), color: colorPnl(realizedSummary.totalRealized), sub: 'Closed positions ↗', target: 'realized' },
     { label: 'MF CAGR',           value: fmtPct(stats.mfCagr),             color: 'var(--purple)', sub: 'Weighted avg ↗', target: 'cagr' },
-    { label: 'Stock CAGR',        value: fmtPct(stats.stCagr),             color: 'var(--teal)',   sub: 'Weighted avg ↗', target: 'cagr' },
+    { label: 'Stock XIRR',        value: fmtPct(stats.stCagr),             color: 'var(--teal)',   sub: 'Open stock lots', target: 'cagr' },
   ];
 
   const TABS = [
@@ -1849,9 +1780,25 @@ export default function AnalyticsView() {
       {/* ── New Tabs ── */}
       {analyticsTab === 'drawdown' && (
         <div className="glass" style={{ padding: 20 }}>
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            Checkpoint history{' '}
+            <select value={drawdownSource} onChange={event => setDrawdownSource(event.target.value)}>
+              <option value="saved">Saved history (includes unverified checkpoints)</option>
+              <option value="verified">Verified checkpoints only</option>
+            </select>
+          </label>
+          {!snapsLoading && <p style={{ color: 'var(--text3)', fontSize: 12 }}>
+            Using {drawdownSnapshots.length} daily checkpoints{drawdownSnapshots.length > 0 ? ` from ${drawdownSnapshots[0].snapshotAt.slice(0, 10)} to ${drawdownSnapshots.at(-1).snapshotAt.slice(0, 10)}` : ''}.
+            {' '}{unverifiedDrawdownCount > 0 ? `${unverifiedDrawdownCount} are unverified or need rebuilding; results reflect their saved values and may change after rebuilding.` : `${allSnapshots.length - snapshots.length} unverified saved checkpoints${drawdownSource === 'verified' ? ' excluded' : ' available'}.`}
+            {' '}Uses the last checkpoint per day from up to 1,000 saved entries. Deposits and withdrawals also affect this portfolio-value drawdown.
+            {' '}<a href="#backfill">Rebuild historical month-end checkpoints</a>.
+          </p>}
+          {snapshotsError ? <p role="alert">Snapshot history could not be loaded. <button type="button" onClick={reloadSnapshots}>Retry</button></p> :
+          <>
           {snapsLoading
             ? <div style={{ color: 'var(--text3)', fontSize: 13, padding: 20 }}>Loading snapshots…</div>
-            : <DrawdownAnalysis snapshots={snapshots} onTakeSnapshot={handleTakeSnapshot} />}
+            : <DrawdownAnalysis snapshots={drawdownSnapshots} onTakeSnapshot={handleTakeSnapshot} />}
+          </>}
         </div>
       )}
 

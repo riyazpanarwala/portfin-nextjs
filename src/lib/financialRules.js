@@ -1,6 +1,14 @@
 export const ENGINE_VERSION = 'fifo-v3-decimal';
 // Prior verified snapshots stay visible; only new valuations use the decimal engine.
-export const isVerifiedSnapshot = snapshot => !snapshot.stale && !!snapshot.valuationAt && ['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion);
+export const isUserVerifiedSnapshot = snapshot => snapshot.engineVersion === 'user-accepted-v1' && snapshot.priceProvenance?.__verification?.source === 'user-acknowledgement';
+export const isVerifiedSnapshot = snapshot => !snapshot.stale && !!snapshot.valuationAt && (['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion) || isUserVerifiedSnapshot(snapshot));
+export function snapshotReviewReason(snapshot) {
+  if (!snapshot.valuationAt) return 'Legacy snapshot: valuation date and price records were not verified.';
+  if (snapshot.stale) return 'Needs rebuild: trade history or corporate actions changed after this snapshot was saved.';
+  if (isUserVerifiedSnapshot(snapshot)) return null;
+  if (!['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion)) return 'Legacy snapshot: calculation version is not verified.';
+  return null;
+}
 export const dayKey = value => value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
 
 export function isLongTermEquity(buyDate, sellDate) {
@@ -16,9 +24,24 @@ export function currentFinancialYear(asOf = new Date()) {
 }
 
 export function equityTaxReview(sell, lot) {
-  if (sell.taxCategory !== 'EQUITY_ELIGIBLE') return 'Verify equity eligibility and STT conditions.';
+  if (!isEquityTaxInstrument(sell)) return 'Instrument tax category is unresolved; confirm equity eligibility.';
+  if (sell.sttEligible !== true) return sell.sttEligible === false ? 'This sale does not meet the required STT conditions.' : 'Confirm STT eligibility for this sale.';
   if (sell.date < '2024-07-23') return 'Historical tax rates require a separate reviewed calculation.';
   if (lot.buyDate < '2018-02-01' && lot.taxType === 'LTCG') return 'Verify grandfathered acquisition cost.';
   if (lot.feesNeedReview) return 'Confirm tax-deductible charges separately from total charges.';
   return null;
+}
+
+// Instrument metadata identifies an equity candidate, not sale-level STT evidence.
+export function isEquityTaxInstrument(instrument) {
+  if (instrument.taxCategory === 'EQUITY_ELIGIBLE') return true;
+  if (instrument.taxCategory && instrument.taxCategory !== 'UNKNOWN') return false;
+  // Exchange-traded funds are also stored as STOCK; listing alone cannot
+  // distinguish equity funds from debt, gold or silver funds.
+  if ((instrument.isin || '').startsWith('INF') || /ETF|BEES|MUTUAL FUND/i.test(`${instrument.symbol || ''} ${instrument.name || ''} ${instrument.sector || ''}`)) return false;
+  return instrument.assetType === 'STOCK' && ['NSE', 'BSE'].includes(instrument.exchange);
+}
+
+export function usesEquityTaxRules(sale) {
+  return isEquityTaxInstrument(sale) && sale.sttEligible === true;
 }

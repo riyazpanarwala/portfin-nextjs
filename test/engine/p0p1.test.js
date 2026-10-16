@@ -10,7 +10,7 @@ import { withErrorHandler } from '../../src/lib/apiHelpers.js';
 import { NextResponse } from 'next/server.js';
 import { reviseLedger } from '../../src/lib/ledger.js';
 
-const trade = (id, type, date, qty, price, extra = {}) => ({ id, instrumentId: 'stock-a', symbol: 'A', name: 'A', assetType: 'STOCK', exchange: 'NSE', taxCategory: 'EQUITY_ELIGIBLE', tradeType: type, tradeDate: date, quantity: String(qty), price: String(price), createdAt: `${date}T01:00:00Z`, ...extra });
+const trade = (id, type, date, qty, price, extra = {}) => ({ id, instrumentId: 'stock-a', symbol: 'A', name: 'A', assetType: 'STOCK', exchange: 'NSE', taxCategory: 'EQUITY_ELIGIBLE', sttEligible: true, tradeType: type, tradeDate: date, quantity: String(qty), price: String(price), createdAt: `${date}T01:00:00Z`, ...extra });
 const at = '2026-10-01';
 test('API boundary denies forged client identity and cross-origin writes before handlers run', async () => {
   let calls = 0;
@@ -124,7 +124,7 @@ test('tax eligibility and grandfathering block exports; exact anniversary is sho
   const h = computeHoldings(rows, { 'stock-a': 300 }, { asOf: at });
   assert.equal(h[0].sells[0].matchedLots[0].taxType, 'STCG');
   assert.equal(computeCapitalGainsReport(h, { fy: '2026-27' }).grossLtcg, 400);
-  const unverified = computeHoldings(rows.map(t => ({ ...t, taxCategory: 'UNKNOWN' })), {}, { asOf: at });
+  const unverified = computeHoldings(rows.map(t => ({ ...t, taxCategory: 'OTHER' })), {}, { asOf: at });
   assert.throws(() => generateSchedule112ACsv(computeCapitalGainsReport(unverified, { fy: '2026-27' })), /verified/);
   assert.equal(computeCapitalGainsReport(h, { fy: 'ALL' }).totalTax, null);
   assert.equal(computeRealizedSummary(h).totalRealized, 600);
