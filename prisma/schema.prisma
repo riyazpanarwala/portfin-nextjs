@@ -69,6 +69,9 @@ model Trade {
   price        Decimal   @db.Decimal(12, 4)
   brokerage    Decimal?  @db.Decimal(10, 4)
   taxBrokerage Decimal? @map("tax_brokerage") @db.Decimal(10, 4)
+  sttEligible Boolean? @map("stt_eligible")
+  taxCategory String? @map("tax_category")
+  taxEligibilityConfirmedAt DateTime? @map("tax_eligibility_confirmed_at")
   tradeDate    DateTime  @map("trade_date") @db.Date
   createdAt    DateTime  @default(now()) @map("created_at")
 
