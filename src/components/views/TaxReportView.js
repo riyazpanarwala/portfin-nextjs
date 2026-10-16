@@ -54,6 +54,7 @@ export default function TaxReportView() {
   const [expandedRows, setExpandedRows] = useState({});
   // Export menu open/close
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportNotice, setExportNotice] = useState('');
 
   // Simulator State
   const [simulatorStrategy, setSimulatorStrategy] = useState('OPTIMAL'); // 'OPTIMAL' | 'GAIN' | 'LOSS'
@@ -96,7 +97,17 @@ export default function TaxReportView() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExportMenuOpen(false);
+    setExportNotice('Export downloaded.' + (!report.taxEstimateAvailable ? ' Outstanding data or eligibility issues are included in the reconciliation export.' : ''));
+  };
+
+  const exportSchedule = (generate, filename, type) => {
+    try {
+      triggerDownload(generate(report, { reconciliation: true }), filename, type);
+    } catch (error) {
+      setExportNotice(`Export failed: ${error.message}`);
+    }
   };
 
   // 1. Audit Schedule CG CSV Export
@@ -170,20 +181,17 @@ export default function TaxReportView() {
 
   // 2. Official Schedule 112A CSV Export
   const handleExportSchedule112ACsv = () => {
-    const csvContent = generateSchedule112ACsv(report);
-    triggerDownload(csvContent, `ITR2-Schedule-112A-FY${selectedFy}.csv`);
+    exportSchedule(generateSchedule112ACsv, `ITR2-Schedule-112A-FY${selectedFy}.csv`);
   };
 
   // 3. Schedule 112A JSON Export
   const handleExportSchedule112AJson = () => {
-    const jsonContent = generateSchedule112AJson(report);
-    triggerDownload(jsonContent, `ITR2-Schedule-112A-FY${selectedFy}.json`, 'application/json');
+    exportSchedule(generateSchedule112AJson, `ITR2-Schedule-112A-FY${selectedFy}.json`, 'application/json');
   };
 
   // 4. Official Schedule 111A (STCG) CSV Export
   const handleExportSchedule111ACsv = () => {
-    const csvContent = generateSchedule111ACsv(report);
-    triggerDownload(csvContent, `ITR2-Schedule-111A-STCG-FY${selectedFy}.csv`);
+    exportSchedule(generateSchedule111ACsv, `ITR2-Schedule-111A-STCG-FY${selectedFy}.csv`);
   };
 
   // 4. Simulator Execution Plan CSV Export
@@ -292,7 +300,9 @@ export default function TaxReportView() {
             <div className={styles.exportMenuWrapper}>
               <button
                 className={styles.exportBtn}
-                onClick={() => setExportMenuOpen(prev => !prev)}
+                type="button"
+                aria-expanded={exportMenuOpen}
+                onClick={() => { setExportNotice(''); setExportMenuOpen(prev => !prev); }}
                 disabled={!report.sells || report.sells.length === 0}
                 title="Export tax reports in CSV / JSON formats"
               >
@@ -300,28 +310,28 @@ export default function TaxReportView() {
               </button>
               {exportMenuOpen && (
                 <div className={styles.exportDropdown}>
-                  <button className={styles.exportDropdownItem} disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule112ACsv}>
+                  <button type="button" className={styles.exportDropdownItem} onClick={handleExportSchedule112ACsv}>
                     <FileSpreadsheet size={14} color="var(--green2)" />
                     <div>
                       <div style={{ fontWeight: 600 }}>ITR-2 Schedule 112A (CSV)</div>
                       <div style={{ fontSize: 10, color: 'var(--text3)' }}>PortFin reconciliation for adviser review</div>
                     </div>
                   </button>
-                  <button className={styles.exportDropdownItem} disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule112AJson}>
+                  <button type="button" className={styles.exportDropdownItem} onClick={handleExportSchedule112AJson}>
                     <FileCode size={14} color="var(--accent2)" />
                     <div>
                       <div style={{ fontWeight: 600 }}>Schedule 112A (JSON)</div>
                       <div style={{ fontSize: 10, color: 'var(--text3)' }}>PortFin JSON; review before tax filing</div>
                     </div>
                   </button>
-                  <button className={styles.exportDropdownItem} disabled={!report.taxEstimateAvailable} onClick={handleExportSchedule111ACsv}>
+                  <button type="button" className={styles.exportDropdownItem} onClick={handleExportSchedule111ACsv}>
                     <FileSpreadsheet size={14} color="var(--yellow)" />
                     <div>
                       <div style={{ fontWeight: 600 }}>ITR-2 Schedule 111A (STCG CSV)</div>
                       <div style={{ fontSize: 10, color: 'var(--text3)' }}>Consolidated summary + scrip-wise for CA</div>
                     </div>
                   </button>
-                  <button className={styles.exportDropdownItem} onClick={handleExportAuditCsv}>
+                  <button type="button" className={styles.exportDropdownItem} onClick={handleExportAuditCsv}>
                     <FileText size={14} color="var(--teal)" />
                     <div>
                       <div style={{ fontWeight: 600 }}>Detailed Schedule CG Audit (CSV)</div>
@@ -343,6 +353,7 @@ export default function TaxReportView() {
         </div>
       </div>
 
+      {exportNotice && <p role="status">{exportNotice}</p>}
       {activeTab === 'REPORT' && <IncomeTaxExport key={selectedFy} holdings={holdings} trades={trades} fy={selectedFy} />}
       {/* Top Navigation Tabs */}
       <div className={styles.navTabBar}>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildIncomeTaxExport } from '@/lib/taxExport';
+import { usesEquityTaxRules } from '@/lib/financialRules';
 import styles from './TaxReportView.module.css';
 
 export default function IncomeTaxExport({ holdings, fy, trades }) {
@@ -15,7 +16,10 @@ export default function IncomeTaxExport({ holdings, fy, trades }) {
     catch (error) { return { error: error.message }; }
   }, [holdings, fy, classifications, trades, open]);
   const data = preview?.data;
-  const symbols = [...new Set(data?.gains.map(g => g.instrument.symbol) || [])];
+  const symbols = [...new Set((data?.gains || []).filter(g => {
+    const holding = holdings.find(h => h.symbol === g.instrument.symbol && (h.exchange || '') === g.instrument.exchange);
+    return !holding || !usesEquityTaxRules(holding);
+  }).map(g => g.instrument.symbol))];
   useEffect(() => {
     if (!data || !downloadLink.current) return;
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
@@ -27,12 +31,13 @@ export default function IncomeTaxExport({ holdings, fy, trades }) {
     {fy === 'ALL' && <p>Select one financial year to export.</p>}
     {open && <>
       <h3>Income Tax Export · FY {fy}</h3>
-      <p>Verify the complete trade history, cost basis, corporate actions, exemptions and STT conditions. PortFin does not store tax eligibility. Choices below apply only to this export.</p>
+      <p>LTCG and STCG are calculated automatically for each FIFO lot using its purchase and sale dates. Listed NSE/BSE stocks use equity tax rules by default, assuming applicable STT conditions; saved instrument tax categories take precedence.</p>
+      {symbols.length > 0 && <p>Only instruments with an unresolved tax category need a selection below. Choices apply to this export.</p>}
       <p>The Income Tax Calculator currently supports FY 2026-27 only. Other years can be exported for reconciliation but cannot yet be imported there.</p>
       {preview?.error && <p role="alert">{preview.error}</p>}
       {symbols.map(symbol => <label key={symbol} style={{ display: 'block', margin: '8px 0' }}>{symbol}{' '}
         <select className={styles.fySelect} style={{ maxWidth: '100%' }} value={classifications[symbol] || ''} onChange={e => { setCopyNotice(''); setClassifications(prev => ({ ...prev, [symbol]: e.target.value })); }}>
-          <option value="">Not verified — review required</option>
+          <option value="">Select instrument tax category</option>
           <option value="equity">Verified eligible listed equity / equity-oriented fund, including STT</option>
           <option value="otherSTCG">Verified all exported lots are other STCG at normal rates</option>
           <option value="112">Verified all exported lots qualify for general Section 112 LTCG</option>

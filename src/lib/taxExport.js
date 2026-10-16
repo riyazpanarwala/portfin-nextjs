@@ -1,15 +1,17 @@
 import { computeCapitalGainsReport } from './store.js';
 import { decimal, decimalField, sumDecimal } from './financialDecimal.js';
+import { usesEquityTaxRules } from './financialRules.js';
 
 const money = n => decimal(n).toDecimalPlaces(2).toNumber();
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
 
-// A decision is an explicit user attestation, never inferred from a fund name.
+// Dates determine the term per lot; only unresolved instrument types need input.
 export function classifyForIncomeTax(sell, lot, decision) {
   const review = reason => ({ kind: 'review', asset: 'other', confirmed: false, reason });
   if (!validDate(lot.buyDate) || !validDate(sell.date) || lot.buyDate > sell.date)
     return review('Missing or inconsistent FIFO acquisition/sale dates.');
-  if (!decision) return review('Tax eligibility and STT conditions are not stored in PortFin. Review the instrument and select its applicable provision.');
+  decision ||= usesEquityTaxRules(sell) ? 'equity' : null;
+  if (!decision) return review('Instrument tax category is unresolved. Select the applicable provision.');
   if (decision === 'equity') {
     if (!['STOCK', 'MF'].includes(sell.assetType)) return review('Unsupported equity asset type.');
     const anniversary = new Date(lot.buyDate);

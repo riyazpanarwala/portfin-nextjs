@@ -124,7 +124,7 @@ test('tax eligibility and grandfathering block exports; exact anniversary is sho
   const h = computeHoldings(rows, { 'stock-a': 300 }, { asOf: at });
   assert.equal(h[0].sells[0].matchedLots[0].taxType, 'STCG');
   assert.equal(computeCapitalGainsReport(h, { fy: '2026-27' }).grossLtcg, 400);
-  const unverified = computeHoldings(rows.map(t => ({ ...t, taxCategory: 'UNKNOWN' })), {}, { asOf: at });
+  const unverified = computeHoldings(rows.map(t => ({ ...t, taxCategory: 'OTHER' })), {}, { asOf: at });
   assert.throws(() => generateSchedule112ACsv(computeCapitalGainsReport(unverified, { fy: '2026-27' })), /verified/);
   assert.equal(computeCapitalGainsReport(h, { fy: 'ALL' }).totalTax, null);
   assert.equal(computeRealizedSummary(h).totalRealized, 600);

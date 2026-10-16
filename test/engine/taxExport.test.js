@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeHoldings, computeCapitalGainsReport } from '../../src/lib/store.js';
+import { computeHoldings, computeCapitalGainsReport, generateSchedule112ACsv, generateSchedule112AJson, generateSchedule111ACsv } from '../../src/lib/store.js';
 import { buildIncomeTaxExport, classifyForIncomeTax } from '../../src/lib/taxExport.js';
 
 const trade = (tradeType, tradeDate, price, quantity = 10, symbol = 'TEST') => ({ tradeType, tradeDate, price, quantity, symbol, name: 'Synthetic equity', isin: 'TEST00000001', exchange: 'NSE', assetType: 'STOCK' });
@@ -43,7 +43,7 @@ test('multiple instruments, FY filtering and deterministic lot identifiers', () 
   assert.equal(first.gains.length, 2);
   assert.deepEqual(first.gains, exportTrades(trades).gains);
   assert.equal(exportTrades(trades, { fy: '2025-26' }).gains.length, 1);
-  assert.ok(first.gains.every(g => g.kind === 'review' && !g.confirmed));
+  assert.deepEqual(first.gains.map(g => g.kind), ['112A', '111A']);
 });
 
 test('fund eligibility is never inferred from MF or its name', () => {
@@ -51,6 +51,42 @@ test('fund eligibility is never inferred from MF or its name', () => {
   assert.equal(exportTrades(trades).gains[0].kind, 'review');
   assert.equal(exportTrades(trades, { classifications: { TEST: 'otherSTCG' } }).gains[0].kind, 'otherSTCG');
   assert.equal(exportTrades(trades, { classifications: { TEST: '112' } }).gains[0].kind, '112');
+});
+
+test('listed stocks classify each FIFO lot automatically, including the exact anniversary', () => {
+  const rows = [trade('BUY', '2024-07-01', 100), trade('BUY', '2025-07-01', 150), trade('SELL', '2026-07-01', 200, 20)];
+  for (const exchange of ['NSE', 'BSE']) {
+    const holdings = computeHoldings(rows.map(t => ({ ...t, exchange, taxCategory: 'UNKNOWN' })));
+    const data = buildIncomeTaxExport(holdings, { fy: '2026-27' });
+    assert.deepEqual(data.gains.map(g => g.kind), ['112A', '111A']);
+    assert.equal(data.reconciliation.reviewCount, 0);
+    const report = computeCapitalGainsReport(holdings, { fy: '2026-27' });
+    assert.equal(report.taxEstimateAvailable, true);
+    assert.ok(generateSchedule112ACsv(report).includes('TEST00000001'));
+    assert.ok(generateSchedule111ACsv(report).includes('2025-07-01'));
+    assert.equal(JSON.parse(generateSchedule112AJson(report)).schedule112A.length, 1);
+  }
+});
+
+test('saved equity fund category is reused, and an explicit OTHER category is respected', () => {
+  const rows = [trade('BUY', '2024-04-01', 100), trade('SELL', '2026-07-01', 200)];
+  assert.equal(exportTrades(rows.map(t => ({ ...t, assetType: 'MF', exchange: 'AMFI', taxCategory: 'EQUITY_ELIGIBLE' }))).gains[0].kind, '112A');
+  assert.equal(exportTrades(rows.map(t => ({ ...t, taxCategory: 'OTHER' }))).gains[0].kind, 'review');
+  assert.equal(exportTrades(rows.map(t => ({ ...t, isin: 'INF000000001', name: 'Gold ETF' }))).gains[0].kind, 'review');
+});
+
+test('all schedule exports support reconciliation with unresolved data and retain missing tax estimates', () => {
+  const holdings = computeHoldings([trade('BUY', '2026-04-01', 100), trade('SELL', '2026-07-01', 200)].map(t => ({ ...t, taxCategory: 'OTHER' })));
+  const report = computeCapitalGainsReport(holdings, { fy: '2026-27' });
+  assert.equal(report.taxEstimateAvailable, false);
+  for (const generate of [generateSchedule112ACsv, generateSchedule111ACsv, generateSchedule112AJson]) {
+    assert.throws(() => generate(report), /verified/);
+    assert.ok(generate(report, { reconciliation: true }).includes('unresolved'));
+  }
+  const data = JSON.parse(generateSchedule112AJson(report, { reconciliation: true }));
+  assert.equal(data.taxEstimateAvailable, false);
+  assert.equal(data.summary.totalTaxPayable, null);
+  assert.ok(generateSchedule111ACsv(report, { reconciliation: true }).includes('Unavailable'));
 });
 
 test('anniversary and grandfathering mismatches require review', () => {
