@@ -41,7 +41,7 @@ import { currentFinancialYear } from "@/lib/financialRules";
 import IncomeTaxExport from './IncomeTaxExport';
 
 export default function TaxReportView() {
-  const { holdings = [], trades = [], isDiscreet } = usePortfolio();
+  const { holdings = [], trades = [], isDiscreet, portfolioId } = usePortfolio();
 
   // Active top-level view tab: 'REPORT' | 'SIMULATOR'
   const [activeTab, setActiveTab] = useState('REPORT');
@@ -355,7 +355,7 @@ export default function TaxReportView() {
       </div>
 
       {exportNotice && <p role="status">{exportNotice}</p>}
-      {activeTab === 'REPORT' && <IncomeTaxExport key={selectedFy} holdings={holdings} trades={trades} fy={selectedFy} />}
+      {activeTab === 'REPORT' && <IncomeTaxExport key={`${portfolioId}:${selectedFy}`} holdings={holdings} trades={trades} fy={selectedFy} />}
       {/* Top Navigation Tabs */}
       <div className={styles.navTabBar}>
         <button

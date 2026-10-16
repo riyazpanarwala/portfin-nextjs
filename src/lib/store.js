@@ -116,7 +116,7 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
         sellRecords.push({
           date:        sellDate,
           id: sellTrade.id,
-          taxCategory: meta.taxCategory || 'UNKNOWN',
+          taxCategory: sellTrade.taxCategory || meta.taxCategory || 'UNKNOWN',
           sttEligible: typeof sellTrade.sttEligible === 'boolean' ? sellTrade.sttEligible : null,
           unmatchedQty: D.max(0, sellQtyLeft),
           isin:        meta.isin || null,
@@ -325,7 +325,7 @@ export function computeCapitalGainsReport(holdings, { fy = currentFinancialYear(
         assetType: h.assetType,
         exchange: h.exchange,
         sector: h.sector,
-        taxCategory: h.taxCategory || s.taxCategory,
+        taxCategory: s.taxCategory || h.taxCategory,
         fy: fyOfTrade,
       });
     }
