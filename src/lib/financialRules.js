@@ -24,20 +24,24 @@ export function currentFinancialYear(asOf = new Date()) {
 }
 
 export function equityTaxReview(sell, lot) {
-  if (!usesEquityTaxRules(sell)) return 'Instrument tax category is unresolved; confirm equity eligibility and STT conditions.';
+  if (!isEquityTaxInstrument(sell)) return 'Instrument tax category is unresolved; confirm equity eligibility.';
+  if (sell.sttEligible !== true) return sell.sttEligible === false ? 'This sale does not meet the required STT conditions.' : 'Confirm STT eligibility for this sale.';
   if (sell.date < '2024-07-23') return 'Historical tax rates require a separate reviewed calculation.';
   if (lot.buyDate < '2018-02-01' && lot.taxType === 'LTCG') return 'Verify grandfathered acquisition cost.';
   if (lot.feesNeedReview) return 'Confirm tax-deductible charges separately from total charges.';
   return null;
 }
 
-// Existing listed-stock records predate taxCategory. Use their stored asset and
-// exchange metadata by default, while respecting an explicit non-equity category.
-export function usesEquityTaxRules(instrument) {
+// Instrument metadata identifies an equity candidate, not sale-level STT evidence.
+export function isEquityTaxInstrument(instrument) {
   if (instrument.taxCategory === 'EQUITY_ELIGIBLE') return true;
   if (instrument.taxCategory && instrument.taxCategory !== 'UNKNOWN') return false;
   // Exchange-traded funds are also stored as STOCK; listing alone cannot
   // distinguish equity funds from debt, gold or silver funds.
   if ((instrument.isin || '').startsWith('INF') || /ETF|BEES|MUTUAL FUND/i.test(`${instrument.symbol || ''} ${instrument.name || ''} ${instrument.sector || ''}`)) return false;
   return instrument.assetType === 'STOCK' && ['NSE', 'BSE'].includes(instrument.exchange);
+}
+
+export function usesEquityTaxRules(sale) {
+  return isEquityTaxInstrument(sale) && sale.sttEligible === true;
 }

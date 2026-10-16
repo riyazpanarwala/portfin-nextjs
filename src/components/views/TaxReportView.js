@@ -99,12 +99,13 @@ export default function TaxReportView() {
     document.body.removeChild(link);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setExportMenuOpen(false);
-    setExportNotice('Export downloaded.' + (!report.taxEstimateAvailable ? ' Outstanding data or eligibility issues are included in the reconciliation export.' : ''));
+    setExportNotice('Export downloaded.');
   };
 
   const exportSchedule = (generate, filename, type) => {
     try {
       triggerDownload(generate(report, { reconciliation: true }), filename, type);
+      if (!report.taxEstimateAvailable) setExportNotice('Export downloaded. Outstanding data or eligibility issues are included in the reconciliation export.');
     } catch (error) {
       setExportNotice(`Export failed: ${error.message}`);
     }

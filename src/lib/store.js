@@ -4,7 +4,7 @@
 
 import { xirr } from './xirr.js';
 import { applyCorporateActions } from './corporateActions.js';
-import { dayKey, currentFinancialYear, isLongTermEquity, equityTaxReview, usesEquityTaxRules } from './financialRules.js';
+import { dayKey, currentFinancialYear, isLongTermEquity, equityTaxReview, isEquityTaxInstrument } from './financialRules.js';
 import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult, lotCost } from './financialDecimal.js';
 
 const EPSILON = 1e-9;
@@ -117,6 +117,7 @@ export function computeHoldings(trades, currentPrices = {}, { asOf = dayKey(new 
           date:        sellDate,
           id: sellTrade.id,
           taxCategory: meta.taxCategory || 'UNKNOWN',
+          sttEligible: typeof sellTrade.sttEligible === 'boolean' ? sellTrade.sttEligible : null,
           unmatchedQty: D.max(0, sellQtyLeft),
           isin:        meta.isin || null,
           qty:         actualQtySold,
@@ -659,7 +660,7 @@ export function simulateTaxHarvesting(
   const reviewReasons = [...(realizedReport.reviewReasons || [])];
   if (realizedReport.taxEstimateAvailable !== true || realizedReport.fy !== currentFinancialYear()) reviewReasons.push('A verified current-year tax report is required.');
   for (const h of holdings.filter(h => h.qty > EPSILON)) {
-    if (!usesEquityTaxRules(h)) reviewReasons.push(`${h.symbol}: tax category is unresolved.`);
+    if (!isEquityTaxInstrument(h)) reviewReasons.push(`${h.symbol}: tax category is unresolved.`);
     if (!h.priceAvailable) reviewReasons.push(`${h.symbol}: current market price unavailable.`);
     if (h.priceStale) reviewReasons.push(`${h.symbol}: market price is stale or undated.`);
     if (h.hasDataError) reviewReasons.push(`${h.symbol}: unmatched sales exist.`);

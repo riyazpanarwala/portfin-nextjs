@@ -5,14 +5,15 @@ import { usesEquityTaxRules } from './financialRules.js';
 const money = n => decimal(n).toDecimalPlaces(2).toNumber();
 const validDate = s => /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
 
-// Dates determine the term per lot; only unresolved instrument types need input.
+// Dates determine the term per lot; unknown sale eligibility needs confirmation.
 export function classifyForIncomeTax(sell, lot, decision) {
   const review = reason => ({ kind: 'review', asset: 'other', confirmed: false, reason });
   if (!validDate(lot.buyDate) || !validDate(sell.date) || lot.buyDate > sell.date)
     return review('Missing or inconsistent FIFO acquisition/sale dates.');
   decision ||= usesEquityTaxRules(sell) ? 'equity' : null;
-  if (!decision) return review('Instrument tax category is unresolved. Select the applicable provision.');
+  if (!decision) return review('Tax category or sale-level STT eligibility is unresolved. Confirm the applicable provision for this sale.');
   if (decision === 'equity') {
+    if (sell.sttEligible === false) return review('This sale does not meet the required STT conditions.');
     if (!['STOCK', 'MF'].includes(sell.assetType)) return review('Unsupported equity asset type.');
     const anniversary = new Date(lot.buyDate);
     anniversary.setUTCFullYear(anniversary.getUTCFullYear() + 1);
@@ -26,7 +27,7 @@ export function classifyForIncomeTax(sell, lot, decision) {
   return review('Unsupported classification decision.');
 }
 
-export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trades } = {}) {
+export function buildIncomeTaxExport(holdings, { fy, classifications = {}, saleClassifications = {}, trades } = {}) {
   if (!/^\d{4}-\d{2}$/.test(fy) || String(Number(fy.slice(0, 4)) + 1).slice(-2) !== fy.slice(-2))
     throw new Error('Select one valid financial year.');
   const report = computeCapitalGainsReport(holdings, { fy });
@@ -50,7 +51,7 @@ export function buildIncomeTaxExport(holdings, { fy, classifications = {}, trade
   for (const [saleIndex, sell] of report.sells.entries()) {
     if (!sell.matchedLots?.length) warnings.push(`Missing FIFO lots for ${sell.symbol} on ${sell.date}.`);
     for (const [lotIndex, lot] of (sell.matchedLots || []).entries()) {
-      let classification = classifyForIncomeTax(sell, lot, classifications[sell.symbol]);
+      let classification = classifyForIncomeTax(sell, lot, saleClassifications[`sale-${saleIndex + 1}`] ?? classifications[sell.symbol]);
       if (lot.feesNeedReview) classification = { kind: 'review', asset: 'other', confirmed: false, reason: 'Deductible transaction fees require review; STT cannot be inferred from total fees.' };
       const numbers = [lot.qty, lot.costBasis, lot.gain, lot.holdDays, sell.sellPrice];
       if (numbers.some(n => !Number.isFinite(n))) throw new Error('Non-finite FIFO values require correction before export.');

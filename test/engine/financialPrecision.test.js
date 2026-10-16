@@ -9,7 +9,7 @@ import { Decimal as PrismaDecimal } from '@prisma/client/runtime/index-browser';
 
 const asOf = '2026-10-13';
 const trade = (id, tradeType, quantity, price, extra = {}) => ({ id, tradeType, quantity, price, instrumentId: 'nse', symbol: 'TEST',
-  exchange: 'NSE', assetType: 'STOCK', taxCategory: 'EQUITY_ELIGIBLE', tradeDate: tradeType === 'BUY' ? '2026-04-01' : '2026-10-10', ...extra });
+  exchange: 'NSE', assetType: 'STOCK', taxCategory: 'EQUITY_ELIGIBLE', sttEligible: true, tradeDate: tradeType === 'BUY' ? '2026-04-01' : '2026-10-10', ...extra });
 const calculate = (rows, prices = {}, options = {}) => computeHoldings(rows, prices, { asOf, ...options });
 
 test('decimal configuration is isolated from Prisma and decimal money does not drift', () => {

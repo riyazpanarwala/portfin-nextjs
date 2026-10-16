@@ -10,7 +10,7 @@ import { withErrorHandler } from '../../src/lib/apiHelpers.js';
 import { NextResponse } from 'next/server.js';
 import { reviseLedger } from '../../src/lib/ledger.js';
 
-const trade = (id, type, date, qty, price, extra = {}) => ({ id, instrumentId: 'stock-a', symbol: 'A', name: 'A', assetType: 'STOCK', exchange: 'NSE', taxCategory: 'EQUITY_ELIGIBLE', tradeType: type, tradeDate: date, quantity: String(qty), price: String(price), createdAt: `${date}T01:00:00Z`, ...extra });
+const trade = (id, type, date, qty, price, extra = {}) => ({ id, instrumentId: 'stock-a', symbol: 'A', name: 'A', assetType: 'STOCK', exchange: 'NSE', taxCategory: 'EQUITY_ELIGIBLE', sttEligible: true, tradeType: type, tradeDate: date, quantity: String(qty), price: String(price), createdAt: `${date}T01:00:00Z`, ...extra });
 const at = '2026-10-01';
 test('API boundary denies forged client identity and cross-origin writes before handlers run', async () => {
   let calls = 0;
