@@ -1,6 +1,14 @@
 export const ENGINE_VERSION = 'fifo-v3-decimal';
 // Prior verified snapshots stay visible; only new valuations use the decimal engine.
-export const isVerifiedSnapshot = snapshot => !snapshot.stale && !!snapshot.valuationAt && ['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion);
+export const isUserVerifiedSnapshot = snapshot => snapshot.engineVersion === 'user-accepted-v1' && snapshot.priceProvenance?.__verification?.source === 'user-acknowledgement';
+export const isVerifiedSnapshot = snapshot => !snapshot.stale && !!snapshot.valuationAt && (['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion) || isUserVerifiedSnapshot(snapshot));
+export function snapshotReviewReason(snapshot) {
+  if (!snapshot.valuationAt) return 'Legacy snapshot: valuation date and price records were not verified.';
+  if (snapshot.stale) return 'Needs rebuild: trade history or corporate actions changed after this snapshot was saved.';
+  if (isUserVerifiedSnapshot(snapshot)) return null;
+  if (!['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion)) return 'Legacy snapshot: calculation version is not verified.';
+  return null;
+}
 export const dayKey = value => value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
 
 export function isLongTermEquity(buyDate, sellDate) {

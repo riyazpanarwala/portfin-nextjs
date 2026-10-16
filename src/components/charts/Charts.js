@@ -73,7 +73,7 @@ const TOOLTIP_STYLE = {
 // Why this is needed:
 //   Recharts' default <Tooltip> only puts the nearest dataKey into its payload
 //   rendering when lines are far apart vertically (e.g. MF CAGR at 13% and
-//   Stock CAGR at -3%). The raw `payload` array from Recharts DOES contain all
+//   Stock XIRR at -3%). The raw `payload` array from Recharts DOES contain all
 //   series; the built-in renderer simply filters by proximity. We bypass that
 //   by reading payload into a Map and rendering from our own `series` list.
 
@@ -746,7 +746,7 @@ export function ComparisonChart({ portfolioSeries, niftySeries, benchmarkSeries 
 }
 
 // ─── CagrTrendChart ───────────────────────────────────────────────────────────
-// Fix: uses SharedTooltip so both MF CAGR and Stock CAGR always show even when
+// Fix: uses SharedTooltip so both MF CAGR and Stock XIRR always show even when
 // cursor is far from one of the lines.
 export function CagrTrendChart({ series }) {
   if (!series.length) return null;
@@ -767,7 +767,7 @@ export function CagrTrendChart({ series }) {
 
   const tooltipSeries = [
     hasMF && { key: 'mfCagr', name: 'MF CAGR',    color: '#a78bfa', formatter: v => `${v.toFixed(2)}%` },
-    hasST && { key: 'stCagr', name: 'Stock CAGR',  color: '#2dd4bf', formatter: v => `${v.toFixed(2)}%` },
+    hasST && { key: 'stCagr', name: 'Stock XIRR',  color: '#2dd4bf', formatter: v => `${v.toFixed(2)}%` },
   ].filter(Boolean);
   const chartSeries = series.map((d, i) => ({
     ...d,
@@ -801,7 +801,7 @@ export function CagrTrendChart({ series }) {
             activeDot={{ r: 5, fill: '#a78bfa', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
         )}
         {hasST && (
-          <Line type="monotone" dataKey="stCagr" name="Stock CAGR"
+          <Line type="monotone" dataKey="stCagr" name="Stock XIRR"
             stroke="#14b8a6" strokeWidth={2.5} dot={false} connectNulls
             activeDot={{ r: 5, fill: '#2dd4bf', stroke: '#0b0f1a', strokeWidth: 1.5 }} />
         )}

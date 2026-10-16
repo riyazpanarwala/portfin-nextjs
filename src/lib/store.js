@@ -5,7 +5,7 @@
 import { xirr } from './xirr.js';
 import { applyCorporateActions } from './corporateActions.js';
 import { dayKey, currentFinancialYear, isLongTermEquity, equityTaxReview, usesEquityTaxRules } from './financialRules.js';
-import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult } from './financialDecimal.js';
+import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult, lotCost } from './financialDecimal.js';
 
 const EPSILON = 1e-9;
 
@@ -230,7 +230,7 @@ export function computePortfolioStats(holdings) {
   const stInvested = sumDecimal(stH, h => decimalField(h, 'invested'));
 
   const mfCagr = mfInvested.gt(0) ? sumDecimal(mfH, h => decimalField(h, 'invested').times(h.cagr)).div(mfInvested) : decimal(0);
-  const stCagr = stInvested.gt(0) ? sumDecimal(stH, h => decimalField(h, 'invested').times(h.cagr)).div(stInvested) : decimal(0);
+  const stCagr = computeOpenStockReturn(stH);
 
   const allYears = totalInvested.gt(0)
     ? sumDecimal(active, h => decimalField(h, 'invested').times(h.years)).div(totalInvested).toNumber()
@@ -249,6 +249,24 @@ export function computePortfolioStats(holdings) {
     mfPct: totalValue.gt(0) ? mfValue.div(totalValue).times(100) : decimal(0),
     stPct: totalValue.gt(0) ? stValue.div(totalValue).times(100) : decimal(0),
   });
+}
+
+// One money-weighted annualized return for the open stock position. Averaging
+// individual CAGRs can reverse the sign of an overall loss. Sales are excluded:
+// remaining FIFO lots and their costs describe the current unrealized position.
+export function computeOpenStockReturn(holdings) {
+  const stocks = holdings.filter(h => h.assetType === 'STOCK' && h.qty > EPSILON);
+  if (!stocks.length) return 0;
+  const asOf = stocks[0].valuationAt;
+  if (!asOf || stocks.some(h => h.valuationAt !== asOf || !h.priceAvailable || h.hasDataError)) return null;
+  const cashflows = stocks.flatMap(h => h.lots.map(lot => ({
+    date: lot.date, amount: lotCost(lot).neg().toNumber(),
+  }))).filter(flow => flow.amount !== 0);
+  if (!cashflows.length || cashflows.some(flow => !flow.date || flow.date > asOf)) return null;
+  cashflows.sort((a, b) => a.date.localeCompare(b.date));
+  if (cashflows[0].date === asOf) return null;
+  cashflows.push({ date: asOf, amount: sumDecimal(stocks, h => decimalField(h, 'marketValue')).toNumber() });
+  return xirr(cashflows);
 }
 
 // ─── Portfolio XIRR ───────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ export { TradeForm } from '@/components/views/TradeForm';
 import { useMemo, useState } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
 import { useSnapshots } from '@/hooks/useSnapshots';
+import { isVerifiedSnapshot, isUserVerifiedSnapshot, snapshotReviewReason } from '@/lib/financialRules';
 import { fmtCr, fmt, fmtPct, colorPnl } from '@/lib/store';
 import { EmptyState, Alert } from '@/components/ui/SharedUI';
 import {
@@ -966,8 +967,8 @@ export function SnapshotView() {
   const earliest = snapshots[snapshots.length - 1];
   const lifetimeGrowth = latest && earliest ? parseFloat(latest.totalValue) - parseFloat(earliest.totalValue) : 0;
   const lifetimeGrowthPct = latest && earliest && parseFloat(earliest.totalValue) > 0 ? (lifetimeGrowth / parseFloat(earliest.totalValue)) * 100 : 0;
-  const latestMfCagr = latest?.mfCagr ? parseFloat(latest.mfCagr) : null;
-  const latestStCagr = latest?.stCagr ? parseFloat(latest.stCagr) : null;
+  const latestMfCagr = latest?.mfCagr != null ? parseFloat(latest.mfCagr) : null;
+  const latestStCagr = latest?.stCagr != null ? parseFloat(latest.stCagr) : null;
 
   return (
     <div className={`fade-up ${styles.snapshotWrapper}`}>
@@ -1017,17 +1018,23 @@ export function SnapshotView() {
             </div>
           </div>
           <div className={styles.snapshotMetricCard}>
-            <div className={styles.snapshotMetricLabel}>Latest CAGR</div>
+            <div className={styles.snapshotMetricLabel}>Latest Annualized Returns</div>
             <div className={styles.snapshotMetricValue} style={{ color: 'var(--teal)' }}>
               {latestMfCagr != null ? `MF ${fmtPct(latestMfCagr)}` : latestStCagr != null ? `ST ${fmtPct(latestStCagr)}` : '—'}
             </div>
             <div className={styles.snapshotMetricSub}>
-              {latestStCagr != null && latestMfCagr != null ? `Stocks: ${fmtPct(latestStCagr)}` : 'Annualized trend'}
+              {latestStCagr != null && latestMfCagr != null ? `Stock XIRR: ${fmtPct(latestStCagr)}` : 'Annualized trend'}
             </div>
           </div>
         </div>
       )}
 
+      <p style={{ color: 'var(--text3)', fontSize: 12 }}>
+        Stock XIRR is the annualized return of remaining stock purchase lots at the snapshot date, excluding realized sales.
+        {' '}Legacy records lack verified valuation metadata. “Needs rebuild” means later trade or corporate-action changes affected that checkpoint; it does not mean today&apos;s prices are stale.
+        {' '}“User verified” preserves a saved valuation you accepted with a known data limitation.
+        {' '}Hover over a checkpoint status for its reason. Use <a href="#backfill">Backfill History</a> to rebuild historical month-end checkpoints; save a new snapshot for today.
+      </p>
       <div className={`glass ${styles.snapshotTablePanel}`}>
         <div className={styles.snapshotTableHeader}>
           <span className={styles.snapshotTableTitle}>Checkpoint Logs</span>
@@ -1061,14 +1068,15 @@ export function SnapshotView() {
                 <th>Gain</th>
                 <th>Return %</th>
                 <th>MF CAGR</th>
-                <th>Stock CAGR</th>
+                <th title="Money-weighted annualized return of the remaining stock lots, excluding realized sales">Stock XIRR</th>
                 <th>Funds</th>
                 <th>Stocks</th>
               </tr>
             </thead>
             <tbody>
               {allSnapshots.map((s, idx) => {
-                const prev = !s.stale && s.valuationAt ? allSnapshots.slice(idx + 1).find(row => !row.stale && row.valuationAt) : null;
+                const reviewReason = snapshotReviewReason(s);
+                const prev = isVerifiedSnapshot(s) ? allSnapshots.slice(idx + 1).find(isVerifiedSnapshot) : null;
                 const valDelta = prev ? parseFloat(s.totalValue) - parseFloat(prev.totalValue) : null;
                 const pctDelta = prev && parseFloat(prev.totalValue) > 0 ? (valDelta / parseFloat(prev.totalValue)) * 100 : null;
 
@@ -1076,7 +1084,8 @@ export function SnapshotView() {
                   <tr key={s.id || idx}>
                     <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' }}>
                       {new Date(s.snapshotAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      {(!s.valuationAt || s.stale) && <span> · Unverified / stale</span>}
+                      {reviewReason && <span title={reviewReason}> · {s.valuationAt && s.stale ? 'Needs rebuild' : 'Legacy record'}</span>}
+                      {!reviewReason && isUserVerifiedSnapshot(s) && <span title="You accepted this saved valuation with the known UTTAMVALUE historical-price limitation."> · User verified</span>}
                     </td>
                     <td>
                       <div className="mono-privacy" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
@@ -1105,10 +1114,10 @@ export function SnapshotView() {
                       </span>
                     </td>
                     <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--teal)' }}>
-                      {s.mfCagr ? fmtPct(parseFloat(s.mfCagr)) : '—'}
+                      {s.mfCagr != null ? fmtPct(parseFloat(s.mfCagr)) : '—'}
                     </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent2)' }}>
-                      {s.stCagr ? fmtPct(parseFloat(s.stCagr)) : '—'}
+                    <td title={s.stCagr == null ? 'A reliable annualized stock return is unavailable for this checkpoint. Rebuild historical checkpoints or save a new snapshot.' : 'XIRR of remaining stock purchase lots and their snapshot value; excludes realized sales.'} style={{ fontFamily: 'var(--font-mono)', color: colorPnl(s.stCagr == null ? null : parseFloat(s.stCagr)) }}>
+                      {s.stCagr != null ? fmtPct(parseFloat(s.stCagr)) : '—'}
                     </td>
                     <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.fundCount ?? '—'}</td>
                     <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>{s.stockCount ?? '—'}</td>

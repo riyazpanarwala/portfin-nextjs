@@ -276,7 +276,7 @@ Guidelines:
     { label: 'Return',    value: `${stats.totalReturnPct >= 0 ? '+' : ''}${fmt(stats.totalReturnPct, 1)}%` },
     { label: 'CAGR',      value: `${fmt(stats.overallCagr, 1)}%` },
     { label: 'MF CAGR',   value: `${fmt(stats.mfCagr, 1)}%` },
-    { label: 'Stock CAGR', value: `${fmt(stats.stCagr, 1)}%` },
+    { label: 'Stock XIRR', value: `${fmt(stats.stCagr, 1)}%` },
     { label: 'Holdings',  value: `${stats.fundCount + stats.stockCount}` },
   ];
 
