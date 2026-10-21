@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react';
 import { colorPnl, fmtCr, fmt, sectorColor } from '@/lib/store';
 import { FinancialDecimal as D, decimal, decimalField, sumDecimal, financialResult, lotCost, lotGain } from '@/lib/financialDecimal';
 import { holdingPriceMeta } from '@/lib/holdingIdentity';
+import { isDelistedStock } from '@/lib/marketDataPolicy';
 import { xirr, holdingXIRR, lotXIRR } from '@/lib/xirr';
 import { HoldingPerformanceChart } from '@/components/charts/Charts';
 import { usePortfolio } from '@/context/PortfolioContext';
@@ -357,9 +358,11 @@ export function TD({ ch, right, mono, color, bold, small, className = '' }) {
 export function RefreshPriceButton({ instrumentId, symbol, assetType, onRefreshed }) {
   const { mergePrices, mergeMeta, toast } = usePortfolio();
   const [loading, setLoading] = useState(false);
+  const delisted = isDelistedStock({ symbol, assetType });
 
   async function handleRefresh(e) {
     e.stopPropagation();
+    if (delisted) return;
     setLoading(true);
     try {
       const res = await fetch('/api/prices', {
@@ -388,10 +391,10 @@ export function RefreshPriceButton({ instrumentId, symbol, assetType, onRefreshe
   return (
     <button
       onClick={handleRefresh}
-      disabled={loading}
-      title={`Refresh live ${assetType === 'MF' ? 'NAV' : 'price'} for ${symbol}`}
+      disabled={loading || delisted}
+      title={delisted ? `${symbol} is delisted; automatic price refresh is disabled` : `Refresh live ${assetType === 'MF' ? 'NAV' : 'price'} for ${symbol}`}
       className={styles.refreshPriceBtn}
-      style={{ opacity: loading ? 0.55 : 1 }}
+      style={{ opacity: loading || delisted ? 0.55 : 1 }}
     >
       {loading ? (
         <svg

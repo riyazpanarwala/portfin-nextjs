@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { resolveAnalyticsHoldings } from './analyticsHoldings.js';
+import { isDelistedStock } from './marketDataPolicy.js';
 import YahooFinance from 'yahoo-finance2';
 
 const yahooFinance = new YahooFinance({
@@ -175,6 +176,8 @@ export async function collectPortfolioBeta(holdings, { db = prisma, yahooClient 
     const identity = { instrumentId: holding.instrumentId, symbol: inst?.symbol || null, exchange: inst?.exchange || null };
     if (!inst) {
       missing.push({ ...identity, reason: 'instrument-not-found' });
+    } else if (isDelistedStock(inst)) {
+      missing.push({ ...identity, reason: 'delisted-skipped' });
     } else if (!inst.isin) {
       missing.push({ ...identity, reason: 'missing-isin-skipped' });
     } else {
