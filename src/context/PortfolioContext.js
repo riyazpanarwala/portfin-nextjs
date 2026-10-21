@@ -24,7 +24,7 @@ import { isDelistedStock } from '@/lib/marketDataPolicy';
 import { analyticsHoldingsPayload, portfolioBetaCacheSignature } from '@/lib/analyticsClient';
 
 const PortfolioCtx = createContext(null);
-const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v2';
+const PORTFOLIO_BETA_CACHE_KEY = 'portfin:portfolio-beta:v3';
 const ACTIVE_QTY_EPSILON = 1e-6;
 
 // All valid view IDs — used to validate the URL hash on load
