@@ -4,6 +4,7 @@ import { withErrorHandler } from '@/lib/apiHelpers';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { getInstrumentCatalogue, matchesInstrumentQuery } from '@/lib/instrumentCatalogue';
+import { isDelistedStock } from '@/lib/marketDataPolicy';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -41,6 +42,7 @@ function mfSymbol(name) {
 
 // ── Sector lookup from Yahoo Finance (best-effort, 8s timeout) ─────────────
 async function fetchYahooSector(symbol, exchange) {
+  if (isDelistedStock({ symbol, assetType: 'STOCK' })) return null;
   try {
     const yahooSym = exchange === 'BSE' ? `${symbol}.BO` : `${symbol}.NS`;
     const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${yahooSym}?modules=summaryProfile,quoteType`;

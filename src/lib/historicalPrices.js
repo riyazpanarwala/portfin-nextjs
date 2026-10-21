@@ -10,6 +10,7 @@
 
 import YahooFinance from "yahoo-finance2";
 import { parseAmfiNav } from './amfiNav.js';
+import { isDelistedStock } from './marketDataPolicy.js';
 
 const yahoo = new YahooFinance({
   suppressNotices: ["ripHistorical", "yahooSurvey"],
@@ -31,11 +32,12 @@ const FUND_PREDECESSORS = {
  * @param {string} fromDate   'YYYY-MM-DD'
  * @returns {Promise<Record<string, number>>}
  */
-export async function fetchStockMonthlyPrices(symbol, exchange, fromDate, { daily = false } = {}) {
+export async function fetchStockMonthlyPrices(symbol, exchange, fromDate, { daily = false } = {}, { yahooClient = yahoo } = {}) {
+  if (isDelistedStock({ symbol, assetType: 'STOCK' })) return {};
   const yahooSym = exchange === "BSE" ? `${symbol}.BO` : `${symbol}.NS`;
 
   try {
-    const result = await yahoo.chart(
+    const result = await yahooClient.chart(
       yahooSym,
       {
         period1: fromDate,

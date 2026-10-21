@@ -2,6 +2,7 @@ import YahooFinance from 'yahoo-finance2';
 import { prisma } from './prisma.js';
 import { parseAmfiNav } from './amfiNav.js';
 import { dayKey } from './financialRules.js';
+import { isDelistedStock } from './marketDataPolicy.js';
 
 const yahoo = new YahooFinance({ suppressNotices: ['ripHistorical', 'yahooSurvey'] });
 const SIX_HOURS = 6 * 60 * 60 * 1000;
@@ -10,7 +11,7 @@ export async function collectInstrumentPrices(instruments, { force = false, cach
   const prices = {};
   const meta = {};
   let navMap;
-  const needsRefresh = instrument => !cacheOnly && (force ||
+  const needsRefresh = instrument => !cacheOnly && !isDelistedStock(instrument) && (force ||
     !instrument.priceAsOf || !instrument.priceUpdatedAt ||
     Date.now() - new Date(instrument.priceUpdatedAt).getTime() >= SIX_HOURS ||
     !Number.isFinite(Number(instrument.price)) || Number(instrument.price) <= 0);
@@ -58,6 +59,7 @@ export async function collectInstrumentPrices(instruments, { force = false, cach
     }
     const valid = Number.isFinite(price) && price > 0;
     const record = { source: valid ? source : 'unavailable', providerSource: source === 'cache' ? instrument.priceSource || 'unknown' : source, updatedAt, asOf, stale: !asOf || Date.now() - Date.parse(asOf) > 7 * 86400000 };
+    if (isDelistedStock(instrument)) record.refreshSkipped = 'delisted';
     meta[instrument.id] = record;
     if (valid) prices[instrument.id] = price;
     // Compatibility for views that still look prices up by symbol, only when unambiguous.

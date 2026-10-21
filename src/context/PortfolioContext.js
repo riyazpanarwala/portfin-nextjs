@@ -20,6 +20,7 @@ import {
 } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 import { loadTradeHistory } from '@/lib/loadTradeHistory';
+import { isDelistedStock } from '@/lib/marketDataPolicy';
 import { analyticsHoldingsPayload, portfolioBetaCacheSignature } from '@/lib/analyticsClient';
 
 const PortfolioCtx = createContext(null);
@@ -175,7 +176,7 @@ export function PortfolioProvider({ children }) {
           setCurrentPrices(priceData.prices || {});
           setPriceMeta(priceData.meta || {});
 
-          const missing = instrumentIds.filter(id => !priceData.prices?.[id] || priceData.meta?.[id]?.stale);
+          const missing = instrumentIds.filter(id => !priceData.meta?.[id]?.refreshSkipped && (!priceData.prices?.[id] || priceData.meta?.[id]?.stale));
           if (missing.length > 0) {
             fetchPriceBatches(missing, { force: false }, controller.signal)
               .then(data => {
@@ -415,6 +416,7 @@ export function PortfolioProvider({ children }) {
     const activeInstruments = holdings
         .filter(h =>
           h.qty > ACTIVE_QTY_EPSILON &&
+          !isDelistedStock(h) &&
           (!assetTypeFilter || h.assetType === assetTypeFilter)
         )
         .map(h => ({ instrumentId: h.instrumentId, symbol: h.symbol }));

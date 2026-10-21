@@ -1,5 +1,6 @@
 import { prisma } from './prisma.js';
 import { resolveAnalyticsHoldings } from './analyticsHoldings.js';
+import { isDelistedStock } from './marketDataPolicy.js';
 import YahooFinance from 'yahoo-finance2';
 
 const yahooFinance = new YahooFinance({
@@ -61,7 +62,7 @@ export async function collectFundamentals(holdings, { force = false } = {}, { db
 
   await Promise.all(
     resolved.map(async ({ instrumentId, instrument }) => {
-      if (!instrument || instrument.assetType !== 'STOCK') { fundamentals[instrumentId] = null; return; }
+      if (!instrument || instrument.assetType !== 'STOCK' || isDelistedStock(instrument)) { fundamentals[instrumentId] = null; return; }
       const item = instrument;
       const { symbol, exchange } = instrument;
       const cacheKey = JSON.stringify([instrumentId, symbol, exchange, instrument.sector, instrument.name]);
