@@ -58,6 +58,7 @@ export default function PortfolioChanges() {
           <td><ChangeValue value={row} />{row.reason && <div className={styles.muted}>{row.reason}</div>}</td>
           <td className={styles.muted}>{row.excluded ? '—' : `${row.baselinePriceDate || row.start} → ${row.priceDate || '—'}`}</td></tr>)}</tbody></table></div>
       {!rows.length && <p className={styles.muted}>No positions in this selection.</p>}
+      {data.inceptionDate && <p className={styles.note}>{period === 'Max' ? `Max covers all recorded history from ${data.inceptionDate}, the first included trade, including positions sold since then.` : `Recorded history begins ${data.inceptionDate}. Periods longer than this use the available history.`}</p>}
       <p className={styles.note}>As of {data.asOf}. 1D compares each holding with its previous published close or NAV; funds and stocks may have different price dates. Other periods use prices on or before the calendar boundary. Includes realized gains and recorded fees; excludes unrecorded dividends. Percentages use cash-flow-weighted capital (Modified Dietz), not annualized returns. A dash means there is no positive capital base. Known delisted stocks are excluded from gains, percentage calculations, and coverage counts. Incomplete price coverage among the remaining holdings makes the affected total unavailable.</p>
     </>}
   </section>;

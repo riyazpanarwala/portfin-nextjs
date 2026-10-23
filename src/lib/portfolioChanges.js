@@ -2,19 +2,36 @@ import { computeHoldings } from './store.js';
 import { decimal, decimalField, sumDecimal } from './financialDecimal.js';
 import { isDelistedStock } from './marketDataPolicy.js';
 
-export const CHANGE_PERIODS = ['1D', '1W', '1M', '3M', '1Y'];
+export const CHANGE_PERIODS = ['1D', '1W', '1M', '3M', '1Y', '2Y', '3Y', '5Y', '10Y', 'Max'];
 const DAY = 86400000;
 const shiftDays = (date, days) => new Date(Date.parse(date) + days * DAY).toISOString().slice(0, 10);
 
-export function periodStart(asOf, period) {
+export function periodStart(asOf, period, inceptionDate = asOf) {
+  // Start before the first trade so inception-day purchases and fees are included.
+  if (period === 'Max') return shiftDays(inceptionDate, -1);
   if (period === '1D' || period === '1W') return shiftDays(asOf, period === '1D' ? -1 : -7);
+  const months = { '1M': 1, '3M': 3, '1Y': 12, '2Y': 24, '3Y': 36, '5Y': 60, '10Y': 120 }[period];
+  if (!months) throw new RangeError('Unknown portfolio change period');
   const date = new Date(asOf);
   const day = date.getUTCDate();
   date.setUTCDate(1);
-  date.setUTCMonth(date.getUTCMonth() - ({ '1M': 1, '3M': 3, '1Y': 12 }[period]));
+  date.setUTCMonth(date.getUTCMonth() - months);
   const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
   date.setUTCDate(Math.min(day, last));
   return date.toISOString().slice(0, 10);
+}
+
+function firstIncludedTrade(trades, asOf) {
+  return trades.filter(t => t.tradeDate <= asOf && !isDelistedStock(t))
+    .reduce((first, trade) => !first || trade.tradeDate < first ? trade.tradeDate : first, null);
+}
+
+export function portfolioHistoryStart(trades, asOf) {
+  const inceptionDate = firstIncludedTrade(trades, asOf);
+  const tenYearsAgo = periodStart(asOf, '10Y');
+  // Max starts with no positions and needs no pre-inception price. Fetch only the
+  // history needed for fixed windows, with a buffer for non-trading days.
+  return shiftDays(inceptionDate && inceptionDate > tenYearsAgo ? inceptionDate : tenYearsAgo, -10);
 }
 
 function priceAt(history, date) {
@@ -40,6 +57,8 @@ function aggregate(rows) {
 /** Read-only, cash-flow-adjusted period performance, including positions sold in the period. */
 export function buildPortfolioChanges({ trades, corporateActions = [], histories, prices, meta, asOf }) {
   const groups = Object.groupBy(trades.filter(t => t.tradeDate <= asOf), t => t.instrumentId);
+  const inceptionDate = firstIncludedTrade(trades, asOf);
+  const inceptionStart = periodStart(asOf, 'Max', inceptionDate || asOf);
   const periods = {};
   for (const period of CHANGE_PERIODS) {
     const rows = [];
@@ -47,7 +66,9 @@ export function buildPortfolioChanges({ trades, corporateActions = [], histories
       const instrument = ledger[0];
       const current = { price: prices[id], asOf: meta[id]?.asOf };
       const previous = priceAt(histories[id], shiftDays(current.asOf || asOf, -1));
-      const start = period === '1D' ? previous?.asOf || periodStart(asOf, period) : periodStart(asOf, period);
+      const requestedStart = periodStart(asOf, period, inceptionDate || asOf);
+      // Do not weight capital across years before the portfolio existed.
+      const start = period === '1D' ? previous?.asOf || requestedStart : requestedStart < inceptionStart ? inceptionStart : requestedStart;
       const baseline = period === '1D' ? previous : priceAt(histories[id], start);
       const options = { corporateActions };
       const before = computeHoldings(ledger, baseline ? { [id]: baseline.price } : {}, { ...options, asOf: start })[0];
@@ -83,5 +104,5 @@ export function buildPortfolioChanges({ trades, corporateActions = [], histories
     }
     periods[period] = { rows, overall: aggregate(rows), mf: aggregate(rows.filter(r => r.assetType === 'MF')), stocks: aggregate(rows.filter(r => r.assetType === 'STOCK')) };
   }
-  return { asOf, periods };
+  return { asOf, inceptionDate, periods };
 }
