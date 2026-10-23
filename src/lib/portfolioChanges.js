@@ -1,5 +1,6 @@
 import { computeHoldings } from './store.js';
 import { decimal, decimalField, sumDecimal } from './financialDecimal.js';
+import { isDelistedStock } from './marketDataPolicy.js';
 
 export const CHANGE_PERIODS = ['1D', '1W', '1M', '3M', '1Y'];
 const DAY = 86400000;
@@ -26,12 +27,14 @@ function fresh(record, date) {
 }
 
 function aggregate(rows) {
+  const excluded = rows.filter(row => row.excluded).length;
+  rows = rows.filter(row => !row.excluded);
   const available = rows.filter(row => row.gain != null);
   // Never present partial coverage as a complete portfolio gain.
-  if (available.length !== rows.length || !rows.length) return { gain: null, percent: null, covered: available.length, count: rows.length };
+  if (available.length !== rows.length || !rows.length) return { gain: null, percent: null, covered: available.length, count: rows.length, excluded };
   const gain = sumDecimal(rows, row => row.exactGain);
   const capital = sumDecimal(rows, row => row.exactCapital);
-  return { gain: gain.toNumber(), percent: capital.gt(0) ? gain.div(capital).times(100).toNumber() : null, covered: rows.length, count: rows.length };
+  return { gain: gain.toNumber(), percent: capital.gt(0) ? gain.div(capital).times(100).toNumber() : null, covered: rows.length, count: rows.length, excluded };
 }
 
 /** Read-only, cash-flow-adjusted period performance, including positions sold in the period. */
@@ -53,6 +56,10 @@ export function buildPortfolioChanges({ trades, corporateActions = [], histories
       if (!(before?.qty > 0) && !(after?.qty > 0) && !flows.length) continue;
       const row = { instrumentId: id, symbol: instrument.symbol, name: instrument.name || instrument.symbol, assetType: instrument.assetType,
         start, baselinePriceDate: baseline?.asOf || null, priceDate: current.asOf || null, gain: null, percent: null };
+      if (isDelistedStock(instrument)) {
+        rows.push({ ...row, excluded: true, reason: 'Delisted stock — excluded from portfolio changes' });
+        continue;
+      }
       let reason;
       if (before?.hasDataError || after?.hasDataError) reason = 'Trade history needs reconciliation';
       else if (before?.qty > 0 && (!fresh(baseline, start) || (period === '1D' && !fresh(baseline, current.asOf || asOf)))) reason = 'Historical price unavailable or stale';
