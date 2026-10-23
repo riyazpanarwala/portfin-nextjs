@@ -19,7 +19,7 @@ import {
   computePortfolioXIRR,
 } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
-import { loadTradeHistory } from '@/lib/loadTradeHistory';
+import { loadPortfolioBootstrap } from '@/lib/loadPortfolioBootstrap';
 import { isDelistedStock } from '@/lib/marketDataPolicy';
 import { analyticsHoldingsPayload, portfolioBetaCacheSignature } from '@/lib/analyticsClient';
 
@@ -144,55 +144,31 @@ export function PortfolioProvider({ children }) {
       setLoading(true);
       setError(null);
 
-      let pfRes = await fetch('/api/portfolio', { signal: controller.signal });
-      if (!pfRes.ok) throw new Error(await pfRes.text());
-      let pfData = await pfRes.json();
-
-      let pid = pfData.portfolios?.[0]?.id;
-      if (!pid) {
-        const cr = await fetch('/api/portfolio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId }),
-          signal: controller.signal,
-        });
-        if (!cr.ok) throw new Error(await cr.text());
-        pid = (await cr.json()).portfolio.id;
-      }
-      const { trades: rawTrades, corporateActions: actions } = await loadTradeHistory(pid, { signal: controller.signal });
+      const { portfolioId: pid, trades: rawTrades, corporateActions: actions, prices, meta } =
+        await loadPortfolioBootstrap({ signal: controller.signal });
       if (controller.signal.aborted) return;
       setPortfolioId(pid);
       setTrades(rawTrades || []);
       setCorporateActions(actions);
 
       const instrumentIds = [...new Set((rawTrades || []).map(t => t.instrumentId))];
-      setCurrentPrices({});
-      setPriceMeta({});
-      if (instrumentIds.length > 0) {
-        const priceData = await fetchPriceBatches(instrumentIds, { cacheOnly: true }, controller.signal)
-          .catch(err => { if (err.name !== 'AbortError') console.warn('[prices]', err.message); return null; });
-        if (priceData) {
-          if (controller.signal.aborted) return;
-          setCurrentPrices(priceData.prices || {});
-          setPriceMeta(priceData.meta || {});
-
-          const missing = instrumentIds.filter(id => !priceData.meta?.[id]?.refreshSkipped && (!priceData.prices?.[id] || priceData.meta?.[id]?.stale));
-          if (missing.length > 0) {
-            fetchPriceBatches(missing, { force: false }, controller.signal)
-              .then(data => {
-                if (data?.prices && !controller.signal.aborted) {
-                  setCurrentPrices(prev => {
-                    const changed = Object.keys(data.prices).some(
-                      k => prev[k] !== data.prices[k]
-                    );
-                    return changed ? { ...prev, ...data.prices } : prev;
-                  });
-                  setPriceMeta(prev => ({ ...prev, ...(data.meta || {}) }));
-                }
-              })
-              .catch(() => { });
-          }
-        }
+      setCurrentPrices(prices);
+      setPriceMeta(meta);
+      const missing = instrumentIds.filter(id => !meta[id]?.refreshSkipped && (!prices[id] || meta[id]?.stale));
+      if (missing.length > 0) {
+        fetchPriceBatches(missing, { force: false }, controller.signal)
+          .then(data => {
+            if (data?.prices && !controller.signal.aborted) {
+              setCurrentPrices(prev => {
+                const changed = Object.keys(data.prices).some(
+                  k => prev[k] !== data.prices[k]
+                );
+                return changed ? { ...prev, ...data.prices } : prev;
+              });
+              setPriceMeta(prev => ({ ...prev, ...(data.meta || {}) }));
+            }
+          })
+          .catch(() => { });
       }
     } catch (err) {
       if (!controller.signal.aborted) setError(err.message);
