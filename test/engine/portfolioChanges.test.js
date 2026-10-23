@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPortfolioChanges, periodStart } from '../../src/lib/portfolioChanges.js';
+import { buildPortfolioChanges, periodStart, portfolioHistoryStart } from '../../src/lib/portfolioChanges.js';
 
 const buy = (date, quantity = 10, price = 100, id = 'A', assetType = 'STOCK') => ({ id: `${id}-${date}`, instrumentId: id, symbol: id, assetType, exchange: 'NSE', tradeType: 'BUY', tradeDate: date, quantity, price });
 const history = (date, price) => ({ [date]: { price, asOf: date } });
@@ -132,4 +132,66 @@ test('a portfolio containing only delisted stocks has no eligible return rather 
   assert.equal(result.stocks.percent, null);
   assert.equal(result.stocks.count, 0);
   assert.equal(result.stocks.excluded, 1);
+});
+
+test('multi-year periods preserve calendar anniversaries and clamp leap days', () => {
+  for (const years of [2, 3, 5, 10]) {
+    assert.equal(periodStart('2026-10-23', `${years}Y`), `${2026 - years}-10-23`);
+    assert.equal(periodStart('2024-02-29', `${years}Y`), `${2024 - years}-02-28`);
+  }
+  assert.equal(periodStart('2026-10-23', 'Max', '2000-01-01'), '1999-12-31');
+});
+
+test('each multi-year change uses its own historical price boundary', () => {
+  const histories = { A: Object.fromEntries([[2, 100], [3, 80], [5, 50], [10, 25]].map(([years, price]) => {
+    const asOf = `${2026 - years}-10-23`;
+    return [asOf, { asOf, price }];
+  })) };
+  const periods = run([buy('2010-01-01', 10, 10)], { histories, prices: { A: 120 } });
+  for (const [years, price] of [[2, 100], [3, 80], [5, 50], [10, 25]]) {
+    const result = periods[`${years}Y`];
+    assert.equal(result.overall.gain, (120 - price) * 10);
+    assert.equal(result.overall.percent, (120 - price) / price * 100);
+    assert.equal(result.rows[0].baselinePriceDate, `${2026 - years}-10-23`);
+  }
+});
+
+test('Max includes first-day fees and all realized gains, even before the ten-year window', () => {
+  const trades = [
+    buy('2014-01-01', 10, 100, 'B', 'MF'),
+    { ...buy('2015-01-01', 10, 120, 'B', 'MF'), tradeType: 'SELL' },
+    { ...buy('2000-01-01', 10, 100), brokerage: 10 },
+    buy('2027-01-01', 10, 1000),
+  ];
+  const result = buildPortfolioChanges({ trades, histories: {}, prices: { A: 110 }, meta: { A: { asOf: '2026-10-23' } }, asOf: '2026-10-23' });
+  assert.equal(result.inceptionDate, '2000-01-01');
+  assert.equal(result.periods.Max.overall.gain, 290);
+  assert.equal(result.periods.Max.stocks.gain, 90);
+  assert.equal(result.periods.Max.mf.gain, 200);
+  assert.equal(result.periods.Max.rows[0].start, '1999-12-31');
+  assert.equal(result.periods.Max.overall.covered, 2);
+  assert.ok(result.periods.Max.overall.percent > 0);
+});
+
+test('Max excludes delisted history from its inception date and capital weighting', () => {
+  const base = [buy('2020-01-01')];
+  const withDelisted = [...base, buy('2000-01-01', 10000, 100, 'UTTAMVALUE')];
+  assert.equal(run(withDelisted).Max.overall.gain, run(base).Max.overall.gain);
+  assert.equal(run(withDelisted).Max.overall.percent, run(base).Max.overall.percent);
+  assert.equal(run(withDelisted).Max.rows.find(r => r.symbol === 'A').start, '2019-12-31');
+});
+
+test('extended history covers ten-year windows but avoids fetching unused pre-inception data', () => {
+  assert.equal(portfolioHistoryStart([buy('2000-01-01')], '2026-10-23'), '2016-10-13');
+  assert.equal(portfolioHistoryStart([buy('2020-01-01')], '2026-10-23'), '2019-12-22');
+  assert.equal(portfolioHistoryStart([buy('2020-01-01'), buy('2000-01-01', 1, 100, 'UTTAMVALUE'), buy('2027-01-01')], '2026-10-23'), '2019-12-22');
+});
+
+test('periods longer than the portfolio history use inception without inflating cash-flow-weighted returns', () => {
+  const periods = run([buy('2025-10-01')]);
+  for (const period of ['2Y', '3Y', '5Y', '10Y']) {
+    assert.equal(periods[period].rows[0].start, '2025-09-30');
+    assert.equal(periods[period].overall.gain, periods.Max.overall.gain);
+    assert.equal(periods[period].overall.percent, periods.Max.overall.percent);
+  }
 });
