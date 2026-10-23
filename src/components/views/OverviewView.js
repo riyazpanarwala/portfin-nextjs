@@ -7,6 +7,7 @@ import { DonutChart, AllocationDonutChart, HBar } from '@/components/charts/Char
 import { StatCard, Alert, EmptyState } from '@/components/ui/SharedUI';
 import { useOverview } from '@/hooks/useOverview';
 import styles from './OverviewView.module.css';
+import PortfolioChanges from './PortfolioChanges';
 
 export default function OverviewView() {
   const ctx = usePortfolio();
@@ -152,6 +153,8 @@ export default function OverviewView() {
           />
         )}
       </div>
+
+      <PortfolioChanges />
 
       {/* ── Full-width Portfolio Allocation Card ── */}
       <div className="glass" style={{ padding: '20px', borderRadius: 10, marginBottom: '20px' }}>

@@ -1,0 +1,20 @@
+.panel { padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.header h2 { margin: 0; font-size: 17px; }
+.header p, .note { color: var(--text3); font-size: 12px; line-height: 1.6; }
+.periods { display: flex; gap: 5px; flex-wrap: wrap; }
+.panel button, .panel select { background: var(--bg2, #172033); border: 1px solid var(--border, #334155); color: var(--text2); border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+.periods button[aria-pressed='true'] { color: var(--accent2); border-color: var(--accent2); }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.card { padding: 15px; border: 1px solid var(--border, #334155); border-radius: 8px; }
+.card strong { display: block; margin: 10px 0; font-size: 18px; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.label { font-size: 12px; color: var(--text2); }
+.percent { font-size: 12px; white-space: nowrap; }
+.muted { color: var(--text3); font-size: 11px; line-height: 1.6; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; }
+.tableWrap { overflow: auto; max-height: 420px; }
+.tableWrap table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+.tableWrap th, .tableWrap td { padding: 12px 10px; border-bottom: 1px solid var(--border, #334155); }
+.tableWrap th { color: var(--text3); }
+.note { margin-bottom: 0; }
+@media (max-width: 720px) { .cards { grid-template-columns: 1fr; } .panel { padding: 14px; } .tableWrap table { min-width: 580px; } }
