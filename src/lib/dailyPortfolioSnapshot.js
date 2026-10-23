@@ -46,8 +46,7 @@ export async function runDailyPortfolioSnapshots({ db, collectPrices, ownerEmail
         const quote = meta[instrument.id];
         if (['amfi', 'yahoo'].includes(quote?.source) && !quote.stale && quote.asOf <= asOf) {
           refreshed.add(instrument.id);
-          log(`${instrument.symbol}: ${quote.asOf}${quote.asOf < asOf ? ' (previous published trading date)' : ''}`);
-        } else log(`${instrument.symbol}: provider refresh unavailable`);
+        } else log('A provider refresh was unavailable.');
       }
     } catch { log('A price refresh batch failed; affected snapshots will be skipped.'); }
   }

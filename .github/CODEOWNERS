@@ -1,0 +1,7 @@
+# Enable required code-owner review in a default-branch ruleset to enforce this.
+/.github/ @riyazpanarwala
+/scripts/ @riyazpanarwala
+/src/lib/ @riyazpanarwala
+/prisma/ @riyazpanarwala
+/package.json @riyazpanarwala
+/package-lock.json @riyazpanarwala

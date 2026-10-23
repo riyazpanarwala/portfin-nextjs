@@ -15,13 +15,15 @@ concurrency:
 
 jobs:
   refresh-and-snapshot:
+    # Manual dispatch on another branch must not receive production credentials.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
           package-manager-cache: false
@@ -30,11 +32,11 @@ jobs:
       - name: Refresh MF and stocks, then save daily snapshots
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PORTFOLIO_OWNER_EMAIL: ${{ secrets.PORTFOLIO_OWNER_EMAIL || vars.PORTFOLIO_OWNER_EMAIL }}
+          PORTFOLIO_OWNER_EMAIL: ${{ secrets.PORTFOLIO_OWNER_EMAIL }}
         shell: bash
         run: |
           if [ -z "$DATABASE_URL" ] || [ -z "$PORTFOLIO_OWNER_EMAIL" ]; then
-            echo 'Configure the DATABASE_URL secret and PORTFOLIO_OWNER_EMAIL secret or variable in repository settings.'
+            echo 'Configure the DATABASE_URL and PORTFOLIO_OWNER_EMAIL repository secrets.'
             exit 1
           fi
           for attempt in 1 2 3; do
