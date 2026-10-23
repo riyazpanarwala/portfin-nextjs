@@ -89,3 +89,47 @@ test('positions closed before the period are excluded and future trades do not l
   assert.equal(periods['1W'].rows.length, 0);
   assert.equal(periods['1W'].overall.gain, null);
 });
+
+test('delisted stock is explicitly excluded without blocking totals or diluting percentage returns in any period', () => {
+  const historyForAllPeriods = Object.fromEntries(['2025-10-23', '2026-07-23', '2026-09-23', '2026-10-16', '2026-10-22'].map(date => [date, { price: 100, asOf: date }]));
+  const trades = [buy('2020-01-01'), buy('2020-01-01', 5, 100, 'B', 'MF')];
+  const inputs = { histories: { A: historyForAllPeriods, B: historyForAllPeriods },
+    prices: { A: 110, B: 90, UTTAMVALUE: 0.17 },
+    meta: { A: { asOf: '2026-10-23' }, B: { asOf: '2026-10-23' }, UTTAMVALUE: { asOf: '2026-10-21' } } };
+  const baseline = run(trades, inputs);
+  const withDelisted = run([...trades, buy('2020-01-01', 10000, 10, 'UTTAMVALUE')], inputs);
+  for (const period of Object.keys(baseline)) {
+    const result = withDelisted[period];
+    for (const key of ['overall', 'mf', 'stocks']) {
+      assert.equal(result[key].gain, baseline[period][key].gain);
+      assert.equal(result[key].percent, baseline[period][key].percent);
+      assert.equal(result[key].count, baseline[period][key].count);
+      assert.equal(result[key].covered, baseline[period][key].covered);
+    }
+    assert.equal(result.stocks.excluded, 1);
+    assert.equal(result.overall.excluded, 1);
+    assert.equal(result.mf.excluded, 0);
+    const row = result.rows.find(r => r.symbol === 'UTTAMVALUE');
+    assert.equal(row.excluded, true);
+    assert.equal(row.gain, null);
+    assert.match(row.reason, /Delisted stock/);
+  }
+});
+
+test('an unpriced listed stock still blocks totals when a delisted stock is excluded', () => {
+  const result = run([buy('2020-01-01'), buy('2020-01-01', 10, 100, 'MISSING'), buy('2020-01-01', 10, 100, 'UTTAMVALUE')])['1W'];
+  assert.equal(result.stocks.gain, null);
+  assert.equal(result.overall.gain, null);
+  assert.equal(result.stocks.count, 2);
+  assert.equal(result.stocks.covered, 1);
+  assert.equal(result.stocks.excluded, 1);
+  assert.equal(result.rows.find(row => row.symbol === 'MISSING').excluded, undefined);
+});
+
+test('a portfolio containing only delisted stocks has no eligible return rather than an invented zero', () => {
+  const result = run([buy('2020-01-01', 10, 100, 'UTTAMVALUE')])['1W'];
+  assert.equal(result.stocks.gain, null);
+  assert.equal(result.stocks.percent, null);
+  assert.equal(result.stocks.count, 0);
+  assert.equal(result.stocks.excluded, 1);
+});
