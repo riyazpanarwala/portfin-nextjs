@@ -1,79 +1,33 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { isVerifiedSnapshot } from '@/lib/financialRules';
+import { snapshotCache, emptySnapshotState } from '@/lib/snapshotCache';
+import { useAuth } from '@/context/AuthContext';
 
 export function useSnapshots(portfolioId, limit = 200) {
-  const [snapshots, setSnapshots] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const controllerRef = useRef(null);
-
-  const load = useCallback(async () => {
-    if (!portfolioId) {
-      setSnapshots([]);
-      setLoading(false);
-      return;
-    }
-
-    // Abort previous request
-    controllerRef.current?.abort();
-
-    const controller = new AbortController();
-    controllerRef.current = controller;
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const res = await fetch(
-        `/api/snapshots?portfolioId=${portfolioId}&limit=${limit}`,
-        { signal: controller.signal }
-      );
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      if (!controller.signal.aborted) {
-        setSnapshots(
-          [...(data.snapshots || [])].sort((a, b) =>
-            b.snapshotAt.localeCompare(a.snapshotAt)
-          )
-        );
-      }
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        setError(err);
-        setSnapshots([]);
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
-    }
-  }, [portfolioId, limit]);
+  const { user } = useAuth();
+  const userId = user?.id;
+  const entry = useMemo(() => userId && portfolioId ? snapshotCache.entryFor(userId, portfolioId) : null, [userId, portfolioId]);
+  const subscribe = useCallback(listener => entry ? snapshotCache.subscribe(entry, listener) : () => {}, [entry]);
+  const getState = useCallback(() => entry?.state || emptySnapshotState, [entry]);
+  const state = useSyncExternalStore(subscribe, getState, () => emptySnapshotState);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      load();
-    }, 0);
+    if (entry) snapshotCache.load(entry, limit).catch(() => {});
+    // Requests belong to the shared cache, so switching views does not cancel them.
+  }, [entry, limit, state.version]);
 
-    return () => {
-      clearTimeout(timer);
-      controllerRef.current?.abort();
-    };
-  }, [load]);
-
+  const reload = useCallback(async () => {
+    if (entry) await snapshotCache.load(entry, limit, { force: true }).catch(() => {});
+  }, [entry, limit]);
+  const snapshots = useMemo(() => state.rows.slice(0, limit), [state.rows, limit]);
   const verifiedSnapshots = useMemo(() => snapshots.filter(isVerifiedSnapshot), [snapshots]);
   return {
     allSnapshots: snapshots,
     snapshots: verifiedSnapshots,
-    loading,
-    error,
-    reload: load,
+    loading: state.loading,
+    error: state.error,
+    reload,
   };
 }

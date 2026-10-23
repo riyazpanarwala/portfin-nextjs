@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { fmt } from '@/lib/store';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { snapshotCache } from '@/lib/snapshotCache';
 
 const subscribe = () => () => {};
 
@@ -75,6 +76,7 @@ export default function CorporateActionModal({ isOpen, onClose, holdings = [], o
 
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to apply corporate action.');
+      snapshotCache.invalidatePortfolio(portfolioId);
 
       setSuccessMsg(json.message);
       setPreviewData(null);

@@ -20,6 +20,7 @@ import {
 } from '@/lib/store';
 import { useAuth } from '@/context/AuthContext';
 import { loadPortfolioBootstrap } from '@/lib/loadPortfolioBootstrap';
+import { snapshotCache } from '@/lib/snapshotCache';
 import { isDelistedStock } from '@/lib/marketDataPolicy';
 import { analyticsHoldingsPayload, portfolioBetaCacheSignature } from '@/lib/analyticsClient';
 
@@ -136,6 +137,7 @@ export function PortfolioProvider({ children }) {
   // ── Load portfolio + trades ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!userId) return;
+    snapshotCache.invalidateUser(userId);
     loadController.current?.abort();
     const controller = new AbortController();
     loadController.current = controller;
@@ -295,6 +297,7 @@ export function PortfolioProvider({ children }) {
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       const { trade: newTrade } = await res.json();
+      snapshotCache.invalidatePortfolio(portfolioId);
       setTrades(prev =>
         [...prev.filter(t => t.id !== newTrade.id), newTrade].sort((a, b) => a.tradeDate.localeCompare(b.tradeDate)),
       );
@@ -325,6 +328,7 @@ export function PortfolioProvider({ children }) {
     try {
       const res = await fetch(`/api/trades/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete failed');
+      snapshotCache.invalidatePortfolio(portfolioId);
       setTrades(prev => prev.filter(t => t.id !== id));
       toast('Trade deleted', 'blue');
     } catch (err) {
@@ -354,6 +358,7 @@ export function PortfolioProvider({ children }) {
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Snapshot failed');
+      snapshotCache.invalidatePortfolio(portfolioId);
       const data = await res.json();
 
       if (data.duplicateMinute) {

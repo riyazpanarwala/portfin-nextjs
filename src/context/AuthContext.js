@@ -16,6 +16,7 @@ import {
   useCallback,
 } from "react";
 import { readClientSession } from '@/lib/clientSession';
+import { snapshotCache } from '@/lib/snapshotCache';
 
 const AuthCtx = createContext(null);
 
@@ -68,6 +69,7 @@ export function AuthProvider({ children }) {
 
       const { user: loggedInUser } = data;
 
+      snapshotCache.clear();
       setUser(loggedInUser);
 
       return true;
@@ -82,6 +84,7 @@ export function AuthProvider({ children }) {
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (!res.ok) throw new Error('Sign out failed. Please retry.');
+      snapshotCache.clear();
       setUser(null);
       setError(null);
     } catch (err) { setError(err.message); }
