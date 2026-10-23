@@ -1,0 +1,49 @@
+name: Daily prices and portfolio snapshots
+
+on:
+  schedule:
+    # 18:17 UTC = 23:47 IST on the same day. Run Monday–Saturday.
+    - cron: '17 18 * * 1-6'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-portfolio-snapshots
+  cancel-in-progress: false
+
+jobs:
+  refresh-and-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Refresh MF and stocks, then save daily snapshots
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PORTFOLIO_OWNER_EMAIL: ${{ secrets.PORTFOLIO_OWNER_EMAIL || vars.PORTFOLIO_OWNER_EMAIL }}
+        shell: bash
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$PORTFOLIO_OWNER_EMAIL" ]; then
+            echo 'Configure the DATABASE_URL secret and PORTFOLIO_OWNER_EMAIL secret or variable in repository settings.'
+            exit 1
+          fi
+          for attempt in 1 2 3; do
+            if npm run snapshot:daily; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo 'Retrying the daily update in two minutes...'
+              sleep 120
+            fi
+          done
+          exit 1

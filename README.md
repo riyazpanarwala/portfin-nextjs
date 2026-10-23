@@ -298,6 +298,8 @@ If a browser does not save downloads, use **Copy JSON** or **View JSON**, then *
 
 ## Automatic instrument catalogue
 
+For scheduled MF/stock price updates and daily portfolio snapshots at 11:47 PM IST, Monday–Saturday, see [Daily portfolio automation](docs/daily-portfolio-automation.md). The GitHub Actions workflow uses the existing database schema and requires a `DATABASE_URL` repository secret and `PORTFOLIO_OWNER_EMAIL` repository secret (or variable).
+
 Stock and ETF autocomplete uses [Upstox's public instrument files](https://upstox.com/developer/api-documentation/instruments/); no Upstox account or access token is required. The first stock search on or after 06:30 IST refreshes both NSE and BSE, once per day. This is demand-driven: no background job runs while the app is idle. Newly listed IPO shares and ETFs become available after Upstox adds them. Upcoming IPO applications are not covered.
 
 The validated catalogue is cached in memory and saved atomically to `.cache/upstox-instruments.json`. Failed downloads retain the last successful catalogue and retry after five minutes. Existing database instruments and trades are never removed or rewritten by this refresh. A first-time outage with no cache still permits database matches; otherwise search returns a retryable 503 response.
