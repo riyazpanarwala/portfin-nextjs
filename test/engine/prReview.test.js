@@ -11,7 +11,7 @@ const stock = (id, exchange = 'NSE', extra = {}) => ({ id, symbol: 'DUP', assetT
 const quote = (symbol, price, date = '2026-10-09T10:00:00Z') => ({ symbol, regularMarketPrice: price, regularMarketTime: new Date(date) });
 function dependencies(quotes) {
   const calls = [], writes = [];
-  return { calls, writes, db: { instrument: { update: async data => { writes.push(data); } } },
+  return { calls, writes, db: {}, persistPrices: async (_db, updates) => { writes.push(...updates); },
     yahooClient: { quote: async (...args) => { calls.push(args); return quotes; } },
     fetcher: async () => { throw new Error('Unexpected AMFI request'); } };
 }
@@ -27,7 +27,7 @@ test('Yahoo refresh batches exchange-specific symbols and maps reordered results
   assert.equal(result.meta.nse.source, 'yahoo');
   assert.equal(result.meta.bse.asOf, '2026-10-09');
   assert.equal(result.meta.DUP, undefined);
-  assert.deepEqual(deps.writes.map(w => [w.where.id, w.data.price]), [['nse', 110], ['bse', 220]]);
+  assert.deepEqual(deps.writes.map(w => [w.id, w.price]), [['nse', 110], ['bse', 220]]);
 });
 
 test('missing, invalid, stale or future Yahoo quotes preserve cache while valid results update', async t => {
@@ -57,7 +57,7 @@ test('provider failure keeps dated cache and does not write prices', async t => 
 test('a database failure cannot be reported as a successful live price refresh', async t => {
   t.mock.timers.enable({ apis: ['Date'], now });
   const deps = dependencies([quote('DUP.NS', 150)]);
-  deps.db.instrument.update = async () => { throw new Error('Database unavailable'); };
+  deps.persistPrices = async () => { throw new Error('Database unavailable'); };
   await assert.rejects(collectInstrumentPrices([stock('nse')], { force: true }, deps), /Database unavailable/);
 });
 
@@ -70,7 +70,7 @@ test('MF refresh persists the exact ISIN NAV and its UTC publication date', asyn
   assert.equal(result.meta.mf.source, 'amfi');
   assert.equal(result.meta.mf.asOf, '2026-10-01');
   assert.equal(result.meta.mf.stale, true);
-  assert.equal(deps.writes[0].data.priceAsOf.toISOString(), '2026-10-01T00:00:00.000Z');
+  assert.equal(deps.writes[0].priceAsOf.toISOString(), '2026-10-01T00:00:00.000Z');
   assert.equal(deps.calls.length, 0);
 });
 

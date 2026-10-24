@@ -3,13 +3,15 @@ import { prisma } from './prisma.js';
 import { parseAmfiNav } from './amfiNav.js';
 import { dayKey } from './financialRules.js';
 import { isDelistedStock } from './marketDataPolicy.js';
+import { persistInstrumentPrices } from './pricePersistence.js';
 
 const yahoo = new YahooFinance({ suppressNotices: ['ripHistorical', 'yahooSurvey'] });
 const SIX_HOURS = 6 * 60 * 60 * 1000;
 
-export async function collectInstrumentPrices(instruments, { force = false, cacheOnly = false } = {}, { db = prisma, yahooClient = yahoo, fetcher = fetch } = {}) {
+export async function collectInstrumentPrices(instruments, { force = false, cacheOnly = false } = {}, { db = prisma, yahooClient = yahoo, fetcher = fetch, persistPrices = persistInstrumentPrices } = {}) {
   const prices = {};
   const meta = {};
+  const updates = [];
   let navMap;
   const needsRefresh = instrument => !cacheOnly && !isDelistedStock(instrument) && (force ||
     !instrument.priceAsOf || !instrument.priceUpdatedAt ||
@@ -54,8 +56,7 @@ export async function collectInstrumentPrices(instruments, { force = false, cach
     }
     if (live && live.asOf <= dayKey(new Date()) && (!asOf || live.asOf >= asOf)) {
       price = live.price; asOf = live.asOf; source = instrument.assetType === 'MF' ? 'amfi' : 'yahoo'; updatedAt = new Date();
-      // A failed persistence is surfaced, rather than reported as a successful cache update.
-      await db.instrument.update({ where: { id: instrument.id }, data: { price, priceAsOf: new Date(asOf), priceUpdatedAt: updatedAt, priceSource: source } });
+      updates.push({ id: instrument.id, price, priceAsOf: new Date(asOf), priceUpdatedAt: updatedAt, priceSource: source });
     }
     const valid = Number.isFinite(price) && price > 0;
     const record = { source: valid ? source : 'unavailable', providerSource: source === 'cache' ? instrument.priceSource || 'unknown' : source, updatedAt, asOf, stale: !asOf || Date.now() - Date.parse(asOf) > 7 * 86400000 };
@@ -68,5 +69,7 @@ export async function collectInstrumentPrices(instruments, { force = false, cach
       if (valid) prices[instrument.symbol] = price;
     }
   }
+  // Persist the whole refresh before reporting live prices as successful.
+  if (updates.length) await persistPrices(db, updates);
   return { prices, meta };
 }
