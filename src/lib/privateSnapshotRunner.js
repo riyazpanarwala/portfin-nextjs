@@ -10,6 +10,10 @@ const failureMessages = {
   database_auth: 'Database authentication failed. Check DATABASE_URL credentials.',
   database_schema: 'Database schema is out of date. Apply the required migrations.',
   database_url: 'DATABASE_URL is invalid. Check the repository secret.',
+  database_tls: 'Database TLS connection failed. Check SSL settings in DATABASE_URL.',
+  database_missing: 'The configured database does not exist. Check the database name in DATABASE_URL.',
+  database_initialization: 'Prisma could not initialize the database connection. Check the GitHub DATABASE_URL secret against the working application connection string.',
+  database_query: 'Prisma rejected the database query. Check the generated client and schema versions.',
   update: 'Daily portfolio update failed while processing the ledger or prices.',
   disconnect: 'Database cleanup failed.',
 };
@@ -20,6 +24,19 @@ export function snapshotFailureCode(error, stage) {
   if (['P1000', 'P1010'].includes(code)) return 'database_auth';
   if (['P2021', 'P2022'].includes(code)) return 'database_schema';
   if (code === 'P1013') return 'database_url';
+  if (code === 'P1011') return 'database_tls';
+  if (code === 'P1003') return 'database_missing';
+  // Initialization errors may omit both code fields. Inspect privately and return
+  // only a fixed category; no part of the original message crosses IPC.
+  if (error?.name === 'PrismaClientInitializationError') {
+    const message = typeof error.message === 'string' ? error.message : '';
+    if (/can't reach database server|connection (?:timed out|refused)|timed out fetching a new connection|ENOTFOUND|ECONNREFUSED/i.test(message)) return 'database_connection';
+    if (/authentication failed|access denied|password authentication failed/i.test(message)) return 'database_auth';
+    if (/TLS connection|SSL connection|certificate verify failed/i.test(message)) return 'database_tls';
+    if (/the provided database string is invalid|URL must start with the protocol|invalid port number/i.test(message)) return 'database_url';
+    return 'database_initialization';
+  }
+  if (error?.name === 'PrismaClientValidationError') return 'database_query';
   return Object.hasOwn(failureMessages, stage) ? stage : 'update';
 }
 

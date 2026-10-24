@@ -76,6 +76,18 @@ test('unknown diagnostic codes are discarded', async () => {
   assert.doesNotMatch(output.stdout + output.stderr, /PRIVATE_/);
 });
 
+test('Prisma initialization failures without error codes get safe actionable categories', () => {
+  const initialization = message => ({ name: 'PrismaClientInitializationError', message });
+  assert.equal(snapshotFailureCode(initialization("Can't reach database server at PRIVATE_HOST"), 'owner_lookup'), 'database_connection');
+  assert.equal(snapshotFailureCode(initialization('Authentication failed against database server PRIVATE_HOST'), 'owner_lookup'), 'database_auth');
+  assert.equal(snapshotFailureCode(initialization('Error opening a TLS connection: PRIVATE_CERTIFICATE'), 'owner_lookup'), 'database_tls');
+  assert.equal(snapshotFailureCode(initialization('The provided database string is invalid. PRIVATE_URL'), 'owner_lookup'), 'database_url');
+  assert.equal(snapshotFailureCode(initialization('PRIVATE_UNKNOWN_ERROR'), 'owner_lookup'), 'database_initialization');
+  assert.equal(snapshotFailureCode({ name: 'PrismaClientValidationError', message: 'PRIVATE_QUERY' }, 'owner_lookup'), 'database_query');
+  assert.equal(snapshotFailureCode({ code: 'P1011' }, 'owner_lookup'), 'database_tls');
+  assert.equal(snapshotFailureCode({ code: 'P1003' }, 'owner_lookup'), 'database_missing');
+});
+
 test('the CLI configuration failure never prints supplied connection credentials', async () => {
   const entry = fileURLToPath(new URL('../../scripts/dailyPortfolioSnapshot.mjs', import.meta.url));
   await assert.rejects(execute(process.execPath, [entry], { env: { ...process.env,
