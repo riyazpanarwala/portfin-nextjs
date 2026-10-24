@@ -953,13 +953,12 @@ export function ActionView() {
 
 export function SnapshotView() {
   const { portfolioId, saveSnapshot } = usePortfolio();
-  const { snapshots, allSnapshots, loading, reload } = useSnapshots(portfolioId, 100);
+  const { snapshots, allSnapshots, loading } = useSnapshots(portfolioId, 100);
   const [saving, setSaving] = useState(false);
 
   async function handleSaveSnapshot() {
     setSaving(true);
     await saveSnapshot();
-    await reload();
     setSaving(false);
   }
 

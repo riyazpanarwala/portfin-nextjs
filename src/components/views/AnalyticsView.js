@@ -1623,7 +1623,6 @@ export default function AnalyticsView() {
   const handleTakeSnapshot = async () => {
     if (saveSnapshot) {
       await saveSnapshot();
-      await reloadSnapshots();
     }
   };
 

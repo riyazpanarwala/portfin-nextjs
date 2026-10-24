@@ -16,6 +16,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { usePortfolio } from '@/context/PortfolioContext';
+import { snapshotCache } from '@/lib/snapshotCache';
 import { fmtCr, fmt, colorPnl } from '@/lib/store';
 
 // ── colour helpers ────────────────────────────────────────────────────────────
@@ -99,6 +100,7 @@ export default function BackfillView() {
         setStreamError(err.message);
       }
     } finally {
+      if (!dryRun) snapshotCache.invalidatePortfolio(portfolioId);
       setRunning(false);
     }
   }
