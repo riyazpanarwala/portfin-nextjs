@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, fork } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { publicSnapshotSummary } from '../../src/lib/privateSnapshotRunner.js';
+import { publicSnapshotSummary, snapshotFailureCode, runPrivateSnapshotWorker } from '../../src/lib/privateSnapshotRunner.js';
 
 const execute = promisify(execFile);
 const summary = { asOf: '2026-10-23', refreshed: 2, eligible: 2, saved: 1, skippedEmpty: 0, failed: 0 };
@@ -49,6 +49,31 @@ test('uncaught worker exceptions expose no stack or private details to public ou
   assert.equal(output.stdout, '');
   assert.equal(output.stderr.trim(), 'Generic update failure');
   assert.doesNotMatch(output.stdout + output.stderr, /PRIVATE_|fake-password|postgresql:/);
+});
+
+test('known worker failures provide a fixed actionable diagnostic without private fields', async () => {
+  const output = await workerOutput('diagnostic');
+  assert.equal(output.code, 1);
+  assert.doesNotMatch(output.stdout + output.stderr, /PRIVATE_/);
+  const worker = fileURLToPath(new URL('../fixtures/privateSnapshotWorker.mjs', import.meta.url));
+  await assert.rejects(runPrivateSnapshotWorker(worker, {
+    forkWorker: (path, args, options) => fork(path, args, { ...options, env: { ...process.env, PRIVATE_SNAPSHOT_TEST_MODE: 'diagnostic' } }),
+  }), { message: 'Daily portfolio update failed [owner_not_found]. No portfolios match PORTFOLIO_OWNER_EMAIL. Check the repository secret.' });
+});
+
+test('database diagnostics use only recognized codes and fixed stages', () => {
+  assert.equal(snapshotFailureCode({ code: 'P1001', message: 'PRIVATE_DATABASE' }, 'owner_lookup'), 'database_connection');
+  assert.equal(snapshotFailureCode({ errorCode: 'P1000' }, 'owner_lookup'), 'database_auth');
+  assert.equal(snapshotFailureCode({ code: 'P2022' }, 'ledger_read'), 'database_schema');
+  assert.equal(snapshotFailureCode({ code: 'P1013' }, 'owner_lookup'), 'database_url');
+  assert.equal(snapshotFailureCode(new Error('PRIVATE_ERROR'), 'owner_not_found'), 'owner_not_found');
+  assert.equal(snapshotFailureCode({ code: 'PRIVATE_ERROR' }, 'PRIVATE_STAGE'), 'update');
+});
+
+test('unknown diagnostic codes are discarded', async () => {
+  const output = await workerOutput('unknown-diagnostic');
+  assert.equal(output.code, 1);
+  assert.doesNotMatch(output.stdout + output.stderr, /PRIVATE_/);
 });
 
 test('the CLI configuration failure never prints supplied connection credentials', async () => {
