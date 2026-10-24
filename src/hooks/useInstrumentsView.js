@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { upsertInstruments } from '@/lib/upsertInstruments';
 
 const PAGE_SIZE = 20;
 
@@ -268,23 +269,15 @@ export function useAddInstrumentForm({ onAdded, toast }) {
     if (!sym) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/instruments/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instruments: [{
-            symbol:    sym.toUpperCase().trim(),
-            name:      form.name || sym,
-            isin:      form.isin || null,
-            exchange,
-            assetType,
-            sector:    form.sector || null,
-            taxCategory: form.taxCategory,
-          }],
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      const data = await upsertInstruments([{
+        symbol:    sym.toUpperCase().trim(),
+        name:      form.name || sym,
+        isin:      form.isin || null,
+        exchange,
+        assetType,
+        sector:    form.sector || null,
+        taxCategory: form.taxCategory,
+      }]);
       toast(data.created > 0 ? `✅ ${sym} added to database` : `ℹ ${sym} updated`, 'green');
       setForm({ symbol: '', name: '', isin: '', sector: '', taxCategory: 'UNKNOWN' });
       setAssetType('STOCK');
@@ -360,12 +353,7 @@ export function useBulkImport({ onImported, toast }) {
     let totalCreated = 0, totalUpdated = 0, totalSkipped = 0, allErrors = [];
     for (let i = 0; i < parsed.length; i += CHUNK) {
       try {
-        const res = await fetch('/api/instruments/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ instruments: parsed.slice(i, i + CHUNK) }),
-        });
-        const d = await res.json();
+        const d = await upsertInstruments(parsed.slice(i, i + CHUNK));
         totalCreated += d.created || 0;
         totalUpdated += d.updated || 0;
         totalSkipped += d.skipped || 0;

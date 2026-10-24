@@ -15,7 +15,7 @@ export function createSnapshotCache({ fetcher = (...args) => fetch(...args), now
     entry.generation++;
     entry.controller?.abort();
     entry.pending = null; entry.at = 0; entry.limit = 0; entry.complete = false;
-    publish(entry, { rows: [], loading: false, error: null, version: entry.state.version + 1 });
+    publish(entry, { rows: [], loading: !entry.retired && entry.listeners.size > 0, error: null, version: entry.state.version + 1 });
   }
   async function load(entry, limit, { force = false } = {}) {
     if (entry.retired) return;
@@ -43,6 +43,7 @@ export function createSnapshotCache({ fetcher = (...args) => fetch(...args), now
         publish(entry, { rows, loading: false, error: null });
       } catch (error) {
         if (entry.generation === generation) {
+          entry.at = 0; entry.limit = 0; entry.complete = false;
           publish(entry, { rows: [], loading: false, error });
           throw error;
         }
@@ -57,6 +58,7 @@ export function createSnapshotCache({ fetcher = (...args) => fetch(...args), now
   return {
     entryFor, load,
     subscribe(entry, listener) { entry.listeners.add(listener); return () => entry.listeners.delete(listener); },
+    invalidateAll() { for (const entry of entries.values()) invalidate(entry); },
     invalidatePortfolio(portfolioId) { for (const entry of entries.values()) if (entry.portfolioId === portfolioId) invalidate(entry); },
     invalidateUser(userId) { for (const entry of entries.values()) if (entry.userId === userId) invalidate(entry); },
     clear() { for (const entry of entries.values()) { entry.retired = true; invalidate(entry); } entries.clear(); },

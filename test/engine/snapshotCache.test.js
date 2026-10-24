@@ -1,11 +1,66 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSnapshotCache } from '../../src/lib/snapshotCache.js';
+import { upsertInstruments } from '../../src/lib/upsertInstruments.js';
 import { createSnapshotReader } from '../../src/lib/snapshotReader.js';
 import { snapshotWithStockReturn, buildSnapshotData } from '../../src/lib/snapshotValuation.js';
 
 const rows = Array.from({ length: 250 }, (_, i) => ({ id: String(i), snapshotAt: new Date(Date.UTC(2026, 0, 250 - i)).toISOString() }));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+
+test('invalidation keeps mounted views loading and leaves unsubscribed or retired entries idle', async () => {
+  const cache = createSnapshotCache({ fetcher: async () => Response.json({ snapshots: rows }) });
+  const live = cache.entryFor('owner', 'portfolio');
+  const idle = cache.entryFor('owner', 'other');
+  await Promise.all([cache.load(live, 1000), cache.load(idle, 1000)]);
+  const states = [];
+  const unsubscribe = cache.subscribe(live, () => states.push(live.state));
+  cache.invalidateUser('owner');
+  assert.equal(states.at(-1).loading, true);
+  assert.deepEqual(states.at(-1).rows, []);
+  assert.equal(idle.state.loading, false);
+  await cache.load(live, 1000);
+  assert.equal(live.state.loading, false);
+  cache.clear();
+  assert.equal(states.at(-1).loading, false);
+  unsubscribe();
+});
+
+test('instrument updates invalidate all cached portfolios, including partial import successes', async () => {
+  let calls = 0;
+  const cache = createSnapshotCache({ fetcher: async () => { calls++; return Response.json({ snapshots: rows }); } });
+  const entries = [cache.entryFor('owner', 'first'), cache.entryFor('owner', 'second')];
+  await Promise.all(entries.map(entry => cache.load(entry, 1000)));
+  const instruments = [{ symbol: 'TEST', exchange: 'NSE' }];
+  for (const updated of [0, 1]) {
+    await upsertInstruments(instruments, { cache, fetcher: async (url, options) => {
+      assert.equal(url, '/api/instruments/bulk');
+      assert.equal(options.method, 'POST');
+      assert.deepEqual(JSON.parse(options.body), { instruments });
+      return Response.json({ created: 1, updated, skipped: 1, errors: ['Skipped invalid row'] });
+    } });
+    assert.ok(entries.every(entry => entry.state.rows.length === (updated ? 0 : rows.length)));
+  }
+  await Promise.all(entries.map(entry => cache.load(entry, 1000)));
+  assert.equal(calls, 4);
+  await assert.rejects(upsertInstruments(instruments, { cache, fetcher: async () => Response.json({ error: 'Forbidden' }, { status: 403 }) }), /Forbidden/);
+  assert.ok(entries.every(entry => entry.state.rows.length === rows.length));
+});
+
+test('a failed expansion remains retryable by a view with a smaller limit', async () => {
+  let calls = 0;
+  const cache = createSnapshotCache({ fetcher: async () => {
+    calls++;
+    return calls === 2 ? Response.json({}, { status: 500 }) : Response.json({ snapshots: [rows[0]] });
+  } });
+  const entry = cache.entryFor('owner', 'portfolio');
+  await cache.load(entry, 1);
+  await assert.rejects(cache.load(entry, 100), /500/);
+  await cache.load(entry, 1);
+  assert.equal(calls, 3);
+  assert.equal(entry.state.error, null);
+  assert.deepEqual(entry.state.rows, [rows[0]]);
+});
 
 test('shared snapshot cache deduplicates requests and reuses a larger or complete response across views', async () => {
   let calls = 0;
