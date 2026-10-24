@@ -23,11 +23,17 @@ async function loadLedger(db, portfolioId) {
 const activeIds = (trades, actions, asOf) => new Set(computeHoldings(trades.map(flattenTrade), {}, { corporateActions: actions, asOf }).filter(h => h.qty > 1e-9).map(h => h.instrumentId));
 
 /** Refresh owned active holdings and save one automated checkpoint per IST day. */
-export async function runDailyPortfolioSnapshots({ db, collectPrices, ownerEmail, now = new Date(), log = () => {} }) {
+export async function runDailyPortfolioSnapshots({ db, collectPrices, ownerEmail, now = new Date(), log = () => {}, onStage = () => {} }) {
+  onStage('configuration');
   if (typeof ownerEmail !== 'string' || !ownerEmail.trim().includes('@')) throw new Error('Set PORTFOLIO_OWNER_EMAIL to the account email used to sign in.');
   const asOf = indiaDate(now);
+  onStage('owner_lookup');
   const portfolios = await db.portfolio.findMany({ where: { user: { email: { equals: ownerEmail.trim(), mode: 'insensitive' } } }, select: { id: true, userId: true } });
-  if (!portfolios.length) throw new Error('No portfolios match PORTFOLIO_OWNER_EMAIL.');
+  if (!portfolios.length) {
+    onStage('owner_not_found');
+    throw new Error('No portfolios match PORTFOLIO_OWNER_EMAIL.');
+  }
+  onStage('ledger_read');
   const instruments = new Map();
   for (const portfolio of portfolios) {
     const { trades, actions } = await db.$transaction(tx => loadLedger(tx, portfolio.id), { isolationLevel: 'RepeatableRead', timeout: 20000 });
@@ -35,6 +41,7 @@ export async function runDailyPortfolioSnapshots({ db, collectPrices, ownerEmail
     for (const trade of trades) if (active.has(trade.instrumentId)) instruments.set(trade.instrumentId, trade.instrument);
   }
   const refreshed = new Set();
+  onStage('update');
   const eligible = [...instruments.values()].filter(i => !isDelistedStock(i));
   const groups = [eligible.filter(i => i.assetType === 'MF')];
   const stocks = eligible.filter(i => i.assetType === 'STOCK');
