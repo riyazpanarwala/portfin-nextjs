@@ -8,7 +8,7 @@ import { StatCard } from '@/components/ui/SharedUI';
 import { BenchmarkComparisonPanel } from '@/components/views/BenchmarkComparisonPanel';
 import { useAnalyticsView } from '@/hooks/useAnalyticsView';
 import { useSnapshots } from '@/hooks/useSnapshots';
-import { analyzeDrawdown, drawdownHistory } from '@/lib/drawdown';
+import { analyzeDrawdown, drawdownDate, drawdownHistory } from '@/lib/drawdown';
 import { isVerifiedSnapshot } from '@/lib/financialRules';
 import { YearByYearView } from './YearByYearView';
 import styles from './AnalyticsView.module.css';
@@ -143,12 +143,12 @@ function DrawdownTooltip({ active, payload, label }) {
         <strong>{fmt(point.drawdown, 1)}%</strong>
       </div>
       <div className={styles.drawdownTooltipRow}>
-        <span>Portfolio</span>
-        <strong>{fmtCr(point.value)}</strong>
+        <span>Performance index</span>
+        <strong>{fmt(point.value, 2)}</strong>
       </div>
       <div className={styles.drawdownTooltipRow}>
-        <span>Peak</span>
-        <strong>{fmtCr(point.peak)}</strong>
+        <span>Peak index</span>
+        <strong>{fmt(point.peak, 2)}</strong>
       </div>
     </div>
   );
@@ -220,8 +220,9 @@ function DrawdownLineChart({ analysis }) {
   );
 }
 
-function DrawdownAnalysis({ snapshots, onTakeSnapshot }) {
-  const analysis = useMemo(() => analyzeDrawdown(snapshots), [snapshots]);
+function DrawdownAnalysis({ snapshots, trades, onTakeSnapshot }) {
+  const analysis = useMemo(() => analyzeDrawdown(snapshots, trades), [snapshots, trades]);
+  if (analysis?.error) return <p role="alert">{analysis.error}</p>;
   if (!analysis) return (
     <EmptyFeature
       icon="📉"
@@ -243,19 +244,19 @@ function DrawdownAnalysis({ snapshots, onTakeSnapshot }) {
           <span className={styles.drawdownTitleAccent} />
           <h3>Drawdown Analyzer</h3>
         </div>
-        <p>How far your portfolio fell from its peak and how fast it recovered</p>
+        <p>Investment declines and recovery, adjusted for purchases and sales</p>
       </div>
 
       <div className={styles.drawdownMetricGrid}>
         <MetricCard label="Max Drawdown" value={`${fmt(analysis.maxDrawdown, 2)}%`} color={maxDdColor} sub={analysis.maxDrawdownDate ? `Worst fall on ${analysis.maxDrawdownDate}` : 'No decline in selected history'} />
-        <MetricCard label="Current Drawdown" value={`${fmt(analysis.currentDrawdown, 1)}%`} color={ddColor} sub="Below recent peak" />
+        <MetricCard label="Current Drawdown" value={`${fmt(analysis.currentDrawdown, 1)}%`} color={ddColor} sub="Below adjusted performance peak" />
         <MetricCard
           label="Recovery Time"
           value={fmtMonths(analysis.recoveryDays)}
           color={analysis.currentDrawdownDays ? 'var(--yellow)' : 'var(--green2)'}
           sub={analysis.currentDrawdownDays ? 'Still recovering' : analysis.recoveries.length ? 'Fully recovered' : 'No decline in selected history'}
         />
-        <MetricCard label="Peak Portfolio Value" value={fmtCr(analysis.allTimePeak)} color="var(--accent2)" sub={`Highest selected checkpoint on ${analysis.allTimePeakDate}`} />
+        <MetricCard label="Peak Performance Index" value={fmt(analysis.allTimePeak, 2)} color="var(--accent2)" sub={`Starts at 100 · peak on ${analysis.allTimePeakDate}`} />
       </div>
 
       <div className={styles.recoveryBar}>
@@ -1787,16 +1788,16 @@ export default function AnalyticsView() {
             </select>
           </label>
           {!snapsLoading && <p style={{ color: 'var(--text3)', fontSize: 12 }}>
-            Using {drawdownSnapshots.length} daily checkpoints{drawdownSnapshots.length > 0 ? ` from ${drawdownSnapshots[0].snapshotAt.slice(0, 10)} to ${drawdownSnapshots.at(-1).snapshotAt.slice(0, 10)}` : ''}.
+            Using {drawdownSnapshots.length} daily checkpoints{drawdownSnapshots.length > 0 ? ` from ${drawdownDate(drawdownSnapshots[0])} to ${drawdownDate(drawdownSnapshots.at(-1))}` : ''}.
             {' '}{unverifiedDrawdownCount > 0 ? `${unverifiedDrawdownCount} are unverified or need rebuilding; results reflect their saved values and may change after rebuilding.` : `${allSnapshots.length - snapshots.length} unverified saved checkpoints${drawdownSource === 'verified' ? ' excluded' : ' available'}.`}
-            {' '}Uses the last checkpoint per day from up to 1,000 saved entries. Deposits and withdrawals also affect this portfolio-value drawdown.
+            {' '}Uses the last checkpoint per valuation day from up to 1,000 saved entries. Estimated cash-flow-adjusted drawdown (Modified Dietz): purchases and net sale proceeds are removed from investment gains, with trade-day timing used to weight capital. Cash outside holdings is not tracked. Sparse or outdated checkpoints can reduce accuracy; falls between checkpoints may be missed.
             {' '}<a href="#backfill">Rebuild historical month-end checkpoints</a>.
           </p>}
           {snapshotsError ? <p role="alert">Snapshot history could not be loaded. <button type="button" onClick={reloadSnapshots}>Retry</button></p> :
           <>
           {snapsLoading
             ? <div style={{ color: 'var(--text3)', fontSize: 13, padding: 20 }}>Loading snapshots…</div>
-            : <DrawdownAnalysis snapshots={drawdownSnapshots} onTakeSnapshot={handleTakeSnapshot} />}
+            : <DrawdownAnalysis snapshots={drawdownSnapshots} trades={trades} onTakeSnapshot={handleTakeSnapshot} />}
           </>}
         </div>
       )}
