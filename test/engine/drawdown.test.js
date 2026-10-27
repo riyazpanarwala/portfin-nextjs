@@ -85,6 +85,24 @@ test('unusable capital and invalid trades report an error instead of false perfo
   assert.ok(analyzeDrawdown([snapshot('12', 100), snapshot('13', 10)], [trade('13', 'SELL', 'bad')]).error);
 });
 
+test('offsetting gains and losses cannot hide nonpositive weighted capital', () => {
+  // Net gain is zero in both cases, but the return denominator is invalid.
+  for (const [sale, purchase] of [[150, 100], [125, 75]]) {
+    const result = analyzeDrawdown([snapshot('12', 100), snapshot('16', 50)],
+      [trade('13', 'SELL', sale), trade('16', 'BUY', purchase)]);
+    assert.match(result.error, /insufficient invested capital/);
+  }
+});
+
+test('only genuinely empty intervals carry forward without positive capital', () => {
+  const empty = analyzeDrawdown([snapshot('12', 0), snapshot('16', 0)]);
+  near(empty.currentDrawdown, 0);
+  near(empty.allTimePeak, 100);
+  const traded = analyzeDrawdown([snapshot('12', 0), snapshot('16', 0)],
+    [trade('13', 'BUY', 100), trade('13', 'SELL', 100)]);
+  assert.match(traded.error, /insufficient invested capital/);
+});
+
 test('small declines count and recovery requires regaining the full prior peak', () => {
   const analysis = analyzeDrawdown([snapshot('12', 100), snapshot('13', 99.2), snapshot('14', 99.6), snapshot('15', 100)]);
   assert.equal(analysis.recoveries.length, 1);

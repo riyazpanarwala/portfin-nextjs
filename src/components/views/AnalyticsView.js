@@ -130,6 +130,7 @@ function fmtMonths(days) {
   return months >= 12 ? `${fmt(months / 12, 1)} yr` : `${months} mo`;
 }
 
+/** Display the selected checkpoint's cash-flow-adjusted drawdown and index levels. */
 function DrawdownTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const point = payload[0]?.payload;
@@ -220,6 +221,7 @@ function DrawdownLineChart({ analysis }) {
   );
 }
 
+/** Render adjusted drawdown metrics or explain missing/unsuitable valuation history. */
 function DrawdownAnalysis({ snapshots, trades, onTakeSnapshot }) {
   const analysis = useMemo(() => analyzeDrawdown(snapshots, trades), [snapshots, trades]);
   if (analysis?.error) return <p role="alert">{analysis.error}</p>;
@@ -1605,6 +1607,7 @@ const CATEGORIES = [
   { key: 'trades', label: 'Trades & Tax', icon: '⚡' },
 ];
 
+/** Coordinate portfolio analytics tabs and the checkpoint history used for drawdown. */
 export default function AnalyticsView() {
   const { stats, holdings, taxData, monthlyFlow, realizedSummary,
     portfolioXIRR, portfolioBeta, trades, currentPrices, portfolioId, saveSnapshot } = usePortfolio();
