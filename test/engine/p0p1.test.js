@@ -4,8 +4,8 @@ import { computeHoldings, computeCapitalGainsReport, computeRealizedSummary, sim
 import { buildSnapshotData } from '../../src/lib/snapshotValuation.js';
 import { parseAmfiNav } from '../../src/lib/amfiNav.js';
 import { loadTradeHistory } from '../../src/lib/loadTradeHistory.js';
-import { newSessionToken, hashSessionToken, findSession, isAdministrator } from '../../src/lib/sessionTokens.js';
-import { requireOwnedPortfolio, requireAdmin, requireSession, createSession, destroySession } from '../../src/lib/auth.js';
+import { newSessionToken, hashSessionToken, findSession, isAdministrator, SESSION_TTL_SECONDS, SESSION_REFRESH_INTERVAL_SECONDS } from '../../src/lib/sessionTokens.js';
+import { requireOwnedPortfolio, requireAdmin, requireSession, createSession, destroySession, touchSession } from '../../src/lib/auth.js';
 import { withErrorHandler } from '../../src/lib/apiHelpers.js';
 import { NextResponse } from 'next/server.js';
 import { reviseLedger } from '../../src/lib/ledger.js';
@@ -36,6 +36,35 @@ test('login cookies are HttpOnly and logout revokes the stored token hash', asyn
   assert.ok(response.headers.get('set-cookie').includes('HttpOnly')); assert.ok(response.headers.get('set-cookie').includes('SameSite=lax'));
   const logout = await destroySession(new Request('https://portfin.test/logout', { headers: { cookie: `portfin_session=${cookie.value}` } }), NextResponse.json({ ok: true }), db);
   assert.equal(deleted.tokenHash, saved.tokenHash); assert.ok(logout.headers.get('set-cookie').includes('Max-Age=0'));
+});
+test('touchSession refreshes session expiration and cookie only when threshold is reached', async () => {
+  const token = newSessionToken();
+  const now = new Date('2026-10-10T12:00:00Z');
+  let updated;
+  const db = { session: { update: async query => { updated = query; } } };
+
+  // Case 1: Fresh session (less than 24h elapsed), no refresh
+  const freshExpiry = new Date(now.getTime() + (SESSION_TTL_SECONDS - 3600) * 1000);
+  const freshSession = { userId: 'u', token, tokenHash: hashSessionToken(token), expiresAt: freshExpiry };
+  const freshRes = NextResponse.json({ ok: true });
+  await touchSession(freshSession, freshRes, db, now);
+  assert.equal(updated, undefined);
+  assert.equal(freshRes.cookies.get('portfin_session'), undefined);
+
+  // Case 2: Stale session (2 days elapsed, > 24h threshold), refreshes DB and re-issues cookie
+  const staleExpiry = new Date(now.getTime() + (SESSION_TTL_SECONDS - 2 * SESSION_REFRESH_INTERVAL_SECONDS) * 1000);
+  const staleSession = { userId: 'u', token, tokenHash: hashSessionToken(token), expiresAt: staleExpiry };
+  const staleRes = NextResponse.json({ ok: true });
+  await touchSession(staleSession, staleRes, db, now);
+  assert.ok(updated);
+  assert.equal(updated.where.tokenHash, hashSessionToken(token));
+  const expectedExpiry = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000);
+  assert.equal(updated.data.expiresAt.getTime(), expectedExpiry.getTime());
+  assert.equal(staleSession.expiresAt.getTime(), expectedExpiry.getTime());
+  const cookie = staleRes.cookies.get('portfin_session');
+  assert.equal(cookie.value, token);
+  assert.ok(staleRes.headers.get('set-cookie').includes('HttpOnly'));
+  assert.ok(staleRes.headers.get('set-cookie').includes(`Max-Age=${SESSION_TTL_SECONDS}`));
 });
 test('sessions use unpredictable hashed tokens, reject forged and expired cookies, and fail closed for admins', async () => {
   const token = newSessionToken();

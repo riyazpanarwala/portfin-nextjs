@@ -1,5 +1,5 @@
 import { prisma } from './prisma.js';
-import { SESSION_COOKIE, SESSION_TTL_SECONDS, newSessionToken, hashSessionToken, findSession, isAdministrator } from './sessionTokens.js';
+import { SESSION_COOKIE, SESSION_TTL_SECONDS, SESSION_REFRESH_INTERVAL_SECONDS, newSessionToken, hashSessionToken, findSession, isAdministrator } from './sessionTokens.js';
 
 export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -15,9 +15,17 @@ async function cookieToken(request) {
 }
 
 export async function requireSession(request, db = prisma) {
-  const session = await findSession(await cookieToken(request), db);
+  const token = await cookieToken(request);
+  const session = await findSession(token, db);
   if (!session) throw new HttpError(401, 'Please sign in.');
-  return { userId: session.userId, user: session.user, isAdmin: isAdministrator(session.user.email) };
+  return {
+    userId: session.userId,
+    user: session.user,
+    isAdmin: isAdministrator(session.user.email),
+    token,
+    tokenHash: session.tokenHash || (token ? hashSessionToken(token) : undefined),
+    expiresAt: session.expiresAt,
+  };
 }
 
 export function requireAdmin(session) {
@@ -35,6 +43,35 @@ export async function createSession(userId, response, db = prisma) {
   const token = newSessionToken();
   await db.session.create({ data: { userId, tokenHash: hashSessionToken(token), expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000) } });
   response.cookies.set(SESSION_COOKIE, token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/', maxAge: SESSION_TTL_SECONDS });
+  return response;
+}
+
+export async function touchSession(session, response, db = prisma, now = new Date()) {
+  if (!session?.token) return response;
+  const expiresAtMs = session.expiresAt ? new Date(session.expiresAt).getTime() : 0;
+  const remainingMs = expiresAtMs - now.getTime();
+  const refreshThresholdMs = (SESSION_TTL_SECONDS - SESSION_REFRESH_INTERVAL_SECONDS) * 1000;
+  if (expiresAtMs && remainingMs > refreshThresholdMs) {
+    return response;
+  }
+
+  const newExpiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000);
+  if (db?.session?.update) {
+    await db.session.update({
+      where: { tokenHash: session.tokenHash || hashSessionToken(session.token) },
+      data: { expiresAt: newExpiresAt },
+    });
+  }
+  session.expiresAt = newExpiresAt;
+
+  response.cookies.set(SESSION_COOKIE, session.token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SESSION_TTL_SECONDS,
+  });
+
   return response;
 }
 
