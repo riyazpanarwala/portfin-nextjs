@@ -2,6 +2,7 @@ import { randomBytes, createHash } from 'node:crypto';
 
 export const SESSION_COOKIE = 'portfin_session';
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
+export const SESSION_REFRESH_INTERVAL_SECONDS = 60 * 60 * 24;
 export const newSessionToken = () => randomBytes(32).toString('base64url');
 export const hashSessionToken = token => createHash('sha256').update(token).digest('hex');
 
