@@ -1,6 +1,7 @@
 import { computeHoldings, computePortfolioStats } from './store.js';
 import { ENGINE_VERSION, dayKey, isVerifiedSnapshot, isUserVerifiedSnapshot } from './financialRules.js';
 import { decimalField } from './financialDecimal.js';
+import { isDelistedStock } from './marketDataPolicy.js';
 
 export function buildSnapshotData(trades, prices, meta, { asOf, corporateActions = [], revision }) {
   if (dayKey(asOf) !== asOf) throw new Error('Invalid snapshot date');
@@ -10,7 +11,8 @@ export function buildSnapshotData(trades, prices, meta, { asOf, corporateActions
   for (const holding of holdings.filter(h => h.qty > 1e-9)) {
     const key = holding.instrumentId || holding.symbol;
     const record = meta[key];
-    if (!holding.priceAvailable || !record?.asOf || !Number.isFinite(Date.parse(record.asOf)) || dayKey(record.asOf) !== record.asOf || record.asOf > asOf || Date.parse(asOf) - Date.parse(record.asOf) > 7 * 86400000) throw new Error(`Missing or stale valuation price for ${holding.symbol} on ${asOf}`);
+    const delisted = isDelistedStock(holding);
+    if (!holding.priceAvailable || !record?.asOf || !Number.isFinite(Date.parse(record.asOf)) || dayKey(record.asOf) !== record.asOf || record.asOf > asOf || (!delisted && Date.parse(asOf) - Date.parse(record.asOf) > 7 * 86400000)) throw new Error(`Missing or stale valuation price for ${holding.symbol} on ${asOf}`);
     provenance[key] = { price: holding.cmp, asOf: record.asOf, source: record.providerSource || record.source || 'unknown' };
   }
   const stats = computePortfolioStats(holdings);
