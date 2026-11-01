@@ -15,14 +15,18 @@ function rebuildFromSavedPrices(snapshot, trades, instruments, actions, revision
     meta[key] = record;
   }
   const asOf = snapshot.valuationAt.toISOString().slice(0, 10);
-  // A delisted holding may have been added to the ledger after the checkpoint
-  // was saved, so its ID is absent from that checkpoint's price provenance.
-  // Its last cached quote is safe only when that quote predates the checkpoint.
+  // A holding may have been added to the ledger after the checkpoint was
+  // saved, so its ID is absent from that checkpoint's price provenance. Use a
+  // cached quote only when it predates the checkpoint and meets the same
+  // freshness rule used when the original checkpoint was built. Delisted
+  // holdings can use their last known quote because they no longer trade.
   for (const instrument of instruments) {
-    if (!isDelistedStock(instrument) || (meta[instrument.id]?.asOf && meta[instrument.id].asOf <= asOf)) continue;
+    if (meta[instrument.id]?.asOf && meta[instrument.id].asOf <= asOf) continue;
     const price = instrument.price?.toString();
     const priceAsOf = instrument.priceAsOf?.toISOString().slice(0, 10);
-    if (!price || !Number.isFinite(Number(price)) || Number(price) <= 0 || !priceAsOf || priceAsOf > asOf) continue;
+    const delisted = isDelistedStock(instrument);
+    const ageDays = priceAsOf ? (Date.parse(`${asOf}T00:00:00Z`) - Date.parse(`${priceAsOf}T00:00:00Z`)) / 86400000 : Infinity;
+    if (!price || !Number.isFinite(Number(price)) || Number(price) <= 0 || !priceAsOf || priceAsOf > asOf || (!delisted && ageDays > 7)) continue;
     prices[instrument.id] = price;
     meta[instrument.id] = { price, asOf: priceAsOf, source: instrument.priceSource || 'last-known-delisted-price' };
   }
