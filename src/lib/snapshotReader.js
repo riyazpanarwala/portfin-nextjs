@@ -4,8 +4,9 @@ import { flattenTrade } from './apiHelpers.js';
 import { tradeOrder } from './ledger.js';
 import { ENGINE_VERSION, isVerifiedSnapshot, isUserVerifiedSnapshot } from './financialRules.js';
 import { buildSnapshotData, snapshotWithStockReturn } from './snapshotValuation.js';
+import { isDelistedStock } from './marketDataPolicy.js';
 
-function rebuildFromSavedPrices(snapshot, trades, actions, revision) {
+function rebuildFromSavedPrices(snapshot, trades, instruments, actions, revision) {
   if (!snapshot.valuationAt || !snapshot.priceProvenance || !['fifo-v2', ENGINE_VERSION].includes(snapshot.engineVersion)) return null;
   const prices = {}, meta = {};
   for (const [key, record] of Object.entries(snapshot.priceProvenance)) {
@@ -13,9 +14,21 @@ function rebuildFromSavedPrices(snapshot, trades, actions, revision) {
     prices[key] = record.price;
     meta[key] = record;
   }
+  const asOf = snapshot.valuationAt.toISOString().slice(0, 10);
+  // A delisted holding may have been added to the ledger after the checkpoint
+  // was saved, so its ID is absent from that checkpoint's price provenance.
+  // Its last cached quote is safe only when that quote predates the checkpoint.
+  for (const instrument of instruments) {
+    if (!isDelistedStock(instrument) || (meta[instrument.id]?.asOf && meta[instrument.id].asOf <= asOf)) continue;
+    const price = instrument.price?.toString();
+    const priceAsOf = instrument.priceAsOf?.toISOString().slice(0, 10);
+    if (!price || !Number.isFinite(Number(price)) || Number(price) <= 0 || !priceAsOf || priceAsOf > asOf) continue;
+    prices[instrument.id] = price;
+    meta[instrument.id] = { price, asOf: priceAsOf, source: instrument.priceSource || 'last-known-delisted-price' };
+  }
   try {
     return buildSnapshotData(trades, prices, meta, {
-      asOf: snapshot.valuationAt.toISOString().slice(0, 10),
+      asOf,
       corporateActions: actions,
       revision,
     });
@@ -34,12 +47,15 @@ export function createSnapshotReader({ now = Date.now, ttl = 60000, maxEntries =
       const saved = await tx.snapshot.findMany({ where: { portfolioId }, orderBy: { snapshotAt: 'desc' }, take: limit });
       let trades = [], actions = [];
       const needsRebuild = saved.some(snapshot => snapshot.stale && snapshot.valuationAt && snapshot.priceProvenance);
+      let instruments = [];
       if (needsRebuild) {
-        trades = (await tx.trade.findMany({ where: { portfolioId }, include: { instrument: true }, orderBy: tradeOrder })).map(flattenTrade);
+        const rawTrades = await tx.trade.findMany({ where: { portfolioId }, include: { instrument: true }, orderBy: tradeOrder });
+        instruments = [...new Map(rawTrades.map(trade => [trade.instrumentId, trade.instrument])).values()];
+        trades = rawTrades.map(flattenTrade);
         actions = await tx.corporateAction.findMany({ where: { portfolioId }, orderBy: [{ exDate: 'asc' }, { id: 'asc' }] });
         for (const snapshot of saved) {
           if (!snapshot.stale) continue;
-          const rebuilt = rebuildFromSavedPrices(snapshot, trades, actions, portfolio.revision);
+          const rebuilt = rebuildFromSavedPrices(snapshot, trades, instruments, actions, portfolio.revision);
           if (!rebuilt) continue;
           // Rebuild with the checkpoint's recorded prices. This safely clears
           // stale flags from metadata-only updates and repairs historical totals
