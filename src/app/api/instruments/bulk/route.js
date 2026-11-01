@@ -77,7 +77,7 @@ export const POST = withErrorHandler('POST /api/instruments/bulk', async (reques
     try {
       const existing = await prisma.instrument.findUnique({
         where: { symbol_exchange: { symbol, exchange } },
-        select: { id: true },
+        select: { id: true, assetType: true },
       });
 
       // Resolve ISIN conflicts: if another instrument already has this ISIN,
@@ -111,9 +111,13 @@ export const POST = withErrorHandler('POST /api/instruments/bulk', async (reques
 
       if (existing) {
         await prisma.$transaction(async db => {
-          await db.portfolio.updateMany({ where: { trades: { some: { instrumentId: existing.id } } }, data: { revision: { increment: 1 } } });
           await db.instrument.update({ where: { id: existing.id }, data });
-          await db.snapshot.updateMany({ where: { portfolio: { trades: { some: { instrumentId: existing.id } } } }, data: { stale: true } });
+          // Names, sectors and identifiers do not change saved valuations. Only
+          // changing the asset class changes which financial calculations use it.
+          if (existing.assetType !== assetType) {
+            await db.portfolio.updateMany({ where: { trades: { some: { instrumentId: existing.id } } }, data: { revision: { increment: 1 } } });
+            await db.snapshot.updateMany({ where: { portfolio: { trades: { some: { instrumentId: existing.id } } } }, data: { stale: true } });
+          }
         });
         updated++;
       } else {
